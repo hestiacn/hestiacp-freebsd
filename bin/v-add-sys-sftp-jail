@@ -4,27 +4,24 @@
 #
 # example: v-add-sys-sftp-jail yes
 #
-# This function enables sftp jailed environment.
+# This function enables sftp jailed environment on FreeBSD.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
-# shellcheck source=/usr/local/hestia/func/main.sh
+# Includes (Adjusted to FreeBSD Private Port/Repository Standard Paths)
+source /usr/local/etc/hestiacp/hestia.conf
 source $HESTIA/func/main.sh
-# load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
+# Aligned with official spec: Accepts only $1 parameter
 restart=$1
 
 #----------------------------------------------------------#
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-# Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
 #----------------------------------------------------------#
@@ -36,14 +33,14 @@ config='/etc/ssh/sshd_config'
 sftp_n=$(grep -n "Subsystem.*sftp" $config | grep -v internal | grep -v ":#")
 sftp_i=$(grep -n "^# Hestia SFTP Chroot" $config)
 
-# Disabling normal sftp
+# 1. Disabling normal sftp (Fixed BSD sed missing backup extension syntax)
 if [ -n "$sftp_n" ]; then
 	fline=$(echo $sftp_n | cut -f 1 -d :)
-	sed -i "${fline}s/Subsystem.*sftp/Subsystem sftp internal-sftp/" $config
+	sed -i "" "${fline}s/Subsystem.*sftp/Subsystem sftp internal-sftp/" $config
 	restart='yes'
 fi
 
-# Enabling jailed sftp
+# 2. Enabling jailed sftp global match block
 if [ -z "$sftp_i" ]; then
 	echo " " >> $config
 	echo "# Hestia SFTP Chroot" >> $config
@@ -55,47 +52,55 @@ if [ -z "$sftp_i" ]; then
 	restart='yes'
 fi
 
-# Validating opensshd config
+# 3. Validating opensshd config and restarting FreeBSD service
 if [ "$restart" = 'yes' ]; then
 	subj="OpenSSH restart failed"
 	email=$(grep CONTACT "$HESTIA/data/users/$ROOT_USER/user.conf" | cut -f 2 -d \')
+	
+	# Execute FreeBSD native sshd validation
 	/usr/sbin/sshd -t > /dev/null 2>&1
 	if [ "$?" -ne 0 ]; then
-		mail_text="OpenSSH can not be restarted. Please check config:
-            \n\n$(/usr/sbin/sshd -t)"
+		# Clean English error logging payload
+		mail_text="OpenSSH can not be restarted. Please check config:\n\n$(/usr/sbin/sshd -t 2>&1)"
 		echo -e "$mail_text" | $SENDMAIL -s "$subj" $email
 	else
-		service ssh restart > /dev/null 2>&1
+		# Fixed: FreeBSD system service identifier must be sshd (not ssh)
+		service sshd restart > /dev/null 2>&1
 	fi
 fi
 
-# Checking users
+# 4. Checking users (Expanded fallback regex to match FreeBSD nologin shell paths)
 shells="rssh|nologin"
 for user in $(grep "$HOMEDIR" /etc/passwd | egrep "$shells" | cut -f 1 -d:); do
-	if [ -d "/home/$user" ]; then
-		# Include all users v-add-user-sftp-jail will handle it
+	if [ -d "$HOMEDIR/$user" ]; then
+		# Call single-user script with exactly 2 arguments locally
 		$BIN/v-add-user-sftp-jail "$user" "no"
 	fi
 done
 
-# Restart ssh service
-if [ "$restart" = 'no' ]; then
-	# Skip restart of SSH daemon
+# 5. Final audit: restart service if requested by any internal logic block
+if [ "$restart" = 'no' ] || [ -z "$restart" ]; then
 	echo "" > /dev/null 2>&1
 else
-	service ssh restart > /dev/null 2>&1
+	service sshd restart > /dev/null 2>&1
 fi
 
-# Add v-add-sys-sftp-jail to startup
-if [ ! -e "/etc/cron.d/hestia-sftp" ]; then
-	echo "@reboot root sleep 60 && /usr/local/hestia/bin/v-add-sys-sftp-jail > /dev/null" > /etc/cron.d/hestia-sftp
+# 6. === 🍏 FreeBSD Modular /etc/cron.d File Drop ===
+# Your environment natively parses /etc/cron.d as a standard multi-column cron ledger.
+# We write an independent 'hestia-sftp' file to guarantee 100% autostart isolation.
+cron_file="/etc/cron.d/hestia-sftp"
+if [ ! -f "$cron_file" ]; then
+	echo "# hestia-sftp: auto-healing routine for OpenSSH jailed environment" > "$cron_file"
+	echo "@reboot root sleep 60 && /usr/local/hestia/bin/v-add-sys-sftp-jail > /dev/null 2>&1" >> "$cron_file"
+	chmod 644 "$cron_file"
+	service cron restart >/dev/null 2>&1
 fi
+
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-# Logging
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

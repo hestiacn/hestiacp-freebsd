@@ -1,0 +1,113 @@
+#!/bin/sh
+#
+# PROVIDE: hestia-nginx
+# REQUIRE: NETWORKING LOGIN
+# BEFORE: DAEMON
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="hestia-nginx"
+rcvar="hestia_nginx_enable"
+
+HESTIA="/usr/local/hestia"
+NGINX_DAEMON="${HESTIA}/nginx/sbin/hestia-nginx"
+NGINX_PIDFILE="/var/run/hestia-nginx.pid"
+PHP_DAEMON="${HESTIA}/php/sbin/hestia-php"
+PHP_PIDFILE="/var/run/hestia-php.pid"
+
+load_rc_config $name
+
+: ${hestia_nginx_enable:=NO}
+: ${hestia_php_enable:=YES}
+
+export HESTIA
+
+start_cmd="hestia_nginx_start"
+stop_cmd="hestia_nginx_stop"
+status_cmd="hestia_nginx_status"
+restart_cmd="hestia_nginx_restart"
+
+hestia_nginx_start() {
+    echo "Starting Hestia Nginx/PHP Infrastructure..."
+    
+    if [ ! -d /var/run ]; then
+        mkdir -p /var/run
+    fi
+    
+    if [ -x "${NGINX_DAEMON}" ]; then
+        echo "  Starting hestia-nginx..."
+        /usr/sbin/daemon -f -p "${NGINX_PIDFILE}" "${NGINX_DAEMON}"
+    fi
+    
+    if checkyesno hestia_php_enable && [ -x "${PHP_DAEMON}" ]; then
+        echo "  Starting hestia-php..."
+        /usr/sbin/daemon -f -p "${PHP_PIDFILE}" "${PHP_DAEMON}" -F
+    fi
+}
+
+hestia_nginx_stop() {
+    echo "Stopping Hestia Nginx/PHP Infrastructure..."
+    
+    if [ -f "${NGINX_PIDFILE}" ]; then
+        pid=$(cat "${NGINX_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  Stopping hestia-nginx..."
+            kill -TERM "$pid" 2>/dev/null
+            sleep 1
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+        fi
+        rm -f "${NGINX_PIDFILE}"
+    fi
+    
+    if [ -f "${PHP_PIDFILE}" ]; then
+        pid=$(cat "${PHP_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  Stopping hestia-php..."
+            kill -TERM "$pid" 2>/dev/null
+            sleep 1
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+        fi
+        rm -f "${PHP_PIDFILE}"
+    fi
+}
+
+hestia_nginx_restart() {
+    hestia_nginx_stop
+    sleep 2
+    hestia_nginx_start
+}
+
+hestia_nginx_status() {
+    local ret=0
+    
+    if [ -f "${NGINX_PIDFILE}" ]; then
+        pid=$(cat "${NGINX_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "hestia-nginx is running as pid ${pid}"
+        else
+            echo "hestia-nginx is NOT running"
+            ret=1
+        fi
+    else
+        echo "hestia-nginx is stopped"
+        ret=1
+    fi
+    
+    if [ -f "${PHP_PIDFILE}" ]; then
+        pid=$(cat "${PHP_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "hestia-php is running as pid ${pid}"
+        else
+            echo "hestia-php is NOT running"
+            ret=1
+        fi
+    else
+        echo "hestia-php is stopped"
+        ret=1
+    fi
+    
+    return ${ret}
+}
+
+run_rc_command "$1"

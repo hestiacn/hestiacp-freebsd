@@ -15,6 +15,17 @@ user=$1
 job=$2
 restart=$3
 
+# Detect OS
+if [ -f /etc/freebsd-version ]; then
+    OS="freebsd"
+    CRON_DIR="/var/cron/tabs"
+    RESTART_CMD="service cron reload"
+else
+    OS="linux"
+    CRON_DIR="/var/spool/cron/crontabs"
+    RESTART_CMD="$BIN/v-restart-cron"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
 source /etc/hestiacp/hestia.conf
@@ -41,8 +52,13 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 suspended=$(grep "JOB='$job'" $USER_DATA/cron.conf | grep "SUSPENDED='yes'")
-# Deleting job
-sed -i "/JOB='$job' /d" $USER_DATA/cron.conf
+
+# Deleting job (适配 Linux 和 FreeBSD 的 sed 差异)
+if [ "$OS" = "freebsd" ]; then
+    sed -i '' "/JOB='$job' /d" $USER_DATA/cron.conf
+else
+    sed -i "/JOB='$job' /d" $USER_DATA/cron.conf
+fi
 
 # Sorting jobs by id
 sort_cron_jobs

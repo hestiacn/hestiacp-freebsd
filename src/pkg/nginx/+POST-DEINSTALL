@@ -1,0 +1,8 @@
+#!/bin/sh
+
+if [ -f "/usr/local/etc/rc.d/hestia-nginx" ]; then
+    service hestia-nginx stop 2>/dev/null
+    sysrc -x hestia_nginx_enable 2>/dev/null
+fi
+
+exit 0

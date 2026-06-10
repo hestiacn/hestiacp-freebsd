@@ -1,0 +1,18 @@
+name: hestia
+version: "1.9.6"
+origin: sysutils/hestia
+comment: Hestia Control Panel for FreeBSD
+maintainer: HestiaCP <info@hestiacp.com>
+www: https://www.hestiacp.com
+categories: [ sysutils ]
+architectures: amd64 arm64
+prefix: /usr/local
+licenses: [ GPLv3 ]
+
+deps: {
+    bash: { origin: shells/bash, version: "5.2" },
+    hestia-nginx: { origin: www/hestia-nginx, version: "1.31.1" },
+    hestia-php: { origin: lang/hestia-php, version: "8.5.7" }
+}
+
+desc: "hestia is an open source hosting control panel. hestia has a clean and focused interface without the clutter. hestia has the latest of very innovative technologies. hestia is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin. This package provides the core Hestia Control Panel for FreeBSD."

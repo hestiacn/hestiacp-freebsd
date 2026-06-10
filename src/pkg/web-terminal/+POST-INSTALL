@@ -1,0 +1,38 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" != "configure" ]; then
+    exit 0
+fi
+
+# Run triggers below only on updates
+if [ ! -e "/usr/local/hestia/data/users/admin" ]; then
+    exit
+fi
+
+###############################################################
+#                Initialize functions/variables               #
+###############################################################
+
+if [ -z "$HESTIA" ]; then
+    export HESTIA='/usr/local/hestia'
+    PATH=$PATH:/usr/local/hestia/bin
+    export PATH
+fi
+
+# Load upgrade functions and variables
+. /usr/local/hestia/func/main.sh
+. /usr/local/hestia/func/upgrade.sh
+. /usr/local/hestia/conf/hestia.conf
+. /usr/local/hestia/install/upgrade/upgrade.conf
+
+# FreeBSD: 检查 RC 脚本是否存在并重启服务
+if [ -f "/usr/local/etc/rc.d/hestia-web-terminal" ]; then
+    # 检查服务是否启用
+    if service hestia-web-terminal enabled 2>/dev/null; then
+        service hestia-web-terminal restart
+    fi
+fi
+
+exit 0

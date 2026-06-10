@@ -1,0 +1,52 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" != "configure" ]; then
+    exit 0
+fi
+
+# Run triggers only on updates
+if [ ! -e "/usr/local/hestia/data/users/" ]; then
+    exit
+fi
+
+# Prevent running and causes issues with outdated hestia version
+if ! id "hestiaweb" > /dev/null 2>&1; then
+    exit
+fi
+
+# Check if preinstall hook exists
+if [ -e "/usr/local/etc/hestiacp/hooks/php/pre_install.sh" ]; then
+    /usr/local/etc/hestiacp/hooks/php/pre_install.sh
+fi
+
+###############################################################
+#                Initialize functions/variables               #
+###############################################################
+
+if [ -z "$HESTIA" ]; then
+    export HESTIA='/usr/local/hestia'
+    PATH=$PATH:/usr/local/hestia/bin
+    export PATH
+fi
+
+# Load upgrade functions and variables
+. /usr/local/hestia/func/main.sh
+. /usr/local/hestia/func/upgrade.sh
+. /usr/local/hestia/conf/hestia.conf
+. /usr/local/hestia/install/upgrade/upgrade.conf
+
+# FreeBSD: Restart hestia service
+if [ -f "/usr/local/etc/rc.d/hestia" ]; then
+    if service hestia enabled 2>/dev/null; then
+        service hestia restart
+    fi
+fi
+
+# Check if postinstall hook exists
+if [ -e "/usr/local/etc/hestiacp/hooks/php/post_install.sh" ]; then
+    /usr/local/etc/hestiacp/hooks/php/post_install.sh
+fi
+
+exit 0

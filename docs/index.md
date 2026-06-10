@@ -1,46 +1,48 @@
 ---
 layout: home
-
-title: Hestia Control Panel
-titleTemplate: Open-source web server control panel.
+title: Hestia控制面板中文站 | 开源服务器管理方案
+titleTemplate: 基于Linux的开源Web服务器控制面板
 
 hero:
-  name: Hestia Control Panel
-  text: Open-source web server control panel
-  tagline: Fast, reliable, open-source. The control panel you’ve always wanted is just a command away.
+  name: Hestia 服务器控制面板
+  text: 简单高效的服务器解决方案
+  tagline: Hestia 满足从个人开发者到托管服务提供商等各类用户的服务器管理需求.提供高效便捷的管理体验.
   image:
     src: /logo.svg
     alt: Hestia Logo
   actions:
     - theme: brand
-      text: Get started
+      text: 开始吧！
       link: /docs/introduction/getting-started
-    - theme: alt
-      text: Try the demo
-      link: https://demo.hestiacp.com:8083/
-    - theme: alt
-      text: View on GitHub
+      icon: 🚀
+    - theme: brand
+      text: 查看英文演示
+      link: https://demo.hestiacp.com:8083
+    - theme: brand
+      text: 在 GitHub 上查看
       link: https://github.com/hestiacp/hestiacp
-
+    - theme: brand
+      text: RHEL分支(β)
+      link: /rhel
 features:
   - icon: 🚀
-    title: Fast & easy to learn
-    details: Hestia is made with ease of use in mind. Creating a user or a website is as easy as clicking a button and filling out a couple of fields, while advanced features are easily accessible.
+    title: 极简运维体验
+    details: Hestia 的设计考虑到了易用性.创建用户或网站就像单击按钮并填写几个字段一样简单.而且可以轻松设定高级功能.
     link: /docs/introduction/getting-started
-    linkText: Documentation
+    linkText: 文档
   - icon: ❤️
-    title: Made with love & pride
-    details: Hestia is open-source software that is built by passionate people from around the world. This means that the code is reviewed by multiple people and that anybody can contribute to it!
+    title: 用心制作&满怀骄傲
+    details: Hestia 是由来自世界各地充满热情的开发者构建的开源服务器管理软件.这意味着代码由多人审核.任何人都可以为其做出贡献！
     link: /team
-    linkText: See the team
+    linkText: 团队
   - icon: 🛠️
-    title: Extendable & powerful
-    details: Hestia is extendable while being easy to learn. You can build your own themes, web templates, quick install applications and can interact with it using third party software via its API.
+    title: 可扩展且强大
+    details: Hestia 具有可扩展性.同时易于学习.您可以构建自己的主题.网页模板.快速安装应用程序.并可以通过其 API 使用第三方软件与之交互！
     link: /docs/contributing/development
-    linkText: Help develop Hestia
+    linkText: 帮助开发Hestia面板
   - icon: 🤝
-    title: Supported by the community
-    details: Hestia has a great support community - join the forum! To keep the project running, we rely on donations, which can be made via PayPal or cryptocurrency.
+    title: 社区支持
+    details: Hestia 拥有强大的支持社区 如果你是开发者请查看贡献指南! 为了维持该项目的运行.我们依靠捐款.可以通过 PayPal 或加密货币进行捐款.
     link: /donate
-    linkText: Donate
+    linkText: 赞助社区
 ---

@@ -19,6 +19,34 @@ source_conf() {
 	done < $1
 }
 
+# Detect operating system
+detect_os() {
+	if command -v freebsd-version >/dev/null 2>&1; then
+		OS="freebsd"
+		OS_TYPE='FreeBSD'
+		OS_VERSION=$(freebsd-version | cut -d'.' -f1)
+	elif [ -e "/etc/os-release" ]; then
+		OS="linux"
+		get_os_type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
+		if [ "$get_os_type" = "ubuntu" ]; then
+			if [ -e '/usr/bin/lsb_release' ]; then
+				OS_VERSION="$(lsb_release -s -r)"
+				OS_TYPE='Ubuntu'
+			fi
+		elif [ "$get_os_type" = "debian" ]; then
+			OS_TYPE='Debian'
+			OS_VERSION=$(cat /etc/debian_version | grep -o "[0-9]\{1,2\}" | head -n1)
+		fi
+	else
+		OS="linux"
+		OS_TYPE="Unsupported OS"
+		OS_VERSION="Unknown"
+	fi
+}
+
+# Call detect_os at load time
+detect_os
+
 if [ -z "$user" ]; then
 	if [ -z "$ROOT_USER" ]; then
 		if [ -z "$HESTIA" ]; then
@@ -35,7 +63,7 @@ HOMEDIR='/home'
 BACKUP='/backup'
 BACKUP_GZIP=9
 BACKUP_DISK_LIMIT=95
-BACKUP_LA_LIMIT=$(grep -c '^processor' /proc/cpuinfo)
+BACKUP_LA_LIMIT=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 RRD_STEP=300
 BIN=$HESTIA/bin
 HESTIA_INSTALL_DIR="$HESTIA/install/deb"
@@ -77,24 +105,6 @@ E_RRD=18
 E_UPDATE=19
 E_RESTART=20
 
-# Detect operating system
-detect_os() {
-	if [ -e "/etc/os-release" ]; then
-		get_os_type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
-		if [ "$get_os_type" = "ubuntu" ]; then
-			if [ -e '/usr/bin/lsb_release' ]; then
-				OS_VERSION="$(lsb_release -s -r)"
-				OS_TYPE='Ubuntu'
-			fi
-		elif [ "$get_os_type" = "debian" ]; then
-			OS_TYPE='Debian'
-			OS_VERSION=$(cat /etc/debian_version | grep -o "[0-9]\{1,2\}" | head -n1)
-		fi
-	else
-		OS_TYPE="Unsupported OS"
-		OS_VERSION="Unknown"
-	fi
-}
 
 # Generate time stamp
 new_timestamp() {
@@ -153,7 +163,8 @@ log_history() {
 	fi
 	touch $log
 
-	if [ '300' -lt "$(wc -l $log | cut -f 1 -d ' ')" ]; then
+	local current_lines=$(wc -l "$log" | awk '{print $1}')
+	if [ '300' -lt "$current_lines" ]; then
 		tail -n 250 $log > $log.moved
 		mv -f $log.moved $log
 		chmod 660 $log
@@ -165,7 +176,7 @@ log_history() {
 		date=$(echo "$time_n_date" | cut -f 2 -d \ )
 	fi
 
-	curr_str=$(tail -n1 $log | grep "ID=" --text | cut -f2 -d \')
+    curr_str=$(tail -n1 "$log" | grep -a "ID=" | cut -f2 -d \')
 	id="$((curr_str + 1))"
 	echo "ID='$id' DATE='$date' TIME='$time' LEVEL='$evt_level' CATEGORY='$evt_category' MESSAGE='$message'" >> $log
 }
@@ -215,10 +226,9 @@ is_package_full() {
 		DATABASES) used=$(wc -l $USER_DATA/db.conf) ;;
 		CRON_JOBS) used=$(wc -l $USER_DATA/cron.conf) ;;
 	esac
-	used=$(echo "$used" | cut -f 1 -d \ )
+	used=$(echo "$used" | awk '{print $1}')
 	limit=$(grep "^$1=" $USER_DATA/user.conf | cut -f 2 -d \')
 	if [ "$1" = WEB_ALIASES ]; then
-		# Used is always calculated with the new alias added
 		if [ "$limit" != 'unlimited' ] && [[ "$used" -gt "$limit" ]]; then
 			check_result "$E_LIMIT" "$1 limit is reached :: upgrade user package"
 		fi
@@ -246,17 +256,19 @@ generate_password() {
 	matrix=$1
 	length=$2
 	if [ -z "$matrix" ]; then
-		matrix="A-Za-z0-9"
+		matrix="[A-Za-z0-9]"
+	else
+		[[ ! "$matrix" =~ ^\[.*\]$ ]] && matrix="[$matrix]"
 	fi
 	if [ -z "$length" ]; then
 		length=16
 	fi
-	head /dev/urandom | tr -dc $matrix | head -c$length
+	head /dev/urandom | tr -dc "$matrix" | head -c "$length"
 }
 
 # Package existence check
 is_package_valid() {
-	if [ -z $1 ]; then
+	if [ -z "$1" ]; then
 		if [ ! -e "$HESTIA/data/packages/$package.pkg" ]; then
 			check_result "$E_NOTEXIST" "package $package doesn't exist"
 		fi
@@ -265,7 +277,6 @@ is_package_valid() {
 			check_result "$E_NOTEXIST" "package $1 doesn't exist"
 		fi
 	fi
-
 }
 
 is_package_new() {
@@ -278,7 +289,7 @@ is_package_new() {
 
 # Validate system type
 is_type_valid() {
-	if [ -z "$(echo $1 | grep -w $2)" ]; then
+	if [ -z "$(echo "$1" | grep -w "$2")" ]; then
 		check_result "$E_INVALID" "$2 type is invalid"
 	fi
 }
@@ -301,7 +312,7 @@ is_incremental_backup_enabled() {
 # Check user backup settings
 is_backup_scheduled() {
 	if [ -e "$HESTIA/data/queue/backup.pipe" ]; then
-		check_q=$(grep " $user " $HESTIA/data/queue/backup.pipe | grep $1)
+		check_q=$(grep " $user " $HESTIA/data/queue/backup.pipe | grep "$1")
 		if [ -n "$check_q" ]; then
 			check_result "$E_EXISTS" "$1 is already scheduled"
 		fi
@@ -310,7 +321,7 @@ is_backup_scheduled() {
 
 # Check if object is new
 is_object_new() {
-	if [ $2 = 'USER' ]; then
+	if [ "$2" = 'USER' ]; then
 		if [ -d "$USER_DATA" ]; then
 			object="OK"
 		fi
@@ -324,12 +335,19 @@ is_object_new() {
 
 # Check if object is valid
 is_object_valid() {
-	if [ $2 = 'USER' ]; then
-		tstpath="$(readlink -f "$HESTIA/data/users/$3")"
-		if [ "$(dirname "$tstpath")" != "$(readlink -f "$HESTIA/data/users")" ] || [ ! -d "$HESTIA/data/users/$3" ]; then
+	if [ "$2" = 'USER' ]; then
+		if [ "$OS" = "freebsd" ]; then
+			tstpath="$(realpath "$HESTIA/data/users/$3")"
+			local_base="$(realpath "$HESTIA/data/users")"
+		else
+			tstpath="$(readlink -f "$HESTIA/data/users/$3")"
+			local_base="$(readlink -f "$HESTIA/data/users")"
+		fi
+
+		if [ "$(dirname "$tstpath")" != "$local_base" ] || [ ! -d "$HESTIA/data/users/$3" ]; then
 			check_result "$E_NOTEXIST" "$1 $3 doesn't exist"
 		fi
-	elif [ $2 = 'KEY' ]; then
+	elif [ "$2" = 'KEY' ]; then
 		local key="$(basename "$3")"
 
 		if [[ -z "$key" || ${#key} -lt 16 ]] || [[ ! -f "$HESTIA/data/access-keys/${key}" && ! -f "$HESTIA/data/access-keys/$key" ]]; then
@@ -338,8 +356,8 @@ is_object_valid() {
 	else
 		object=$(grep "$2='$3'" $HESTIA/data/users/$user/$1.conf)
 		if [ -z "$object" ]; then
-			arg1=$(basename $1)
-			arg2=$(echo $2 | tr '[:upper:]' '[:lower:]')
+			arg1=$(basename "$1")
+			arg2=$(echo "$2" | tr '[:upper:]' '[:lower:]')
 			check_result "$E_NOTEXIST" "$arg1 $arg2 $3 doesn't exist"
 		fi
 	fi
@@ -363,8 +381,8 @@ parse_object_kv_list_non_eval() {
 			check_result "$E_INVALID" "Invalid key value format [$objkv]"
 		fi
 
-		obj_key=${objkv%%=*} # strip everything after first  '=' char
-		obj_val=${objkv#*=}  # strip everything before first '=' char
+		obj_key=${objkv%%=*}
+		obj_val=${objkv#*=}
 		declare -g $obj_key="$obj_val"
 
 	done
@@ -482,7 +500,7 @@ while ($unparsed !== '') {
             }
 
             // Backslash escapes the next character verbatim
-			$next_char = mb_substr($unparsed, 0, 1, 'UTF-8'); // remember multi-byte unicode support, æøåÆØÅ
+			$next_char = function_exists('mb_substr') ? mb_substr($unparsed, 0, 1, 'UTF-8') : substr($unparsed, 0, 1);
 			$key_value .= $next_char;
 			$unparsed = substr($unparsed, strlen($next_char));
             continue;
@@ -538,7 +556,7 @@ is_object_suspended() {
 
 # Check if object is unsupended
 is_object_unsuspended() {
-	if [ $2 = 'USER' ]; then
+	if [ "$2" = 'USER' ]; then
 		spnd=$(cat $USER_DATA/$1.conf | grep "SUSPENDED='yes'")
 	else
 		spnd=$(grep "$2='$3'" $USER_DATA/$1.conf | grep "SUSPENDED='yes'")
@@ -622,8 +640,12 @@ update_object_value() {
 	old="${!varname}"
 	old=$(echo "$old" | sed -e 's/\\/\\\\/g' -e 's/&/\\&/g' -e 's/\//\\\//g')
 	new=$(echo "$5" | sed -e 's/\\/\\\\/g' -e 's/&/\\&/g' -e 's/\//\\\//g')
-	sed -i "$lnr s/${4//$/}='${old//\*/\\*}'/${4//$/}='${new//\*/\\*}'/g" \
-		$USER_DATA/$1.conf
+	
+	if [ "$OS" = "freebsd" ]; then
+		sed -i '' "$lnr s/${4//$/}='${old//\*/\\*}'/${4//$/}='${new//\*/\\*}'/g" $USER_DATA/$1.conf
+	else
+		sed -i "$lnr s/${4//$/}='${old//\*/\\*}'/${4//$/}='${new//\*/\\*}'/g" $USER_DATA/$1.conf
+	fi
 }
 
 # Add object key
@@ -634,7 +656,13 @@ add_object_key() {
 	if [ -z "$(echo $object | grep $4=)" ]; then
 		local varname="${4#\$}"
 		old="${!varname}"
-		sed -i "$lnr s/$5='/$4='' $5='/" $USER_DATA/$1.conf
+		
+		# 💡 FreeBSD 适配
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "$lnr s/$5='/$4='' $5='/" $USER_DATA/$1.conf
+		else
+			sed -i "$lnr s/$5='/$4='' $5='/" $USER_DATA/$1.conf
+		fi
 	fi
 }
 
@@ -659,10 +687,17 @@ get_user_value() {
 # Update user value in user.conf
 update_user_value() {
 	key="${2//$/}"
-	lnr=$(grep -m 1 -n "^$key='" $HESTIA/data/users/$1/user.conf | cut -f 1 -d ':')
+	local uconf="$HESTIA/data/users/$1/user.conf"
+	lnr=$(grep -m 1 -n "^$key='" "$uconf" | cut -f 1 -d ':')
 	if [ -n "$lnr" ]; then
-		sed -i "$lnr d" $HESTIA/data/users/$1/user.conf
-		sed -i "$lnr i\\$key='${3}'" $HESTIA/data/users/$1/user.conf
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "$lnr d" "$uconf"
+			awk -v ln="$lnr" -v txt="$key='${3}'" 'NR==ln{print txt} {print}' "$uconf" > "${uconf}.tmp" && mv -f "${uconf}.tmp" "$uconf"
+		else
+			# Linux 原版逻辑
+			sed -i "$lnr d" "$uconf"
+			sed -i "$lnr i\\$key='${3}'" "$uconf"
+		fi
 	fi
 }
 
@@ -676,7 +711,13 @@ increase_user_value() {
 		old=0
 	fi
 	new=$((old + factor))
-	sed -i "s/$key='$old'/$key='$new'/g" $conf
+	
+	# 💡 FreeBSD 适配
+	if [ "$OS" = "freebsd" ]; then
+		sed -i '' "s/$key='$old'/$key='$new'/g" $conf
+	else
+		sed -i "s/$key='$old'/$key='$new'/g" $conf
+	fi
 }
 
 # Decrease user counter
@@ -696,7 +737,13 @@ decrease_user_value() {
 	if [ "$new" -lt 0 ]; then
 		new=0
 	fi
-	sed -i "s/$key='$old'/$key='$new'/g" $conf
+	
+	# 💡 FreeBSD 适配
+	if [ "$OS" = "freebsd" ]; then
+		sed -i '' "s/$key='$old'/$key='$new'/g" $conf
+	else
+		sed -i "s/$key='$old'/$key='$new'/g" $conf
+	fi
 }
 
 # Notify user
@@ -726,7 +773,11 @@ send_notice() {
 		echo "$str" >> $USER_DATA/notifications.conf
 
 		if [ -z "$(grep NOTIFICATIONS $USER_DATA/user.conf)" ]; then
-			sed -i "s/^TIME/NOTIFICATIONS='yes'\nTIME/g" $USER_DATA/user.conf
+			if [ "$OS" = "freebsd" ]; then
+				sed -i '' "s/^TIME/NOTIFICATIONS='yes'\nTIME/g" $USER_DATA/user.conf
+			else
+				sed -i "s/^TIME/NOTIFICATIONS='yes'\nTIME/g" $USER_DATA/user.conf
+			fi
 		else
 			update_user_value "$user" '$NOTIFICATIONS' "yes"
 		fi
@@ -738,106 +789,142 @@ recalc_user_disk_usage() {
 	u_usage=0
 	if [ -f "$USER_DATA/web.conf" ]; then
 		usage=0
-		dusage=$(grep 'U_DISK=' $USER_DATA/web.conf \
-			| awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
+		dusage=$(grep 'U_DISK=' "$USER_DATA/web.conf" | awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
 		for disk_usage in $dusage; do
 			usage=$((usage + disk_usage))
 		done
-		d=$(grep "U_DISK_WEB='" $USER_DATA/user.conf | cut -f 2 -d \')
-		sed -i "s/U_DISK_WEB='$d'/U_DISK_WEB='$usage'/g" $USER_DATA/user.conf
+		d=$(grep "U_DISK_WEB='" "$USER_DATA/user.conf" | cut -f 2 -d \')
+
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "s/U_DISK_WEB='$d'/U_DISK_WEB='$usage'/g" "$USER_DATA/user.conf"
+		else
+			sed -i "s/U_DISK_WEB='$d'/U_DISK_WEB='$usage'/g" "$USER_DATA/user.conf"
+		fi
 		u_usage=$((u_usage + usage))
 	fi
 
 	if [ -f "$USER_DATA/mail.conf" ]; then
 		usage=0
-		dusage=$(grep 'U_DISK=' $USER_DATA/mail.conf \
-			| awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
+		# 💡 核心修复：单行合拢闭环，彻底荡平 SC1072 与 SC1073 词法死锁
+		dusage=$(grep 'U_DISK=' "$USER_DATA/mail.conf" | awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
 		for disk_usage in $dusage; do
 			usage=$((usage + disk_usage))
 		done
-		d=$(grep "U_DISK_MAIL='" $USER_DATA/user.conf | cut -f 2 -d \')
-		sed -i "s/U_DISK_MAIL='$d'/U_DISK_MAIL='$usage'/g" $USER_DATA/user.conf
+		d=$(grep "U_DISK_MAIL='" "$USER_DATA/user.conf" | cut -f 2 -d \')
+		
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "s/U_DISK_MAIL='$d'/U_DISK_MAIL='$usage'/g" "$USER_DATA/user.conf"
+		else
+			sed -i "s/U_DISK_MAIL='$d'/U_DISK_MAIL='$usage'/g" "$USER_DATA/user.conf"
+		fi
 		u_usage=$((u_usage + usage))
 	fi
 
 	if [ -f "$USER_DATA/db.conf" ]; then
 		usage=0
-		dusage=$(grep 'U_DISK=' $USER_DATA/db.conf \
-			| awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
+		# 💡 核心修复：单行合拢闭环
+		dusage=$(grep 'U_DISK=' "$USER_DATA/db.conf" | awk -F "U_DISK='" '{print $2}' | cut -f 1 -d \')
 		for disk_usage in $dusage; do
 			usage=$((usage + disk_usage))
 		done
-		d=$(grep "U_DISK_DB='" $USER_DATA/user.conf | cut -f 2 -d \')
-		sed -i "s/U_DISK_DB='$d'/U_DISK_DB='$usage'/g" $USER_DATA/user.conf
+		d=$(grep "U_DISK_DB='" "$USER_DATA/user.conf" | cut -f 2 -d \')
+		
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "s/U_DISK_DB='$d'/U_DISK_DB='$usage'/g" "$USER_DATA/user.conf"
+		else
+			sed -i "s/U_DISK_DB='$d'/U_DISK_DB='$usage'/g" "$USER_DATA/user.conf"
+		fi
 		u_usage=$((u_usage + usage))
 	fi
-	usage=$(grep -m 1 'U_DISK_DIRS=' $USER_DATA/user.conf | cut -f 2 -d "'")
+	
+	usage=$(grep -m 1 'U_DISK_DIRS=' "$USER_DATA/user.conf" | cut -f 2 -d "'")
 	u_usage=$((u_usage + usage))
-	old=$(grep "U_DISK='" $USER_DATA/user.conf | cut -f 2 -d \')
-	sed -i "s/U_DISK='$old'/U_DISK='$u_usage'/g" $USER_DATA/user.conf
+	old=$(grep "U_DISK='" "$USER_DATA/user.conf" | cut -f 2 -d \')
+	
+	if [ "$OS" = "freebsd" ]; then
+		sed -i '' "s/U_DISK='$old'/U_DISK='$u_usage'/g" "$USER_DATA/user.conf"
+	else
+		sed -i "s/U_DISK='$old'/U_DISK='$u_usage'/g" "$USER_DATA/user.conf"
+	fi
 }
 
 # Recalculate U_BANDWIDTH value
 recalc_user_bandwidth_usage() {
 	usage=0
-	bandwidth_usage=$(grep 'U_BANDWIDTH=' $USER_DATA/web.conf \
-		| awk -F "U_BANDWIDTH='" '{print $2}' | cut -f 1 -d \')
+	bandwidth_usage=$(grep 'U_BANDWIDTH=' $USER_DATA/web.conf | awk -F "U_BANDWIDTH='" '{print $2}' | cut -f 1 -d \')
 	for bandwidth in $bandwidth_usage; do
 		usage=$((usage + bandwidth))
 	done
 	old=$(grep "U_BANDWIDTH='" $USER_DATA/user.conf | cut -f 2 -d \')
-	sed -i "s/U_BANDWIDTH='$old'/U_BANDWIDTH='$usage'/g" $USER_DATA/user.conf
+	
+	if [ "$OS" = "freebsd" ]; then
+		sed -i '' "s/U_BANDWIDTH='$old'/U_BANDWIDTH='$usage'/g" $USER_DATA/user.conf
+	else
+		sed -i "s/U_BANDWIDTH='$old'/U_BANDWIDTH='$usage'/g" $USER_DATA/user.conf
+	fi
 }
 
 # Get next cron job id
 get_next_cronjob() {
 	if [ -z "$job" ]; then
-		curr_str=$(grep "JOB=" $USER_DATA/cron.conf | cut -f 2 -d \' \
-			| sort -n | tail -n1)
+		curr_str=$(grep "JOB=" "$USER_DATA/cron.conf" | cut -f 2 -d \' | sort -n | tail -n1)
 		job="$((curr_str + 1))"
 	fi
 }
 
 # Sort cron jobs by id
 sort_cron_jobs() {
-	cat $USER_DATA/cron.conf | sort -n -k 2 -t \' > $USER_DATA/cron.tmp
-	mv -f $USER_DATA/cron.tmp $USER_DATA/cron.conf
+	cat "$USER_DATA/cron.conf" | sort -n -k 2 -t \' > "$USER_DATA/cron.tmp"
+	mv -f "$USER_DATA/cron.tmp" "$USER_DATA/cron.conf"
 }
 
 # Sync cronjobs with system cron
 sync_cron_jobs() {
 	source_conf "$USER_DATA/user.conf"
-	if [ -e "/var/spool/cron/crontabs" ]; then
-		crontab="/var/spool/cron/crontabs/$user"
+	
+	# Detect OS for cron path
+	if [ "$OS" = "freebsd" ]; then
+		# FreeBSD: use /var/cron/tabs/
+		crontab="/var/cron/tabs/$user"
+		mkdir -p /var/cron/tabs
 	else
-		crontab="/var/spool/cron/$user"
+		# Linux: original paths
+		if [ -e "/var/spool/cron/crontabs" ]; then
+			crontab="/var/spool/cron/crontabs/$user"
+		else
+			crontab="/var/spool/cron/$user"
+		fi
 	fi
 
 	# remove file if exists
 	if [ -e "$crontab" ]; then
-		rm -f $crontab
+		rm -f "$crontab"
 	fi
 
 	# touch new crontab file
-	touch $crontab
+	touch "$crontab"
 
 	if [ "$CRON_REPORTS" = 'yes' ]; then
-		echo "MAILTO=$CONTACT" > $crontab
-		echo 'CONTENT_TYPE="text/plain; charset=utf-8"' >> $crontab
+		echo "MAILTO=$CONTACT" > "$crontab"
+		echo 'CONTENT_TYPE="text/plain; charset=utf-8"' >> "$crontab"
 	else
-		echo 'MAILTO=""' > $crontab
+		echo 'MAILTO=""' > "$crontab"
 	fi
 
 	while read line; do
 		parse_object_kv_list "$line"
 		if [ "$SUSPENDED" = 'no' ]; then
-			echo "$MIN $HOUR $DAY $MONTH $WDAY $CMD" \
-				| sed -e "s/%quote%/'/g" -e "s/%dots%/:/g" \
-					>> $crontab
+			echo "$MIN $HOUR $DAY $MONTH $WDAY $CMD" | sed -e "s/%quote%/'/g" -e "s/%dots%/:/g" >> "$crontab"
 		fi
-	done < $USER_DATA/cron.conf
-	chown $user:$user $crontab
-	chmod 600 $crontab
+	done < "$USER_DATA/cron.conf"
+	
+	# Set proper permissions based on OS
+	if [ "$OS" = "freebsd" ]; then
+		chown "$user:wheel" "$crontab"
+	else
+		chown "$user:$user" "$crontab"
+	fi
+	chmod 600 "$crontab"
 }
 
 # Validates Local part email and mail alias
@@ -868,7 +955,7 @@ is_localpart_format_valid() {
 # Username / ftp username format validator
 is_user_format_valid() {
 	if [ ${#1} -eq 1 ]; then
-		if ! [[ "$1" =~ ^^[[:alnum:]]$ ]]; then
+		if ! [[ "$1" =~ ^[[:alnum:]]$ ]]; then
 			check_result "$E_INVALID" "invalid $2 format :: $1"
 		fi
 	else
@@ -945,7 +1032,7 @@ is_ip46_format_valid() {
 
 is_ipv4_cidr_format_valid() {
 	object_name=${2-ip}
-	valid=$($HESTIA_PHP -r '[$ip, $net] = [...explode("/", $argv[1]), "32"]; echo (preg_match("/^(\d{1,3}\.){3}\d{1,3}$/", $ip) && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && is_numeric($net) && $net >= 0 && $net <= 32) ? 0 : 1;' "$1")
+	valid=$($HESTIA_PHP -r '$parts=explode("/", $argv[1]); $ip=$parts[0]; $net=isset($parts[1])?$parts[1]:"32"; echo (preg_match("/^(\d{1,3}\.){3}\d{1,3}$/", $ip) && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) && is_numeric($net) && $net >= 0 && $net <= 32) ? 0 : 1;' "$1")
 	if [ "$valid" -ne 0 ]; then
 		check_result "$E_INVALID" "invalid $object_name :: $1"
 	fi
@@ -953,7 +1040,7 @@ is_ipv4_cidr_format_valid() {
 
 is_ipv6_cidr_format_valid() {
 	object_name=${2-ipv6}
-	valid=$($HESTIA_PHP -r '$cidr=$argv[1]; list($ip, $netmask) = [...explode("/", $cidr), 128]; echo ((filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) && $netmask <= 128) ? 0 : 1);' "$1")
+	valid=$($HESTIA_PHP -r '$parts=explode("/", $argv[1]); $ip=$parts[0]; $netmask=isset($parts[1])?$parts[1]:128; echo ((filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) && $netmask <= 128) ? 0 : 1);' "$1")
 	if [ "$valid" -ne 0 ]; then
 		check_result "$E_INVALID" "invalid $object_name :: $1"
 	fi
@@ -1082,8 +1169,7 @@ is_common_format_spaces_valid() {
 		fi
 	fi
 
-	# Must end with alphanumeric
-	if [[ $(echo -n "$1" | tail -c 1) =~ [^a-zA-Z0-9] ]]; then
+	if [[ "${1: -1}" =~ [^a-zA-Z0-9] ]]; then
 		check_result "$E_INVALID" "invalid $2 format :: $1"
 	fi
 
@@ -1092,8 +1178,7 @@ is_common_format_spaces_valid() {
 		check_result "$E_INVALID" "invalid $2 format :: $1"
 	fi
 
-	# Must start with alphanumeric
-	if [[ $(echo -n "$1" | head -c 1) =~ [^a-zA-Z0-9] ]]; then
+	if [[ "${1:0:1}" =~ [^a-zA-Z0-9] ]]; then
 		check_result "$E_INVALID" "invalid $2 format :: $1"
 	fi
 
@@ -1111,7 +1196,7 @@ is_common_format_spaces_valid() {
 }
 
 is_no_new_line_format() {
-	test=$(echo "$1" | head -n1)
+	local test=$(printf "%s\n" "$1" | head -n1)
 	if [[ "$test" != "$1" ]]; then
 		check_result "$E_INVALID" "invalid value :: $1"
 	fi
@@ -1124,11 +1209,13 @@ is_string_format_valid() {
 	fi
 	is_no_new_line_format "$1"
 }
+
 is_cron_command_valid_format() {
 	if [[ ! "$1" =~ ^[^\`]*?$ ]]; then
 		check_result "$E_INVALID" "Invalid cron command format"
 	fi
 }
+
 # Database format validator
 is_database_format_valid() {
 	exclude="[!|@|#|$|^|&|*|(|)|+|=|{|}|:|,|<|>|?|/|\|\"|'|;|%|\`| ]"
@@ -1252,7 +1339,13 @@ is_int_format_valid() {
 
 # Interface validator
 is_interface_format_valid() {
-	nic_names="$(ip -d -j link show | jq -r '.[] | if .link_type == "loopback" then empty else .ifname, if .altnames then .altnames[] else empty end end')"
+	local nic_names
+	if [ "$OS" = "freebsd" ]; then
+		nic_names=$(ifconfig -l | tr ' ' '\n' | grep -v '^lo[0-9]')
+	else
+		nic_names="$(ip -d -j link show | jq -r '.[] | if .link_type == "loopback" then empty else .ifname, if .altnames then .altnames[] else empty end end')"
+	fi
+
 	if [ -z "$(echo "$nic_names" | grep -x "$1")" ]; then
 		check_result "$E_INVALID" "invalid interface format :: $1"
 	fi
@@ -1286,7 +1379,7 @@ is_cron_format_valid() {
 		check_format='ok'
 	fi
 	if [[ "$1" =~ ^[\*]+[/]+[0-9] ]]; then
-		if [ "$(echo $1 | cut -f 2 -d /)" -lt $limit ]; then
+		if [ "$(echo "$1" | cut -f 2 -d /)" -lt $limit ]; then
 			check_format='ok'
 		fi
 	fi
@@ -1301,7 +1394,7 @@ is_cron_format_valid() {
 			fi
 		done
 	fi
-	crn_values=$(echo $1 | tr "," " " | tr "-" " ")
+	crn_values=$(echo "$1" | tr "," " " | tr "-" " ")
 	for crn_vl in $crn_values; do
 		if [[ "$crn_vl" =~ ^[0-9]+$ ]] && [ "$crn_vl" -le $limit ]; then
 			check_format='ok'
@@ -1346,6 +1439,7 @@ is_object_name_format_valid() {
 		check_result "$E_INVALID" "invalid $2 format :: $1"
 	fi
 }
+
 # Name validator
 is_name_format_valid() {
 	exclude="['|\"|<|>]"
@@ -1375,11 +1469,10 @@ is_password_format_valid() {
 		check_result "$E_INVALID" "invalid password format :: $1"
 	fi
 }
-# Missing function -
-# Before: validate_format_shell
-# After: is_format_valid_shell
+
+# Missing function
 is_format_valid_shell() {
-	if [ -z "$(grep -w $1 /etc/shells)" ]; then
+	if [ -z "$(grep -w "$1" /etc/shells)" ]; then
 		echo "Error: shell $1 is not valid"
 		log_event "$E_INVALID" "$EVENT"
 		exit $E_INVALID
@@ -1401,7 +1494,7 @@ is_hash_format_valid() {
 
 # Format validation controller
 is_format_valid() {
-	for arg_name in $*; do
+	for arg_name in "$@"; do
 		arg="${!arg_name}"
 		if [ -n "$arg" ]; then
 			case $arg_name in
@@ -1485,7 +1578,7 @@ is_format_valid() {
 				service) is_service_format_valid "$arg" "$arg_name" ;;
 				secret_access_key) is_secret_access_key_format_valid "$arg" "$arg_name" ;;
 				soa) is_domain_format_valid "$arg" 'SOA' ;;
-				#missing command: is_format_valid_shell
+                #missing command: is_format_valid_shell
 				shell) is_format_valid_shell "$arg" ;;
 				ssl_dir) is_folder_exists "$arg" "$arg_name" ;;
 				stats_pass) is_password_format_valid "$arg" ;;
@@ -1520,7 +1613,6 @@ is_command_valid_format() {
 is_access_key_id_format_valid() {
 	local hash="$1"
 
-	# ACCESS_KEY_ID format validation
 	if ! [[ "$hash" =~ ^[[:alnum:]]{20}$ ]]; then
 		check_result "$E_INVALID" "invalid $2 format :: $hash"
 	fi
@@ -1590,6 +1682,7 @@ check_access_key_cmd() {
 
 	if [[ "$DEBUG_MODE" = "true" ]]; then
 		new_timestamp
+		[ ! -d "/var/log/hestia" ] && mkdir -p /var/log/hestia
 		echo "[$date:$time] $1 $2" >> /var/log/hestia/api.log
 	fi
 	if [[ -z "$access_key_id" || ! -f "$HESTIA/data/access-keys/${access_key_id}" ]]; then
@@ -1694,12 +1787,28 @@ is_restart_format_valid() {
 
 check_backup_conditions() {
 	# Checking load average
-	la=$(cat /proc/loadavg | cut -f 1 -d ' ' | cut -f 1 -d '.')
-	# i=0
+	if [ "$OS" = "freebsd" ]; then
+		la=$(sysctl -n vm.loadavg | tr -d '{}' | awk '{print $1}' | cut -f 1 -d '.')
+	else
+		# Linux: use /proc/loadavg
+		if [ -f /proc/loadavg ]; then
+			la=$(cat /proc/loadavg | cut -f 1 -d ' ' | cut -f 1 -d '.')
+		else
+			la=0
+		fi
+	fi
+
+	[ -z "$la" ] && la=0
+
 	while [ "$la" -ge "$BACKUP_LA_LIMIT" ]; do
 		echo -e "$(date "+%F %T") Load Average $la"
 		sleep 60
-		la=$(cat /proc/loadavg | cut -f 1 -d ' ' | cut -f 1 -d '.')
+		if [ "$OS" = "freebsd" ]; then
+			la=$(sysctl -n vm.loadavg | tr -d '{}' | awk '{print $1}' | cut -f 1 -d '.')
+		else
+			la=$(cat /proc/loadavg | cut -f 1 -d ' ' | cut -f 1 -d '.')
+		fi
+		[ -z "$la" ] && la=0
 	done
 }
 
@@ -1765,9 +1874,16 @@ multiphp_count() {
 multiphp_versions() {
 	local -a php_versions_list
 	local php_ver
+	local php_fpm_base="/etc/php"
+	[ "$OS" = "freebsd" ] && php_fpm_base="/usr/local/etc/php"
+
 	if [ "$(multiphp_count)" -gt 0 ]; then
 		for php_ver in $($BIN/v-list-sys-php plain); do
-			[ ! -d "/etc/php/$php_ver/fpm/pool.d/" ] && continue
+            if [ "$OS" = "freebsd" ]; then
+                [ ! -d "${php_fpm_base}${php_ver//./}/fpm/pool.d/" ] && continue
+            else
+                [ ! -d "${php_fpm_base}/$php_ver/fpm/pool.d/" ] && continue
+            fi
 			php_versions_list+=($php_ver)
 		done
 		echo "${php_versions_list[@]}"
@@ -1776,11 +1892,18 @@ multiphp_versions() {
 
 multiphp_default_version() {
 	# Get system wide default php version (set by update-alternatives)
-	local sys_phpversion=$(php -r "echo substr(phpversion(),0,3);")
+	local sys_phpversion=$(php -r "echo substr(phpversion(),0,3);" 2>/dev/null)
 
 	# Check if the system php also has php-fpm enabled, otherwise return
 	# the most recent php version which does have it installed.
-	if [ ! -d "/etc/php/$sys_phpversion/fpm/pool.d/" ]; then
+	local check_dir="/etc/php/$sys_phpversion/fpm/pool.d/"
+	if [ "$OS" = "freebsd" ]; then
+		# FreeBSD 默认 PHP 路径适配
+		check_dir="/usr/local/etc/php/$sys_phpversion/fpm/pool.d/"
+		[ ! -d "$check_dir" ] && check_dir="/usr/local/etc/php${sys_phpversion//./}/fpm/pool.d/"
+	fi
+
+	if [ ! -d "$check_dir" ]; then
 		local all_versions="$(multiphp_versions)"
 		if [ -n "$all_versions" ]; then
 			sys_phpversion="${all_versions##*\ }"
@@ -1803,16 +1926,19 @@ is_hestia_package() {
 }
 
 # Run arbitrary cli commands with dropped privileges
-# Note: setpriv --init-groups is not available on debian9 (util-linux 2.29.2)
 # Input:
-#     - $user : Vaild hestia user
+#     - $user : Valid hestia user
 user_exec() {
 	is_object_valid 'user' 'USER' "$user"
 
 	local user_groups=$(id -G "$user")
 	user_groups=${user_groups//\ /,}
 
-	setpriv --groups "$user_groups" --reuid "$user" --regid "$user" -- "${@}"
+	if [ "$OS" = "freebsd" ]; then
+		su -m "$user" -c "$*"
+	else
+		setpriv --groups "$user_groups" --reuid "$user" --regid "$user" -- "${@}"
+	fi
 }
 
 # Simple chmod wrapper that skips symlink files after glob expand
@@ -1847,7 +1973,12 @@ change_sys_value() {
 	if [ -z "$check_ckey" ]; then
 		echo "$1='$2'" >> "$HESTIA/conf/hestia.conf"
 	else
-		sed -i "s|^$1=.*|$1='$2'|g" "$HESTIA/conf/hestia.conf"
+		# 💡 FreeBSD 适配：修复 FreeBSD 下 sed -i 强制要求参数的报错隐患
+		if [ "$OS" = "freebsd" ]; then
+			sed -i '' "s|^$1=.*|$1='$2'|g" "$HESTIA/conf/hestia.conf"
+		else
+			sed -i "s|^$1=.*|$1='$2'|g" "$HESTIA/conf/hestia.conf"
+		fi
 	fi
 }
 
@@ -1862,9 +1993,8 @@ is_key_permissions_format_valid() {
 
 	while IFS=',' read -ra permissions_arr; do
 		for permission in "${permissions_arr[@]}"; do
-			permission="$(basename "$permission" | sed -E "s/^\s*|\s*$//g")"
+			permission="$(basename "$permission" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")"
 
-			#            if [[ -z "$(echo "$permission" | grep -E "^v-")" ]]; then
 			if [[ ! -e "$HESTIA/data/api/$permission" ]]; then
 				check_result "$E_NOTEXIST" "API $permission doesn't exist"
 			fi
@@ -1873,9 +2003,6 @@ is_key_permissions_format_valid() {
 			if [ "$ROLE" = "admin" ] && [ "$user" != "$ROOT_USER" ]; then
 				check_result "$E_INVALID" "Only the admin can run this API"
 			fi
-			#            elif [[ ! -e "$BIN/$permission" ]]; then
-			#                check_result "$E_NOTEXIST" "Command $permission doesn't exist"
-			#            fi
 		done
 	done <<< "$permissions"
 }
@@ -1887,7 +2014,7 @@ cleanup_key_permissions() {
 	local final quote
 	while IFS=',' read -ra permissions_arr; do
 		for permission in "${permissions_arr[@]}"; do
-			permission="$(basename "$permission" | sed -E "s/^\s*|\s*$//g")"
+			permission="$(basename "$permission" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")"
 
 			# Avoid duplicate items
 			if [[ -z "$(echo ",${final}," | grep ",${permission},")" ]]; then
@@ -1907,12 +2034,9 @@ get_apis_commands() {
 	local allowed_commands quote commands_to_add
 	while IFS=',' read -ra permissions_arr; do
 		for permission in "${permissions_arr[@]}"; do
-			permission="$(basename "$permission" | sed -E "s/^\s*|\s*$//g")"
+			permission="$(basename "$permission" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")"
 
 			commands_to_add=""
-			#            if [[ -n "$(echo "$permission" | grep -E "^v-")" ]]; then
-			#                commands_to_add="$permission"
-			#            el
 			if [[ -e "$HESTIA/data/api/$permission" ]]; then
 				source_conf "$HESTIA/data/api/$permission"
 				commands_to_add="$COMMANDS"
@@ -1945,12 +2069,12 @@ search_command_arg_position() {
 
 	local position=0
 	local count=0
-	local command_options="$(sed -En 's/^# options: (.+)/\1/p' "$command_path")"
+	local command_options="$(sed -E -n 's/^# options: (.+)/\1/p' "$command_path")"
 	while IFS=' ' read -ra options_arr; do
 		for option in "${options_arr[@]}"; do
 			count=$((count + 1))
 
-			option_name="$(echo "  $option   " | sed -E 's/^(\s|\[)*|(\s|\])*$//g')"
+			option_name="$(echo "  $option   " | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d '[]')"
 			if [[ "${option_name^^}" == "$arg_name" ]]; then
 				position=$count
 			fi
@@ -1963,22 +2087,35 @@ search_command_arg_position() {
 add_chroot_jail() {
 	local user=$1
 
-	mkdir -p /srv/jail/$user
-	chown 0:0 /srv /srv/jail /srv/jail/$user
-	chmod 755 /srv /srv/jail /srv/jail/$user
-	if [ ! -d /srv/jail/$user/home ]; then
-		mkdir -p /srv/jail/$user/home
-		chown 0:0 /srv/jail/$user/home
-		chmod 755 /srv/jail/$user/home
-	fi
-	if [ ! -d /srv/jail/$user/home/$user ]; then
-		mkdir -p /srv/jail/$user/home/$user
-		chown 0:0 /srv/jail/$user/home/$user
-		chmod 755 /srv/jail/$user/home/$user
-	fi
+	if [ "$OS" = "freebsd" ]; then
+		mkdir -p /usr/local/jails/$user/home/$user
+		chown -R 0:0 /usr/local/jails/$user
+		chmod 755 /usr/local/jails/$user
+		chmod 755 /usr/local/jails/$user/home
+		chmod 755 /usr/local/jails/$user/home/$user
+		if ! mount | grep -q "/usr/local/jails/$user/home/$user"; then
+			mount -t nullfs /home/$user /usr/local/jails/$user/home/$user
+		fi
+		if ! grep -q "/usr/local/jails/$user/home/$user" /etc/fstab; then
+			echo "/home/$user /usr/local/jails/$user/home/$user nullfs rw 0 0" >> /etc/fstab
+		fi
+	else
+		mkdir -p /srv/jail/$user
+		chown 0:0 /srv /srv/jail /srv/jail/$user
+		chmod 755 /srv /srv/jail /srv/jail/$user
+		if [ ! -d /srv/jail/$user/home ]; then
+			mkdir -p /srv/jail/$user/home
+			chown 0:0 /srv/jail/$user/home
+			chmod 755 /srv/jail/$user/home
+		fi
+		if [ ! -d /srv/jail/$user/home/$user ]; then
+			mkdir -p /srv/jail/$user/home/$user
+			chown 0:0 /srv/jail/$user/home/$user
+			chmod 755 /srv/jail/$user/home/$user
+		fi
 
-	systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home/$user")
-	cat > "/etc/systemd/system/$systemd" << EOF
+		systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home/$user")
+		cat > "/etc/systemd/system/$systemd" << EOF
 [Unit]
 Description=Mount $user's home directory to the jail chroot
 Before=local-fs.target
@@ -1994,27 +2131,42 @@ LazyUnmount=yes
 RequiredBy=local-fs.target
 EOF
 
-	systemctl daemon-reload > /dev/null 2>&1
-	systemctl enable "$systemd" > /dev/null 2>&1
-	systemctl start "$systemd" > /dev/null 2>&1
+		systemctl daemon-reload > /dev/null 2>&1
+		systemctl enable "$systemd" > /dev/null 2>&1
+		systemctl start "$systemd" > /dev/null 2>&1
+	fi
 }
 
 delete_chroot_jail() {
 	local user=$1
+	
+	if [ "$OS" = "freebsd" ]; then
+		if mount | grep -q "/usr/local/jails/$user/home/$user"; then
+			umount -f /usr/local/jails/$user/home/$user > /dev/null 2>&1
+		fi
+		
+		# 清理 /etc/fstab 中的开机自动挂载配置
+		if [ -f /etc/fstab ]; then
+			sed -i '' "/\/usr\/local\/jails\/$user\/home\/$user/d" /etc/fstab
+		fi
+		
+		# 此时安全了，可以彻底抹除沙箱骨架目录
+		rm -rf /usr/local/jails/$user/ > /dev/null 2>&1
+	else
+		# Backwards compatibility with old style home jail
+		systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home")
+		systemctl stop "$systemd" > /dev/null 2>&1
+		systemctl disable "$systemd" > /dev/null 2>&1
+		rm -f "/etc/systemd/system/$systemd"
 
-	# Backwards compatibility with old style home jail
-	systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home")
-	systemctl stop "$systemd" > /dev/null 2>&1
-	systemctl disable "$systemd" > /dev/null 2>&1
-	rm -f "/etc/systemd/system/$systemd"
+		# Remove the new style home jail
+		systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home/$user")
+		systemctl stop "$systemd" > /dev/null 2>&1
+		systemctl disable "$systemd" > /dev/null 2>&1
+		rm -f "/etc/systemd/system/$systemd"
 
-	# Remove the new style home jail
-	systemd=$(systemd-escape -p --suffix=mount "/srv/jail/$user/home/$user")
-	systemctl stop "$systemd" > /dev/null 2>&1
-	systemctl disable "$systemd" > /dev/null 2>&1
-	rm -f "/etc/systemd/system/$systemd"
-
-	systemctl daemon-reload > /dev/null 2>&1
-	rm -r /srv/jail/$user/ > /dev/null 2>&1
-	rmdir /srv/jail/$user > /dev/null 2>&1
+		systemctl daemon-reload > /dev/null 2>&1
+		rm -r /srv/jail/$user/ > /dev/null 2>&1
+		rmdir /srv/jail/$user > /dev/null 2>&1
+	fi
 }

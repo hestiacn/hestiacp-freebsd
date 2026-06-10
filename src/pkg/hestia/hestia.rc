@@ -1,0 +1,112 @@
+#!/bin/sh
+#
+# PROVIDE: hestia
+# REQUIRE: NETWORKING LOGIN
+# BEFORE: DAEMON
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="hestia"
+rcvar="hestia_enable"
+
+load_rc_config $name
+
+: ${hestia_enable:=NO}
+: ${hestia_nginx_enable:=YES}
+: ${hestia_php_enable:=YES}
+: ${hestia_web_terminal_enable:=YES}
+
+start_cmd="hestia_start"
+stop_cmd="hestia_stop"
+restart_cmd="hestia_restart"
+status_cmd="hestia_status"
+
+hestia_start() {
+    echo "Starting Hestia Control Panel Environment..."
+    
+    # 1. 优先平滑拉起后端的 hestia-php 进程池 manager (防 502 核心防线)
+    if checkyesno hestia_php_enable; then
+        if [ -f "/usr/local/etc/rc.d/hestia-php" ]; then
+            echo "  Activating hestia-php engine..."
+            service hestia-php onestart >/dev/null 2>&1 || service hestia-php start
+        fi
+    fi
+    
+    # 2. 拉起前端反向代理 hestia-nginx 后台服务器
+    if checkyesno hestia_nginx_enable; then
+        if [ -f "/usr/local/etc/rc.d/hestia-nginx" ]; then
+            echo "  Activating hestia-nginx server..."
+            # 💡 核心修复：采用 onestart 强行自愈保护，防止因 rc.conf 缓存延迟导致启动受阻
+            service hestia-nginx onestart >/dev/null 2>&1 || service hestia-nginx start
+        fi
+    fi
+    
+    # 3. 拉起网页异步终端 hestia-web-terminal
+    if checkyesno hestia_web_terminal_enable; then
+        if [ -f "/usr/local/etc/rc.d/hestia-web-terminal" ]; then
+            echo "  Activating hestia-web-terminal WebSocket..."
+            service hestia-web-terminal onestart >/dev/null 2>&1 || service hestia-web-terminal start
+        fi
+    fi
+    
+    echo "Hestia Control Panel environment started successfully."
+}
+
+hestia_stop() {
+    echo "Stopping Hestia Control Panel Environment..."
+    
+    # 1. 优先下线网络边界的 hestia-web-terminal
+    if [ -f "/usr/local/etc/rc.d/hestia-web-terminal" ]; then
+        service hestia-web-terminal onestop >/dev/null 2>&1 || service hestia-web-terminal stop >/dev/null 2>&1
+    fi
+    
+    # 2. 下线前端 hestia-nginx 反向代理
+    if [ -f "/usr/local/etc/rc.d/hestia-nginx" ]; then
+        service hestia-nginx onestop >/dev/null 2>&1 || service hestia-nginx stop >/dev/null 2>&1
+    fi
+
+    # 3. 稳健关闭底层的 hestia-php 进程池，防止残留占用 8083 端口
+    if [ -f "/usr/local/etc/rc.d/hestia-php" ]; then
+        service hestia-php onestop >/dev/null 2>&1 || service hestia-php stop >/dev/null 2>&1
+    fi
+    
+    echo "Hestia Control Panel environment stopped completely."
+}
+
+hestia_restart() {
+    hestia_stop
+    sleep 2
+    hestia_start
+}
+
+hestia_status() {
+    local ret=0
+    
+    # 1. 审计 hestia-nginx 运行状态
+    if [ -f "/usr/local/etc/rc.d/hestia-nginx" ]; then
+        if ! service hestia-nginx status; then
+            ret=1
+        fi
+    fi
+
+    # 2. 审计 hestia-php 运行状态
+    if [ -f "/usr/local/etc/rc.d/hestia-php" ]; then
+        if ! service hestia-php status; then
+            ret=1
+        fi
+    fi
+    
+    # 3. 审计 hestia-web-terminal 运行状态
+    if checkyesno hestia_web_terminal_enable; then
+        if [ -f "/usr/local/etc/rc.d/hestia-web-terminal" ]; then
+            if ! service hestia-web-terminal status; then
+                ret=1
+            fi
+        fi
+    fi
+    
+    return ${ret}
+}
+
+run_rc_command "$1"

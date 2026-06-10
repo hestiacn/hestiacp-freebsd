@@ -1,7 +1,7 @@
 #!/bin/bash
 # info: add cron job for hestia automatic updates
 # options: MODE
-#
+# example: v-add-cron-hestia-autoupdate apt
 # This function adds a cronjob for hestia automatic updates
 # that can be downloaded from apt or git.
 
@@ -11,6 +11,17 @@
 
 # Argument definition
 mode=$1
+
+# Detect OS for cron path and format
+if [ -f /etc/freebsd-version ]; then
+    OS="freebsd"
+    CRON_FILE="/var/cron/tabs/hestiaweb"
+    SUDO=""
+else
+    OS="linux"
+    CRON_FILE="/var/spool/cron/crontabs/hestiaweb"
+    SUDO="sudo"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
@@ -25,10 +36,18 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 
 is_system_enabled "$CRON_SYSTEM" 'CRON_SYSTEM'
-check_cron_apt=$(grep 'v-update-sys-hestia-all' "/var/spool/cron/crontabs/hestiaweb")
-check_cron_git=$(grep 'v-update-sys-hestia-git' "/var/spool/cron/crontabs/hestiaweb")
+
+# Check existing cron jobs
+if [ "$OS" = "freebsd" ]; then
+    check_cron_apt=$(grep 'v-update-sys-hestia-all' "$CRON_FILE" 2>/dev/null)
+    check_cron_git=$(grep 'v-update-sys-hestia-git' "$CRON_FILE" 2>/dev/null)
+else
+    check_cron_apt=$(grep 'v-update-sys-hestia-all' "$CRON_FILE")
+    check_cron_git=$(grep 'v-update-sys-hestia-git' "$CRON_FILE")
+fi
+
 if [ -n "$check_cron_apt" ] || [ -n "$check_cron_git" ]; then
-	exit
+    exit
 fi
 
 # Perform verification if read-only mode is enabled
@@ -45,24 +64,30 @@ date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
 # Define time somewhere at night
 if [ -z "$mode" ] || [ "$mode" = "apt" ]; then
-	min=$(generate_password '012345' '2')
-	hour=$(generate_password '1234567' '1')
-	day='*'
-	month='*'
-	wday='*'
-	command='v-update-sys-hestia-all'
+    min=$(generate_password '012345' '2')
+    hour=$(generate_password '1234567' '1')
+    day='*'
+    month='*'
+    wday='*'
+    command='v-update-sys-hestia-all'
 fi
 
 if [ "$mode" = "git" ]; then
-	min='0'
-	hour='0'
-	day='*'
-	month='*'
-	wday='*'
-	command='v-update-sys-hestia-git'
+    min='0'
+    hour='0'
+    day='*'
+    month='*'
+    wday='*'
+    command='v-update-sys-hestia-git'
 fi
 
-sed -i -e "\$a$min $hour * * * sudo /usr/local/hestia/bin/$command" "/var/spool/cron/crontabs/hestiaweb"
+# Add cron job based on OS
+# Add cron job based on OS
+if [ "$OS" = "freebsd" ]; then
+    echo "$min $hour * * * /usr/local/hestia/bin/$command" >> "$CRON_FILE"
+else
+    sed -i -e "\$a$min $hour * * * $SUDO /usr/local/hestia/bin/$command" "$CRON_FILE"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

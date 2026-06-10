@@ -1,0 +1,94 @@
+#!/bin/sh
+#
+# PROVIDE: hestia-web-terminal
+# REQUIRE: NETWORKING LOGIN hestia
+# BEFORE: DAEMON
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="hestia-web-terminal"
+rcvar="hestia_web_terminal_enable"
+HESTIA="/usr/local/hestia"
+TERMINAL_DIR="${HESTIA}/web-terminal"
+TERMINAL_DAEMON="/usr/local/bin/node"
+TERMINAL_SCRIPT="${TERMINAL_DIR}/server.js"
+TERMINAL_PIDFILE="/var/run/hestia-web-terminal.pid"
+
+load_rc_config $name
+
+: ${hestia_web_terminal_enable:=NO}
+
+export NODE_ENV="production"
+export HESTIA
+export PATH="${PATH}:${HESTIA}/bin"
+
+start_cmd="terminal_start"
+stop_cmd="terminal_stop"
+status_cmd="terminal_status"
+restart_cmd="terminal_restart"
+
+terminal_start() {
+    if checkyesno hestia_web_terminal_enable; then
+        echo "Starting HestiaCP Web Terminal WebSocket engine..."
+        
+        if [ ! -f "${TERMINAL_SCRIPT}" ]; then
+            echo "Error: Web Terminal entrypoint server.js missing at ${TERMINAL_SCRIPT}"
+            return 1
+        fi
+        
+        if [ ! -x "${TERMINAL_DAEMON}" ]; then
+            echo "Error: Node.js binary executor not found at ${TERMINAL_DAEMON}"
+            return 1
+        fi
+
+        /usr/sbin/daemon -f -p "${TERMINAL_PIDFILE}" -u hestiaweb -c "${TERMINAL_DIR}" \
+            "${TERMINAL_DAEMON}" "${TERMINAL_SCRIPT}"
+            
+        echo "HestiaCP Web Terminal started successfully."
+    fi
+}
+
+terminal_stop() {
+    echo "Stopping HestiaCP Web Terminal WebSocket engine..."
+    
+    if [ -f "${TERMINAL_PIDFILE}" ]; then
+        local pid=$(check_pidfile "${TERMINAL_PIDFILE}" "${TERMINAL_DAEMON}")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  Killing web-terminal process node (PID: ${pid})"
+            kill -TERM "$pid" 2>/dev/null
+            sleep 0.5
+            # 保底熔断：若进程抗命，执行高级别杀伤制裁
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+        fi
+        rm -f "${TERMINAL_PIDFILE}"
+    else
+        echo "HestiaCP Web Terminal is already stopped."
+    fi
+    echo "HestiaCP Web Terminal stopped completely."
+}
+
+terminal_restart() {
+    terminal_stop
+    sleep 1.5
+    terminal_start
+}
+
+terminal_status() {
+    if [ -f "${TERMINAL_PIDFILE}" ]; then
+        # 利用 FreeBSD 官方原生的 check_pidfile 探针，精准核实当前 PID 对应的二进制是否是 node 
+        local pid=$(check_pidfile "${TERMINAL_PIDFILE}" "${TERMINAL_DAEMON}")
+        if [ -n "$pid" ]; then
+            echo "hestia-web-terminal is running natively as pid ${pid}"
+            return 0
+        else
+            echo "hestia-web-terminal is NOT running (stale pidfile detected)"
+            return 1
+        fi
+    else
+        echo "hestia-web-terminal is stopped"
+        return 1
+    fi
+}
+
+run_rc_command "$1"

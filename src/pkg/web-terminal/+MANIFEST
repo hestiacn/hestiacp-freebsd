@@ -1,0 +1,17 @@
+name: hestia-web-terminal
+version: "1.0.3"
+origin: www/hestia-web-terminal
+comment: HestiaCP Web Terminal for FreeBSD
+maintainer: HestiaCP <info@hestiacp.com>
+www: https://www.hestiacp.com
+categories: [ www ]
+architectures: amd64 arm64
+prefix: /usr/local
+licenses: [ MIT ]
+
+deps: {
+    hestia: { origin: sysutils/hestia, version: "1.9.6" },
+    node: { origin: www/node, version: "24.0.0" }
+}
+
+desc: "hestia is an open source hosting control panel. hestia has a clean and focused interface without the clutter. hestia has the latest of very innovative technologies. hestia is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin. This package provides the Web Terminal feature for Hestia Control Panel."

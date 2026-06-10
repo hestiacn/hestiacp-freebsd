@@ -1,0 +1,252 @@
+#!/bin/sh
+# info: check hestia installation status and version (i18n & TTY adaptive edition)
+# options: NONE
+
+hestia_version() { 
+    HESTIA="/usr/local/hestia"
+    LANG_PREFIX=$(echo "${LANG:-en}" | cut -d_ -f1 | tr '[:upper:]' '[:lower:]')
+    
+    case "$LANG_PREFIX" in
+        zh)
+            # 中文
+            MSG_PATH="安装路径"
+            MSG_VER="当前版本"
+            MSG_STATUS="安装状态"
+            MSG_INSTALLED="已安装"
+            MSG_NOT_INSTALLED="未安装"
+            MSG_TIME="安装时间"
+            MSG_SVC_STATUS="服务状态"
+            MSG_RUNNING="运行中"
+            MSG_STOPPED="未运行"
+            MSG_ERR_VER="版本信息获取失败"
+            MSG_ERR_CONF="配置文件缺失"
+            MSG_GUIDE="请访问 https://hestiamb.org 获取安装方法"
+            FMT_DATE="%s年%s月%s日 %s:%s"
+            ;;
+        ru)
+            # Русский
+            MSG_PATH="Путь установки"
+            MSG_VER="Текущая версия"
+            MSG_STATUS="Статус установки"
+            MSG_INSTALLED="Установлено"
+            MSG_NOT_INSTALLED="Не установлено"
+            MSG_TIME="Время установки"
+            MSG_SVC_STATUS="Состояние службы"
+            MSG_RUNNING="Работает"
+            MSG_STOPPED="Остановлена"
+            MSG_ERR_VER="Не удалось получить версию"
+            MSG_ERR_CONF="Файл конфигурации отсутствует"
+            MSG_GUIDE="Пожалуйста, посетите https://hestiamb.org для получения инструкций по установке"
+            FMT_DATE="%s.%s.%s %s:%s"
+            ;;
+        de)
+            # Deutsch
+            MSG_PATH="Installationspfad"
+            MSG_VER="Aktuelle Version"
+            MSG_STATUS="Installationsstatus"
+            MSG_INSTALLED="Installiert"
+            MSG_NOT_INSTALLED="Nicht installiert"
+            MSG_TIME="Installationszeit"
+            MSG_SVC_STATUS="Dienststatus"
+            MSG_RUNNING="Läuft"
+            MSG_STOPPED="Gestoppt"
+            MSG_ERR_VER="Version konnte nicht abgerufen werden"
+            MSG_ERR_CONF="Konfigurationsdatei fehlt"
+            MSG_GUIDE="Besuchen Sie https://hestiamb.org für Installationsanleitungen"
+            FMT_DATE="%s.%s.%s %s:%s"
+            ;;
+        nl)
+            # Nederlands
+            MSG_PATH="Installatiepad"
+            MSG_VER="Huidige versie"
+            MSG_STATUS="Installatiestatus"
+            MSG_INSTALLED="Geïnstalleerd"
+            MSG_NOT_INSTALLED="Niet geïnstalleerd"
+            MSG_TIME="Installatietijd"
+            MSG_SVC_STATUS="Servicestatus"
+            MSG_RUNNING="Actief"
+            MSG_STOPPED="Gestopt"
+            MSG_ERR_VER="Kan versie niet ophalen"
+            MSG_ERR_CONF="Configuratiebestand ontbreekt"
+            MSG_GUIDE="Bezoek https://hestiamb.org voor installatie-instructies"
+            FMT_DATE="%s-%s-%s %s:%s"
+            ;;
+        *)
+            # English (default)
+            MSG_PATH="Installation Path"
+            MSG_VER="Current Version"
+            MSG_STATUS="Installation Status"
+            MSG_INSTALLED="Installed"
+            MSG_NOT_INSTALLED="Not Installed"
+            MSG_TIME="Installation Time"
+            MSG_SVC_STATUS="Service Status"
+            MSG_RUNNING="Running"
+            MSG_STOPPED="Stopped"
+            MSG_ERR_VER="Failed to get version info"
+            MSG_ERR_CONF="Configuration file missing"
+            MSG_GUIDE="Please visit https://hestiamb.org for installation instructions"
+            FMT_DATE="%s-%s-%s %s:%s"
+            ;;
+    esac
+
+    CLR_CYAN="" CLR_GREEN="" CLR_RED="" Clr_Reset="" ICON_OK="[OK]" ICON_ERR="[ERR]"
+    
+    if [ -t 1 ]; then
+        if locale | grep -q -i 'utf-8' 2>/dev/null; then
+            ICON_OK="✓"
+            ICON_ERR="✗"
+        else
+            ICON_OK="[OK]"
+            ICON_ERR="[ERR]"
+        fi
+        CLR_CYAN="\033[36m"
+        CLR_GREEN="\033[32m"
+        CLR_RED="\033[31m"
+        Clr_Reset="\033[0m"
+    fi
+
+    # 探测操作系统
+    if [ -f /etc/freebsd-version ] || [ "$(uname -s)" = "FreeBSD" ]; then
+        OS_TYPE="freebsd"
+    else
+        OS_TYPE="linux"
+    fi
+    
+    get_install_time() {
+        local dir="$1"
+        local install_time=""
+        
+        if [ ! -d "$dir" ]; then
+            return
+        fi
+        
+        if [ "$OS_TYPE" = "freebsd" ]; then
+            install_time=$(stat -f "%SB" -t "%Y-%m-%d %H:%M:%S" "$dir" 2>/dev/null)
+        else
+            if command -v stat >/dev/null 2>&1; then
+                install_time=$(stat -c "%w" "$dir" 2>/dev/null | cut -d'.' -f1)
+                if [ -z "$install_time" ] || [ "$install_time" = "-" ]; then
+                    install_time=$(stat -c "%y" "$dir" 2>/dev/null | cut -d'.' -f1)
+                fi
+            else
+                install_time=$(ls -ld "$dir" 2>/dev/null | awk '{print $6, $7, $8}')
+            fi
+        fi
+        
+        echo "$install_time"
+    }
+    
+    format_install_time() {
+        local datetime="$1"
+        local formatted=""
+        
+        if [ -z "$datetime" ]; then
+            return
+        fi
+
+        year=$(echo "$datetime" | cut -d'-' -f1)
+        month=$(echo "$datetime" | cut -d'-' -f2)
+        day=$(echo "$datetime" | cut -d'-' -f3 | cut -d' ' -f1)
+        time_part=$(echo "$datetime" | cut -d' ' -f2)
+        hour=$(echo "$time_part" | cut -d':' -f1)
+        minute=$(echo "$time_part" | cut -d':' -f2)
+        if [ -n "$year" ] && [ -n "$month" ] && [ -n "$day" ]; then
+            if [ "$OS_TYPE" = "freebsd" ]; then
+                if date -j -f "%Y-%m-%d" "${year}-${month}-${day}" >/dev/null 2>&1; then
+                    printf "$FMT_DATE" "$year" "$month" "$day" "$hour" "$minute"
+                fi
+            else
+                if date -d "${year}-${month}-${day}" >/dev/null 2>&1; then
+                    printf "$FMT_DATE" "$year" "$month" "$day" "$hour" "$minute"
+                fi
+            fi
+        fi
+    }
+    
+    if [ -d "$HESTIA" ]; then
+        printf "%s %s：%s\n" "$ICON_OK" "$MSG_PATH" "$HESTIA"
+        
+        if [ -f "$HESTIA/conf/hestia.conf" ]; then
+            version=$(grep "^VERSION=" "$HESTIA/conf/hestia.conf" 2>/dev/null | cut -d= -f2 | tr -d "'\"")
+            
+            if [ -n "$version" ]; then
+                if [ -t 1 ]; then
+                    printf "%s %s：%b%s%b\n" "$ICON_OK" "$MSG_VER" "$CLR_CYAN" "$version" "$Clr_Reset"
+                else
+                    printf "%s %s：%s\n" "$ICON_OK" "$MSG_VER" "$version"
+                fi
+
+                install_datetime=$(get_install_time "$HESTIA")
+                formatted_time=$(format_install_time "$install_datetime")
+                
+                if [ -n "$formatted_time" ]; then
+                    if [ -t 1 ]; then
+                        printf "%s %s：%b%s%b\n" "$ICON_OK" "$MSG_TIME" "$CLR_GREEN" "$formatted_time" "$Clr_Reset"
+                    else
+                        printf "%s %s：%s\n" "$ICON_OK" "$MSG_TIME" "$formatted_time"
+                    fi
+                else
+                    printf "%s %s：%s\n" "$ICON_OK" "$MSG_TIME" "$install_datetime"
+                fi
+
+                if [ -t 1 ]; then
+                    printf "%s %s：%b%s%b\n" "$ICON_OK" "$MSG_STATUS" "$CLR_GREEN" "$MSG_INSTALLED" "$Clr_Reset"
+                else
+                    printf "%s %s：%s\n" "$ICON_OK" "$MSG_STATUS" "$MSG_INSTALLED"
+                fi
+
+                if [ "$OS_TYPE" = "freebsd" ]; then
+                    if service hestia status >/dev/null 2>&1; then
+                        if [ -t 1 ]; then
+                            printf "%s %s：%b%s%b\n" "$ICON_OK" "$MSG_SVC_STATUS" "$CLR_GREEN" "$MSG_RUNNING" "$Clr_Reset"
+                        else
+                            printf "%s %s：%s\n" "$ICON_OK" "$MSG_SVC_STATUS" "$MSG_RUNNING"
+                        fi
+                    else
+                        if [ -t 1 ]; then
+                            printf "%s %s：%b%s%b\n" "$ICON_ERR" "$MSG_SVC_STATUS" "$CLR_RED" "$MSG_STOPPED" "$Clr_Reset"
+                        else
+                            printf "%s %s：%s\n" "$ICON_ERR" "$MSG_SVC_STATUS" "$MSG_STOPPED"
+                        fi
+                    fi
+                else
+                    if systemctl is-active --quiet hestia.service 2>/dev/null; then
+                        if [ -t 1 ]; then
+                            printf "%s %s：%b%s%b\n" "$ICON_OK" "$MSG_SVC_STATUS" "$CLR_GREEN" "$MSG_RUNNING" "$Clr_Reset"
+                        else
+                            printf "%s %s：%s\n" "$ICON_OK" "$MSG_SVC_STATUS" "$MSG_RUNNING"
+                        fi
+                    else
+                        if [ -t 1 ]; then
+                            printf "%s %s：%b%s%b\n" "$ICON_ERR" "$MSG_SVC_STATUS" "$CLR_RED" "$MSG_STOPPED" "$Clr_Reset"
+                        else
+                            printf "%s %s：%s\n" "$ICON_ERR" "$MSG_SVC_STATUS" "$MSG_STOPPED"
+                        fi
+                    fi
+                fi
+                
+            else
+                if [ -t 1 ]; then
+                    printf "%s %s：%b%s%b\n" "$ICON_ERR" "$MSG_VER" "$CLR_RED" "$MSG_ERR_VER" "$Clr_Reset"
+                else
+                    printf "%s %s：%s\n" "$ICON_ERR" "$MSG_VER" "$MSG_ERR_VER"
+                fi
+            fi
+        else
+            if [ -t 1 ]; then
+                printf "%s %s：%b%s%b\n" "$ICON_ERR" "$MSG_STATUS" "$CLR_RED" "$MSG_ERR_CONF" "$Clr_Reset"
+            else
+                printf "%s %s：%s\n" "$ICON_ERR" "$MSG_STATUS" "$MSG_ERR_CONF"
+            fi
+        fi
+    else
+        if [ -t 1 ]; then
+            printf "%s %s：%b%s%b\n" "$ICON_ERR" "$MSG_STATUS" "$CLR_RED" "$MSG_NOT_INSTALLED" "$Clr_Reset"
+        else
+            printf "%s %s：%s\n" "$ICON_ERR" "$MSG_STATUS" "$MSG_NOT_INSTALLED"
+        fi
+        echo "  $MSG_GUIDE"
+    fi
+}
+
+hestia_version

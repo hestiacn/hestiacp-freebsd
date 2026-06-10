@@ -27,7 +27,35 @@ export default defineConfig({
 			{ icon: 'twitter', link: 'https://twitter.com/HestiaPanel' },
 			{ icon: 'facebook', link: 'https://www.facebook.com/hestiacp' },
 		],
-
+		search: {
+		provider: 'local',
+		options: {
+			placeholder: '搜索文档',
+			minMatchCharLength: 1,
+			threshold: 0.2,
+			distance: 5000,
+			keys: ['title', 'content', 'headers'],
+			tokenize: (text) => {
+			const tokens = []
+			const chineseTokens = text.match(/[\u4e00-\u9fa5]{2,4}/g) || []
+			const chineseChars = text.match(/[\u4e00-\u9fa5]/g) || []
+			const englishWords = text.match(/[a-zA-Z0-9]+/g) || []
+			return [...chineseChars, ...englishWords]
+			},
+			translations: {
+			button: { buttonText: '搜索文档' },
+			modal: {
+				noResultsText: '未找到相关内容',
+				resetButtonTitle: '清除搜索条件',
+				footer: {
+				selectText: '选择',
+				navigateText: '切换',
+				closeText: '关闭',
+				},
+			},
+			},
+		},
+		},
 		sidebar: { '/docs/': sidebarDocs() },
 
 		outline: [2, 3],
@@ -40,12 +68,6 @@ export default defineConfig({
 		footer: {
 			message: 'Released under the GPLv3 License.',
 			copyright: 'Copyright © 2019-present Hestia Control Panel',
-		},
-
-		algolia: {
-			appId: 'V04P0P5D2R',
-			apiKey: '7a90a3ac7f9313f174c50b0f301f7ec6',
-			indexName: 'hestia_cp',
 		},
 	},
 });

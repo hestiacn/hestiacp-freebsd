@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # ======================================================== #
 #
@@ -10,6 +10,7 @@
 #
 # Debian 11, 12
 # Ubuntu 20.04, 22.04, 24.04 LTS
+# FreeBSD 13, 14, 15
 #
 # ======================================================== #
 
@@ -19,24 +20,49 @@ if [ "x$(id -u)" != 'x0' ]; then
 	exit 1
 fi
 
-# Check admin user account
-if [ ! -z "$(grep ^admin: /etc/passwd)" ] && [ -z "$1" ]; then
+if [ -f /etc/freebsd-version ] || [ "$(uname -s)" = "FreeBSD" ]; then
+	echo "[ * ] FreeBSD detected. Setting up Linux bash compatibility layer..."
+	command -v bash >/dev/null 2>&1 || pkg install -y bash
+	
+	[ ! -f /bin/bash ] && ln -s /usr/local/bin/bash /bin/bash
+	[ ! -d /usr/bin ] && mkdir -p /usr/bin
+	[ ! -f /usr/bin/bash ] && ln -s /usr/local/bin/bash /usr/bin/bash
+fi
+
+if command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]; then
+	if getent passwd admin >/dev/null 2>&1 && [ -z "$1" ]; then
+		echo "Error: user admin exists on FreeBSD"
+		echo
+		echo 'Please remove admin user before proceeding.'
+		echo 'If you want to do it automatically run installer with -f option:'
+		echo "Example: bash $0 --force"
+		exit 1
+	fi
+	if getent group admin >/dev/null 2>&1 && [ -z "$1" ]; then
+		echo "Error: group admin exists on FreeBSD"
+		echo
+		echo 'Please remove admin group before proceeding.'
+		echo 'If you want to do it automatically run installer with -f option:'
+		echo "Example: bash $0 --force"
+		exit 1
+	fi
+else
+	if [ ! -z "$(grep ^admin: /etc/passwd 2>/dev/null)" ] && [ -z "$1" ]; then
 	echo "Error: user admin exists"
 	echo
 	echo 'Please remove admin user before proceeding.'
 	echo 'If you want to do it automatically run installer with -f option:'
 	echo "Example: bash $0 --force"
-	exit 1
-fi
-
-# Check admin group
-if [ ! -z "$(grep ^admin: /etc/group)" ] && [ -z "$1" ]; then
+		exit 1
+	fi
+	if [ ! -z "$(grep ^admin: /etc/group 2>/dev/null)" ] && [ -z "$1" ]; then
 	echo "Error: group admin exists"
 	echo
 	echo 'Please remove admin group before proceeding.'
 	echo 'If you want to do it automatically run installer with -f option:'
 	echo "Example: bash $0 --force"
-	exit 1
+		exit 1
+	fi
 fi
 
 # Detect OS
@@ -58,21 +84,30 @@ if [ -e "/etc/os-release" ] && [ ! -e "/etc/redhat-release" ]; then
 	else
 		type="NoSupport"
 	fi
-# elif [ -e "/etc/os-release" ] && [ -e "/etc/redhat-release" ]; then
-# 	type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '"')
-# 	if [ "$type" = "rhel" ]; then
-# 		release=$(cat /etc/redhat-release | cut -f 1 -d '.' | awk '{print $3}')
-# 		VERSION='rhel'
-# 	elif [ "$type" = "almalinux" ]; then
-# 		release=$(cat /etc/redhat-release | cut -f 1 -d '.' | awk '{print $3}')
-# 		VERSION='almalinux'
-# 	elif [ "$type" = "eurolinux" ]; then
-# 		release=$(cat /etc/redhat-release | cut -f 1 -d '.' | awk '{print $3}')
-# 		VERSION='eurolinux'
-# 	elif [ "$type" = "rocky" ]; then
-# 		release=$(cat /etc/redhat-release | cut -f 1 -d '.' | awk '{print $3}')
-# 		VERSION='rockylinux'
-# 	fi
+elif command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]; then
+	type="freebsd"
+	release=$(freebsd-version -u | cut -d'-' -f1 | cut -d'.' -f1)
+	full_release=$(freebsd-version -u | cut -d'-' -f1)
+	VERSION='freebsd'
+	
+	case "$release" in
+		13)
+			echo "FreeBSD 13 detected (version: $full_release)"
+			echo "Note: FreeBSD 13.2 or higher is recommended"
+			;;
+		14)
+			echo "FreeBSD 14 detected (version: $full_release)"
+			;;
+		15)
+			echo "FreeBSD 15 detected (version: $full_release)"
+			echo "Note: FreeBSD 15 introduces pkg-based base system"
+			;;
+		*)
+			echo "Error: FreeBSD $release is not supported"
+			echo "Supported versions: FreeBSD 13, 14, 15"
+			exit 1
+			;;
+	esac
 else
 	type="NoSupport"
 fi
@@ -84,6 +119,7 @@ no_support_message() {
 	echo "****************************************************"
 	echo "  Debian 11, 12"
 	echo "  Ubuntu 22.04, 24.04 LTS"
+	echo "  FreeBSD 13, 14, 15"
 	echo ""
 	exit 1
 }
@@ -93,6 +129,10 @@ if [ "$type" = "NoSupport" ]; then
 fi
 
 ensure_utf8_locale() {
+	if [ "$type" = "freebsd" ]; then
+		return
+	fi
+	
 	local locale_file="/etc/default/locale"
 
 	if locale | grep -qi 'utf-8'; then
@@ -117,60 +157,53 @@ ensure_utf8_locale
 
 check_wget_curl() {
 	# Check wget
-	if [ -e '/usr/bin/wget' ]; then
-		# if [ -e '/etc/redhat-release' ]; then
-		# 	wget -q https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-rhel.sh -O hst-install-rhel.sh
-		# 	if [ "$?" -eq '0' ]; then
-		# 		bash hst-install-rhel.sh $*
-		# 		exit
-		# 	else
-		# 		echo "Error: hst-install-rhel.sh download failed."
-		# 		exit 1
-		# 	fi
-		# else
+	if [ -e '/usr/bin/wget' ] || [ -e '/usr/local/bin/wget' ]; then
 		wget -q https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-$type.sh -O hst-install-$type.sh
 		if [ "$?" -eq '0' ]; then
-			bash hst-install-$type.sh $*
+			bash hst-install-$type.sh "$@"
 			exit
 		else
 			echo "Error: hst-install-$type.sh download failed."
 			exit 1
 		fi
-		# fi
 	fi
 
 	# Check curl
-	if [ -e '/usr/bin/curl' ]; then
-		# if [ -e '/etc/redhat-release' ]; then
-		# 	curl -s -O https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-rhel.sh
-		# 	if [ "$?" -eq '0' ]; then
-		# 		bash hst-install-rhel.sh $*
-		# 		exit
-		# 	else
-		# 		echo "Error: hst-install-rhel.sh download failed."
-		# 		exit 1
-		# 	fi
-		# else
+	if [ -e '/usr/bin/curl' ] || [ -e '/usr/local/bin/curl' ]; then
 		curl -s -O https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-$type.sh
 		if [ "$?" -eq '0' ]; then
-			bash hst-install-$type.sh $*
+			bash hst-install-$type.sh "$@"
 			exit
 		else
 			echo "Error: hst-install-$type.sh download failed."
 			exit 1
 		fi
-		# fi
+	fi
+	
+	# FreeBSD: 使用 fetch
+	if [ "$type" = "freebsd" ] || command -v fetch >/dev/null 2>&1; then
+		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install-$type.sh
+		if [ "$?" -eq '0' ]; then
+			bash hst-install-$type.sh "$@"
+			exit
+		else
+			echo "Error: hst-install-freebsd.sh download failed."
+			exit 1
+		fi
 	fi
 }
 
-# Check for supported operating system before proceeding with download
-# of OS-specific installer, and throw error message if unsupported OS detected.
-if [[ "$release" =~ ^(11|12|22.04|24.04)$ ]]; then
-	check_wget_curl $*
-# elif [[ -e "/etc/redhat-release" ]] && [[ "$release" =~ ^(8|9)$ ]]; then
-# 	check_wget_curl $*
+# Check for supported operating system
+if [ "$type" = "freebsd" ]; then
+	case "$release" in
+		13|14|15) check_wget_curl "$@" ;;
+		*)        no_support_message ;;
+	esac
 else
-	no_support_message
+	case "$release" in
+		11|12|13|22.04|24.04|26.04) check_wget_curl "$@" ;;
+		*)                 no_support_message ;;
+	esac
 fi
 
 exit

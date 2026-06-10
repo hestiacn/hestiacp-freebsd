@@ -13,9 +13,7 @@ const externalPackages = [
 	'chart.js/auto',
 	'alpinejs/dist/cdn.min.js',
 	'@alpinejs/collapse/dist/cdn.min.js',
-	'xterm',
-	'xterm-addon-webgl',
-	'xterm-addon-canvas',
+	'@xterm/xterm',
 ];
 
 // Build main bundle

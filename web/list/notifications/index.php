@@ -3,10 +3,12 @@
 include $_SERVER["DOCUMENT_ROOT"] . "/inc/main.php";
 
 function formatNotificationTimestamps(&$note) {
+	$format_short = _("notification_time_short");
+	$format_full  = _("notification_time_full");
 	$dateTime = DateTime::createFromFormat("Y-m-d H:i:s", $note["DATE"] . " " . $note["TIME"]);
-	$note["TIMESTAMP_TEXT"] = $dateTime->format("d M Y, H:i");
-	$note["TIMESTAMP_ISO"] = $dateTime->format(DateTime::ATOM); // ISO 8601 format
-	$note["TIMESTAMP_TITLE"] = $dateTime->format("d F Y, H:i:s");
+	$note["TIMESTAMP_TEXT"]  = $dateTime->format($format_short);
+	$note["TIMESTAMP_ISO"]   = $dateTime->format(DateTime::ATOM); // ISO 8601 format
+	$note["TIMESTAMP_TITLE"] = $dateTime->format($format_full);
 }
 
 if ($_REQUEST["ajax"] == 1 && $_REQUEST["token"] == $_SESSION["token"]) {

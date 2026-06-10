@@ -7,6 +7,7 @@ import 'floating-vue/dist/style.css';
 import FloatingVue from 'floating-vue';
 import FeaturePage from './components/FeaturePage.vue';
 import InstallPage from './components/InstallPage.vue';
+import CopyToClipboardInput from './components/CopyToClipboardInput.vue';
 
 export default {
 	...Theme,
@@ -14,5 +15,6 @@ export default {
 		app.use(FloatingVue);
 		app.component('FeaturePage', FeaturePage);
 		app.component('InstallPage', InstallPage);
+		app.component('CopyToClipboardInput', CopyToClipboardInput);
 	},
 };

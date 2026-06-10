@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+if [ "$1" != "PRE-INSTALL" ]; then
+    exit 0
+fi
+
+# Run triggers only on updates (when admin user already exists)
+if [ ! -e "/usr/local/hestia/data/users/admin" ]; then
+    exit 0
+fi
+
+# Create a new Backup folder
+CURRENT_TS=$(date +%Y%m%d%H%M%S)
+HESTIA_BACKUP="/root/hst_nginx_backups/${CURRENT_TS}"
+mkdir -p "$HESTIA_BACKUP"
+
+echo "[ * ] Pre-install check hook triggered. Backing up backend Nginx core configuration..."
+if [ -f "/usr/local/hestia/nginx/conf/nginx.conf" ]; then
+    cp -f /usr/local/hestia/nginx/conf/nginx.conf "${HESTIA_BACKUP}/nginx.conf"
+    echo "[ ✓ ] Master configuration saved at: ${HESTIA_BACKUP}/nginx.conf"
+fi
+
+exit 0

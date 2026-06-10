@@ -1,0 +1,67 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" != "POST-INSTALL" ]; then
+    exit 0
+fi
+
+# Run triggers only on updates
+if [ ! -e "/usr/local/hestia/data/users/" ]; then
+    exit 0
+fi
+
+# Prevent running and causes issues with outdated hestia version
+if ! id "hestiaweb" > /dev/null 2>&1; then
+    exit 0
+fi
+
+# Touch and set permissions on default log files on installation
+mkdir -p /var/log/hestia
+touch /var/log/hestia/nginx-access.log
+touch /var/log/hestia/nginx-error.log
+chmod 640 /var/log/hestia/nginx-*.log
+chown hestiaweb:www /var/log/hestia/nginx-*.log >/dev/null 2>&1
+
+# FreeBSD: 启用并启动 hestia 服务
+sysrc hestia_enable=YES >/dev/null 2>&1
+if [ -f "/usr/local/hestia/func/syshealth.sh" ]; then
+    . /usr/local/hestia/func/syshealth.sh
+    type syshealth_adapt_hestia_nginx_listen_ports > /dev/null 2>&1 && syshealth_adapt_hestia_nginx_listen_ports
+    type syshealth_adapt_nginx_resolver > /dev/null 2>&1 && syshealth_adapt_nginx_resolver
+fi
+
+###############################################################
+#                Initialize functions/variables               #
+###############################################################
+
+export HESTIA='/usr/local/hestia'
+PATH=$PATH:/usr/local/hestia/bin
+export PATH
+
+# Check if preinstall hook exists
+if [ -e "/usr/local/etc/hestiacp/hooks/nginx/pre_install.sh" ]; then
+    /usr/local/etc/hestiacp/hooks/nginx/pre_install.sh
+fi
+
+# Load upgrade functions and variables
+[ -f "/usr/local/hestia/func/main.sh" ] && . /usr/local/hestia/func/main.sh
+[ -f "/usr/local/hestia/func/upgrade.sh" ] && . /usr/local/hestia/func/upgrade.sh
+[ -f "/usr/local/hestia/conf/hestia.conf" ] && . /usr/local/hestia/conf/hestia.conf
+[ -f "/usr/local/hestia/install/upgrade/upgrade.conf" ] && . /usr/local/hestia/install/upgrade/upgrade.conf
+
+# Reset backend port
+if [ -n "$BACKEND_PORT" ]; then
+    /usr/local/hestia/bin/v-change-sys-port "$BACKEND_PORT" >/dev/null 2>&1
+fi
+
+if [ -e "/usr/local/etc/hestiacp/hooks/nginx/post_install.sh" ]; then
+    /usr/local/etc/hestiacp/hooks/nginx/post_install.sh
+fi
+
+# Restart hestia service
+if [ -f "/usr/local/etc/rc.d/hestia" ]; then
+    service hestia onerestart >/dev/null 2>&1 || true
+fi
+
+exit 0

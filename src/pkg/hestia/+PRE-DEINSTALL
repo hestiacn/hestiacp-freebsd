@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# FreeBSD pkg pre-deinstallation script
+
+echo "========================================"
+echo "Hestia Control Panel Uninstallation"
+echo "========================================"
+
+# 停止服务
+echo "Stopping Hestia services..."
+if [ -f /usr/local/etc/rc.d/hestia ]; then
+    service hestia stop 2>/dev/null
+fi
+if [ -f /usr/local/etc/rc.d/hestia-nginx ]; then
+    service hestia-nginx stop 2>/dev/null
+fi
+if [ -f /usr/local/etc/rc.d/hestia-php ]; then
+    service hestia-php stop 2>/dev/null
+fi
+
+echo "HestiaCP will be removed from the system."
+echo "Data directory: /usr/local/hestia/data"
+echo "Backup directory: /root/hst_backups/"
+echo "========================================"
