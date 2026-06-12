@@ -21,8 +21,8 @@ extentions=${4-$default_extentions}
 restart="$5"
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -44,10 +44,10 @@ is_object_unsuspended 'user' 'USER' "$user"
 is_object_valid 'web' 'DOMAIN' "$domain"
 is_object_unsuspended 'web' 'DOMAIN' "$domain"
 is_object_value_empty 'web' 'DOMAIN' "$domain" '$PROXY'
-if [ -z $template ]; then
+if [ -z "$template" ]; then
 	template=$(get_user_value '$PROXY_TEMPLATE')
 fi
-is_proxy_template_valid $template
+is_proxy_template_valid "$template"
 
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
@@ -85,4 +85,4 @@ check_result $? "Proxy restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "Web" "Proxy enabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

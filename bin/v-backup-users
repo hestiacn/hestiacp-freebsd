@@ -11,8 +11,8 @@
 #----------------------------------------------------------#
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -26,29 +26,30 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Auto-repair all databases before backuping all accounts
-mysqlrepair --all-databases --check --auto-repair > /dev/null 2>&1
+mariadb-check --all-databases --check --auto-repair > /dev/null 2>&1
+
 
 if [ -z "$BACKUP_SYSTEM" ]; then
 	exit
 fi
-for user in $("$BIN/v-list-users" list); do
-	check_suspend=$(grep "SUSPENDED='no'" $HESTIA/data/users/$user/user.conf)
-	log=$HESTIA/log/backup.log
-	if [ ! -f "$HESTIA/data/users/$user/user.conf" ]; then
-		continue
-	fi
-	check_backup_conditions
-	check_suspend=$(grep "SUSPENDED='no'" $HESTIA/data/users/$user/user.conf)
-	log=$HESTIA/log/backup.log
-	if [ -n "$check_suspend" ]; then
-		echo -e "================================" >> $log
-		echo -e "$user" >> $log
-		echo -e "--------------------------------\n" >> $log
-		nice -n 19 ionice -c2 -n7 $BIN/v-backup-user $user >> $log 2>&1
-		echo -e "\n--------------------------------\n\n" >> $log
-	fi
-done
 
+for user in $("$BIN/v-list-users" list); do
+    if [ ! -f "$HESTIA/data/users/$user/user.conf" ]; then
+        continue
+    fi
+    check_backup_conditions
+    
+    check_suspend=$(grep "SUSPENDED='no'" "$HESTIA/data/users/$user/user.conf")
+    log="$HESTIA/log/backup.log"
+    
+    if [ -n "$check_suspend" ]; then
+        printf "%b\n" "================================" >> "$log"
+        printf "%b\n" "$user" >> "$log"
+        printf "%b\n" "--------------------------------\n" >> "$log"
+        nice -n 19 $BIN/v-backup-user "$user" >> "$log" 2>&1
+        printf "%b\n" "\n--------------------------------\n\n" >> "$log"
+    fi
+done
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change dns domain record id
 # options: USER DOMAIN ID NEWID [RESTART]
 #
@@ -19,8 +19,8 @@ newid=$4
 restart=$5
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -56,27 +56,28 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Change id
-sed -i "s/^ID='$id'/ID='$newid'/" $USER_DATA/dns/$domain.conf
+# Change id (FreeBSD sed requires -i "" for in-place editing)
+sed -i "" "s/^ID='$id'/ID='$newid'/" $USER_DATA/dns/$domain.conf
 
 # Sorting records
 sort_dns_records
 
 # Update serial
 update_domain_serial
-# Updating zone
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
-	rebuild_dns_domain_conf
+
+# Update zone for FreeBSD (named only)
+if [ "$DNS_SYSTEM" = "named" ]; then
+    rebuild_dns_domain_conf
 fi
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
-	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
-	if [ -z "$dlock" ]; then
-		cmd="$BIN/v-add-remote-dns-domain $user $domain records"
-		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
-	fi
+    # Check for first sync
+    dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe 2>/dev/null)
+    if [ -z "$dlock" ]; then
+        cmd="$BIN/v-add-remote-dns-domain $user $domain records"
+        echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
+    fi
 fi
 
 #----------------------------------------------------------#
@@ -88,6 +89,7 @@ $BIN/v-restart-dns "$restart"
 check_result $? "DNS restart failed" > /dev/null
 
 # Logging
+$BIN/v-log-action "$user" "Info" "DNS" "DNS record ID changed (Old ID: $id, New ID: $newid, Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

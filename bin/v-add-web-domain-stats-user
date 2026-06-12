@@ -20,7 +20,7 @@ restart=$5
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -64,7 +64,7 @@ else
 fi
 
 # Generating htaccess user and password
-salt=$(generate_password "$PW_MATRIX" "8")
+salt=$(gen_pass)
 stats_pass=$($BIN/v-generate-password-hash md5 $salt $password)
 echo "$stats_user:$stats_pass" > $stats_dir/.htpasswd
 

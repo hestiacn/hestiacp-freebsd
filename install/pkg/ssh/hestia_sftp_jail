@@ -1,0 +1,18 @@
+#!/bin/sh
+# PROVIDE: hestia_sftp_jail
+# REQUIRE: NETWORKING sshd
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="hestia_sftp_jail"
+rcvar="hestia_sftp_jail_enable"
+start_cmd="hestia_sftp_jail_start"
+
+hestia_sftp_jail_start() {
+    echo " [ * ] Restoring HestiaCP SFTP Chroot Jails..."
+    /usr/local/hestia/bin/v-add-sys-sftp-jail no > /dev/null 2>&1 &
+}
+
+load_rc_config $name
+run_rc_command "$1"

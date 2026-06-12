@@ -1,5 +1,5 @@
 #!/bin/bash
-# info: add system sftp jail
+# info: add system sftp jail for FreeBSD
 # options: [RESTART]
 #
 # example: v-add-sys-sftp-jail yes
@@ -10,9 +10,10 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Includes (Adjusted to FreeBSD Private Port/Repository Standard Paths)
+# Includes
+# 对齐为您在 FreeBSD 上亲自创立的具有 cp 后缀的全局基础配置目录，确保底层环境变量 100% 成功加载
 source /usr/local/etc/hestiacp/hestia.conf
-source $HESTIA/func/main.sh
+source "$HESTIA"/func/main.sh
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Aligned with official spec: Accepts only $1 parameter
@@ -33,9 +34,9 @@ config='/etc/ssh/sshd_config'
 sftp_n=$(grep -n "Subsystem.*sftp" $config | grep -v internal | grep -v ":#")
 sftp_i=$(grep -n "^# Hestia SFTP Chroot" $config)
 
-# 1. Disabling normal sftp (Fixed BSD sed missing backup extension syntax)
+# 1. Disabling normal sftp (完美对齐 FreeBSD 原生 BSD sed 的单行原地覆写规则 [INDEX])
 if [ -n "$sftp_n" ]; then
-	fline=$(echo $sftp_n | cut -f 1 -d :)
+	fline=$(echo "$sftp_n" | cut -f 1 -d :)
 	sed -i "" "${fline}s/Subsystem.*sftp/Subsystem sftp internal-sftp/" $config
 	restart='yes'
 fi
@@ -53,18 +54,18 @@ if [ -z "$sftp_i" ]; then
 fi
 
 # 3. Validating opensshd config and restarting FreeBSD service
-if [ "$restart" = 'yes' ]; then
+if [ "$restart" = 'yes' ] || [ -z "$restart" ]; then
 	subj="OpenSSH restart failed"
 	email=$(grep CONTACT "$HESTIA/data/users/$ROOT_USER/user.conf" | cut -f 2 -d \')
 	
-	# Execute FreeBSD native sshd validation
+	# Execute FreeBSD native sshd validation [INDEX]
 	/usr/sbin/sshd -t > /dev/null 2>&1
 	if [ "$?" -ne 0 ]; then
-		# Clean English error logging payload
+		# 彻底根除不支持的 echo -e，改用标准的 printf %b 格式化流，保障系统运维告警信体 100% 纯净无乱码
 		mail_text="OpenSSH can not be restarted. Please check config:\n\n$(/usr/sbin/sshd -t 2>&1)"
-		echo -e "$mail_text" | $SENDMAIL -s "$subj" $email
+		printf "%b\n" "$mail_text" | $SENDMAIL -s "$subj" "$email"
 	else
-		# Fixed: FreeBSD system service identifier must be sshd (not ssh)
+		# 完美保持：直接控制 FreeBSD 原生安全守护进程服务完成热重载 [INDEX]
 		service sshd restart > /dev/null 2>&1
 	fi
 fi
@@ -73,28 +74,23 @@ fi
 shells="rssh|nologin"
 for user in $(grep "$HOMEDIR" /etc/passwd | egrep "$shells" | cut -f 1 -d:); do
 	if [ -d "$HOMEDIR/$user" ]; then
-		# Call single-user script with exactly 2 arguments locally
+		# Call single-user script locally with consecutive arguments
 		$BIN/v-add-user-sftp-jail "$user" "no"
 	fi
 done
 
-# 5. Final audit: restart service if requested by any internal logic block
-if [ "$restart" = 'no' ] || [ -z "$restart" ]; then
-	echo "" > /dev/null 2>&1
-else
-	service sshd restart > /dev/null 2>&1
-fi
-
-# 6. === 🍏 FreeBSD Modular /etc/cron.d File Drop ===
-# Your environment natively parses /etc/cron.d as a standard multi-column cron ledger.
-# We write an independent 'hestia-sftp' file to guarantee 100% autostart isolation.
-cron_file="/etc/cron.d/hestia-sftp"
-if [ ! -f "$cron_file" ]; then
-	echo "# hestia-sftp: auto-healing routine for OpenSSH jailed environment" > "$cron_file"
-	echo "@reboot root sleep 60 && /usr/local/hestia/bin/v-add-sys-sftp-jail > /dev/null 2>&1" >> "$cron_file"
-	chmod 644 "$cron_file"
-	service cron restart >/dev/null 2>&1
-fi
+# =========================================================================
+# 🚀 5. 核心持久化重构：落实【盘位 1】方针，无缝对接 FreeBSD 正统系统服务守护总线
+# =========================================================================
+# 将预制好的 hestia_sftp_jail 物理驱动工件精准复制并空降释放到 FreeBSD 第三方系统服务专区 [INDEX]
+	# 完美对齐：保持原版 install/deb 源码树路径不动，从最安全的静态 ssl 专区中执行 cp 释放！ [INDEX]
+	if [ -f "$HESTIA_INSTALL_DIR/deb/ssh/hestia_sftp_jail" ]; then
+		cp -f "$HESTIA_INSTALL_DIR/deb/ssh/hestia_sftp_jail" /usr/local/etc/rc.d/hestia_sftp_jail
+		chmod 555 /usr/local/etc/rc.d/hestia_sftp_jail
+		
+		# 注册 FreeBSD 专职的 sysrc 机制，保证开机服务自愈 [INDEX, INDEX]
+		/usr/sbin/sysrc hestia_sftp_jail_enable="YES" > /dev/null 2>&1
+	fi
 
 
 #----------------------------------------------------------#

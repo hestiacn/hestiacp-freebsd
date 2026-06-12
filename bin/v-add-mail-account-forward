@@ -18,8 +18,7 @@ account=$3
 email_forward=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -70,7 +69,7 @@ fi
 
 # Adding forward to exim
 if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/aliases
+	sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/aliases
 	echo "$account@$domain_idn:$fwd" >> $HOMEDIR/$user/conf/mail/$domain/aliases
 fi
 

@@ -19,11 +19,11 @@ protocol="$3"
 protocol=$(echo "$protocol" | tr '[:lower:]' '[:upper:]')
 
 # Defining absolute path to iptables
-iptables="/sbin/iptables"
+pfctl="/sbin/pfctl"
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source /usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/firewall.sh
@@ -52,12 +52,9 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Self heal iptables links
-heal_iptables_links
-
 # Checking known chains
 case $chain in
-	SSH) # Get ssh port (or ports) using v-list-sys-sshd-port.
+	SSH)
 		sshport="$($BIN/v-list-sys-sshd-port plain | sed ':a;N;$!ba;s/\n/,/g')"
 		if [ -z "$sshport" ]; then
 			sshport=22
@@ -96,21 +93,9 @@ case $chain in
 	*) check_args '2' "$#" 'CHAIN PORT' ;;
 esac
 
-# Adding chain
-$iptables -N fail2ban-$chain 2> /dev/null
-if [ $? -eq 0 ]; then
-	$iptables -A fail2ban-$chain -j RETURN
 
-	# Adding multiport module
-	if [[ "$port" =~ ,|-|: ]]; then
-		port_str="-m multiport --dports $port"
-	else
-		port_str="--dport $port"
-	fi
-	$iptables -I INPUT -p $protocol $port_str -j fail2ban-$chain
-fi
-
-# Preserving chain
+pf_table_name="fail2ban-$(echo "$chain" | tr '[:upper:]' '[:lower:]')"
+$pfctl -t "$pf_table_name" -T init > /dev/null 2>&1
 chains="$HESTIA/data/firewall/chains.conf"
 check_chain=""
 [ -f "$chains" ] && check_chain=$(grep "CHAIN='$chain'" "$chains")

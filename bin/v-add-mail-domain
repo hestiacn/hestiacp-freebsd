@@ -21,8 +21,7 @@ restart="$7"
 reject=${8-no}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -35,11 +34,7 @@ source $HESTIA/func/syshealth.sh
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Define mail user
-if [ "$MAIL_SYSTEM" = 'exim4' ]; then
-	MAIL_USER=Debian-exim
-else
-	MAIL_USER=exim
-fi
+MAIL_USER=mailnull
 
 # Additional argument formatting
 format_domain
@@ -124,15 +119,14 @@ chmod 660 $USER_DATA/mail.conf
 
 # Building exim configs
 if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	mkdir $HOMEDIR/$user/conf/mail/$domain
-	mkdir $HOMEDIR/$user/mail/$domain_idn
+	mkdir -p $HOMEDIR/$user/conf/mail/$domain
+	mkdir -p $HOMEDIR/$user/mail/$domain_idn
 	touch $HOMEDIR/$user/conf/mail/$domain/aliases
 	touch $HOMEDIR/$user/conf/mail/$domain/passwd
 	touch $HOMEDIR/$user/conf/mail/$domain/fwd_only
 	touch $HOMEDIR/$user/conf/mail/$domain/accounts
 	touch $HOMEDIR/$user/conf/mail/$domain/limits
-	ln -s $HOMEDIR/$user/conf/mail/$domain \
-		/etc/$MAIL_SYSTEM/domains/$domain_idn
+	ln -s $HOMEDIR/$user/conf/mail/$domain /usr/local/etc/exim/domains/$domain_idn
 
 	# Seeting outgoing ip address
 	if [ -n "$local_ip" ]; then
@@ -165,7 +159,7 @@ if [[ "$MAIL_SYSTEM" =~ exim ]]; then
 	# Set permission
 	chmod 771 $HOMEDIR/$user/conf/mail/$domain
 	chmod 660 $HOMEDIR/$user/conf/mail/$domain/*
-	chmod 771 /etc/$MAIL_SYSTEM/domains/$domain_idn
+	chmod 771 /usr/local/etc/exim/domains/$domain_idn
 	chmod 770 $HOMEDIR/$user/mail/$domain_idn
 
 	# Set ownership

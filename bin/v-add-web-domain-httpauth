@@ -19,8 +19,8 @@ HIDE=4
 restart=${5-yes}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -70,8 +70,8 @@ if [ "$WEB_SYSTEM" = "nginx" ] || [ "$PROXY_SYSTEM" = "nginx" ]; then
 		restart_required='yes'
 	fi
 else
-	htaccess="$HOMEDIR/$user/conf/web/$domain/apache2.conf_htaccess"
-	shtaccess="$HOMEDIR/$user/conf/web/$domain/apache2.ssl.conf_htaccess"
+	htaccess="$HOMEDIR/$user/conf/web/$domain/apache24.conf_htaccess"
+	shtaccess="$HOMEDIR/$user/conf/web/$domain/apache24.ssl.conf_htaccess"
 	if [ ! -f "$htaccess" ]; then
 		echo "<Directory $docroot>" > $htaccess
 		echo "    AuthUserFile $htpasswd" >> $htaccess
@@ -89,7 +89,7 @@ auth_hash=$($BIN/v-generate-password-hash htpasswd htpasswd $password)
 touch $htpasswd
 chmod 644 $htpasswd $htaccess
 chgrp $user $htpasswd $htaccess
-sed -i "/^$auth_user:/d" $htpasswd
+sed -i "" "/^$auth_user:/d" $htpasswd
 echo "$auth_user:$auth_hash" >> $htpasswd
 
 # Restarting web server
@@ -122,4 +122,4 @@ update_object_value 'web' 'DOMAIN' "$domain" '$AUTH_HASH' "$auth_hash"
 $BIN/v-log-action "$user" "Info" "Web" "Password protection enabled (Domain: $domain, Username: $httpauth_user)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

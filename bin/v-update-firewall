@@ -1,39 +1,24 @@
 #!/bin/bash
-# info: update system firewall rules
+# info: update system firewall rules for FreeBSD PF
 # options: NONE
 #
 # example: v-update-firewall
 #
-# This function updates firewall rules (iptables for Linux / PF for FreeBSD)
+# This function compiles and updates FreeBSD PF firewall rules
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Defining absolute path for iptables and modprobe (Linux Specific)
-iptables="/sbin/iptables"
-modprobe="/sbin/modprobe"
+pfctl="/sbin/pfctl"
 sysctl="/sbin/sysctl"
 
 # Includes
 source /etc/profile.d/hestia.sh 2>/dev/null || true
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
-# shellcheck source=/usr/local/hestia/func/main.sh
+source /usr/local/etc/hestiacp/hestia.conf
 source "$HESTIA/func/main.sh"
-# shellcheck source=/usr/local/hestia/func/firewall.sh
 source "$HESTIA/func/firewall.sh" 2>/dev/null || true
-# load config file
 source_conf "$HESTIA/conf/hestia.conf"
-
-# --- 💡 FreeBSD 专属预处理：全自动开启系统 PF 与 pflog 守护服务 ---
-if [ "$OS" = "freebsd" ]; then
-    # 完美的 sysrc 注入自愈保护：确保系统开机 100% 自动挂载防火墙
-    sysrc pf_enable="YES" > /dev/null 2>&1
-    sysrc pf_rules="/etc/pf.conf" > /dev/null 2>&1
-    sysrc pflog_enable="YES" > /dev/null 2>&1
-    sysrc pflog_logfile="/var/log/pflog" > /dev/null 2>&1
-fi
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -45,7 +30,13 @@ is_system_enabled "$FIREWALL_SYSTEM" 'FIREWALL_SYSTEM'
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Checking local IPv4 rules
+# 开启 PF 服务（开机自愈初始化）
+sysrc pf_enable="YES" > /dev/null 2>&1
+sysrc pf_rules="/etc/pf.conf" > /dev/null 2>&1
+sysrc pflog_enable="YES" > /dev/null 2>&1
+sysrc pflog_logfile="/var/log/pflog" > /dev/null 2>&1
+
+# 规则文件
 rules="$HESTIA/data/firewall/rules.conf"
 if [ ! -e "$rules" ]; then
     exit
@@ -54,256 +45,165 @@ fi
 chains="$HESTIA/data/firewall/chains.conf"
 banlist="$HESTIA/data/firewall/banlist.conf"
 
-# Checking custom OpenSSH port (or ports)
+# 检查自定义 SSH 端口
 sshport="$($BIN/v-list-sys-sshd-port plain | sed ':a;N;$!ba;s/\n/,/g')"
 if echo "$sshport" | grep -E '^[0-9]+(,[0-9]+)*$' > /dev/null 2>&1; then
-    if [ "$OS" = "freebsd" ]; then
-        sed -i '' -E "s/(PORT=')[0-9]+(,[0-9]+)*('.*COMMENT='SSH')/\1$sshport\3/" "$rules"
-        [ -f "$chains" ] && sed -i '' "/CHAIN='SSH'/c\CHAIN='SSH' PORT='$sshport' PROTOCOL='TCP'" "$chains"
+    sed -i '' -E "s/(PORT=')[0-9]+(,[0-9]+)*('.*COMMENT='SSH')/\1$sshport\3/" "$rules"
+    if [ -f "$chains" ]; then
+        sed -i '' "/CHAIN='SSH'/c\CHAIN='SSH' PORT='$sshport' PROTOCOL='TCP'" "$chains"
     else
-        sed -i -E "s/(PORT=')[0-9]+(,[0-9]+)*('.*COMMENT='SSH')/\1$sshport\3/" "$rules"
-        [ -f "$chains" ] && sed -i "/CHAIN='SSH'/c\CHAIN='SSH' PORT='$sshport' PROTOCOL='TCP'" "$chains"
-    fi
-    
-    if [ ! -f "$chains" ]; then
         "$BIN/v-add-firewall-chain" 'SSH' "$sshport" 'TCP'
     fi
 fi
 
-# Load ipset lists before adding Hestia rules
-"$BIN/v-update-firewall-ipset" load
+# 加载 ipset 列表
+"$BIN/v-update-firewall-ipset" load 2>/dev/null || true
 
-# Creating temporary file
-tmp="$(mktemp)"
+# 创建临时文件
+pf_tmp="$(mktemp -t hst_pf)"
 
-#----------------------------------------------------------#
-#                    分支 A: FreeBSD PF 动态生成逻辑        #
-#----------------------------------------------------------#
-if [ "$OS" = "freebsd" ]; then
-    # 1. 注入 PF 核心宏与安全大底座参数 (确保规则整齐严密)
-    echo "# /etc/pf.conf - Dynamic HestiaCP PF ruleset" > "$tmp"
-    echo "set skip on lo0" >> "$tmp"
-    echo "scrub in all" >> "$tmp"
-    echo "block drop in log all" >> "$tmp"
-    echo "block out all" >> "$tmp"
-    
-    # 2. 💡 核心修复：彻底消灭 SC2045 漏洞，利用 POSIX 正统路径通配符安全、无伤遍历本地 IP 列表
-    if [ -d "$HESTIA/data/ips" ]; then
-        for local_ip_file in "$HESTIA/data/ips"/*; do
-            if [ -f "$local_ip_file" ]; then
-                local_ip=$(basename "$local_ip_file")
-                echo "pass in quick from $local_ip to any" >> "$tmp"
-            fi
-        done
-    fi
-    echo "pass in quick from 127.0.0.1 to any" >> "$tmp"
-    echo "pass inet proto icmp icmp-type echoreq" >> "$tmp"
+# =========================================================================
+# 生成 FreeBSD PF 防火墙配置
+# =========================================================================
 
-    # 3. 遍历解析防火墙规则
-    IFS=$'\n'
-    for line in $(sort -r -n -k 2 -t \' "$rules"); do
-        parse_object_kv_list "$line"
-        if [ "$SUSPENDED" = 'no' ]; then
-            proto_lower=$(echo "$PROTOCOL" | tr '[:upper:]' '[:lower:]')
-            pf_action="pass in quick"
-            [ "$ACTION" = "DROP" ] && pf_action="block drop in"
-            
-            pf_port=""
-            if [ "$PORT" != "0" ] && [ "$PROTOCOL" != 'ICMP' ]; then
-                # 💡 核心修复：彻底根除不兼容 /bin/sh 的 ${PORT//,/ } 致命高级方言！
-                # 换装全平台 100% 免疫支持的 echo | tr 流水线，干净利落完成端口和逗号、短横线转置
-                cleaned_port=$(echo "$PORT" | tr ',' ' ')
-                pf_port_formatted=$(echo "$cleaned_port" | tr '-' ':')
-                pf_port="port { $pf_port_formatted }"
-            fi
-            
-            # 💡 核心修复：将双中括号 [[ ]] 和 =~ 正则彻底踢出代码，改用 100% 完美的 case 精准截留
-            case "$IP" in
-                ipset:*)
-                    ipset_name=$(echo "$IP" | cut -d: -f2)
-                    echo "$pf_action proto $proto_lower from <$ipset_name> to any $pf_port label \"HESTIA_IPSET_$ipset_name\"" >> "$tmp"
-                    ;;
-                *)
-                    echo "$pf_action proto $proto_lower from $IP to any $pf_port label \"HESTIA_RULE_$ID\"" >> "$tmp"
-                    ;;
-            esac
-        fi
+cat << 'EOF' > "$pf_tmp"
+# =========================================================================
+# FreeBSD PF (Packet Filter) Firewall Configuration
+# Generated automatically by HestiaCP FreeBSD Edition
+# =========================================================================
+
+# 1. 全局宏与基础放行接口
+set skip on lo0
+scrub in all
+
+# 2. 动态申明 Fail2ban 隔离表
+EOF
+
+# 添加 Fail2ban 表
+if [ -f "$chains" ]; then
+    for chain_line in $(cat "$chains"); do
+        parse_object_kv_list "$chain_line"
+        c_name=$(echo "$CHAIN" | tr '[:upper:]' '[:lower:]')
+        echo "table <fail2ban-${c_name}> persist" >> "$pf_tmp"
     done
-    unset IFS
-
-    # 4. 融合 Fail2ban 动态黑名单
-    if [ -n "$FIREWALL_EXTENSION" ] && [ -f "$banlist" ]; then
-        for ban in $(cat "$banlist"); do
-            parse_object_kv_list "$ban"
-            echo "block drop in quick proto tcp from $IP to any" >> "$tmp"
-        done
-    fi
-
-    # 5. 放行所有发出流量
-    echo "pass out quick proto tcp to any" >> "$tmp"
-    echo "pass out quick proto udp to any" >> "$tmp"
-
-    # 6. 激活规则 (像素级安全落盘交割)
-    cp -f "$tmp" "/etc/pf.conf"
-    chmod 644 "/etc/pf.conf"
-    # 💡 优化升级：强制追加 -q (Quiet) 寂静模式参数，阻断任何潜在的 TTY 缓冲区挂起死锁风险
-    pfctl -q -f "/etc/pf.conf" > /dev/null 2>&1
-    rm -f "$tmp"
-
-#----------------------------------------------------------#
-#                    分支 B: Linux iptables 原版保持        #
-#----------------------------------------------------------#
-else
-    # Checking conntrack module availability
-    "$modprobe" nf_conntrack > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        "$sysctl" net.netfilter.nf_conntrack_max > /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-            conntrack='no'
-        fi
-    fi
-
-    "$modprobe" nf_conntrack_ftp > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        conntrack_ftp='no'
-    fi
-
-    # Flushing INPUT chain
-    echo "$iptables -P INPUT ACCEPT" >> "$tmp"
-    echo "$iptables -F INPUT" >> "$tmp"
-
-    if [ "$conntrack" != 'no' ] || grep --quiet container=lxc /proc/1/environ 2>/dev/null; then
-        echo "$iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT" >> "$tmp"
-    fi
-
-    # 💡 修复 Linux 侧相同的 SC2045 通配符雷区
-    if [ -d "$HESTIA/data/ips" ]; then
-        for ip_file in "$HESTIA/data/ips"/*; do
-            if [ -f "$ip_file" ]; then
-                ip_addr=$(basename "$ip_file")
-                echo "$iptables -A INPUT -s $ip_addr -j ACCEPT" >> "$tmp"
-            fi
-        done
-    fi
-    echo "$iptables -A INPUT -s 127.0.0.1 -j ACCEPT" >> "$tmp"
-
-    IFS=$'\n'
-    for line in $(sort -r -n -k 2 -t \' $rules); do
-        parse_object_kv_list "$line"
-        if [ "$SUSPENDED" = 'no' ]; then
-            proto="-p $PROTOCOL"
-            port="--dport $PORT"
-            state=""
-            action="-j $ACTION"
-
-            # 💡 局部替换：Linux 侧同步剥离双括号，全量换装为安全的 POSIX case 状态分流
-            case "$IP" in
-                ipset:*)
-                    ipset_name=$(echo "$IP" | cut -d: -f2)
-                    if ! "$BIN/v-list-firewall-ipset" plain | grep -q "^$ipset_name\s"; then
-                        log_event "$E_NOTEXIST" "IPset IP list ($ipset_name) not found"
-                    fi
-                    ip="-m set --match-set '${ipset_name}' src"
-                    ;;
-                *)
-                    ip="-s $IP"
-                    ;;
-            esac
-
-            # 💡 端口切片统一换装为全平台通用的 echo/tr/sed 词法流，全面粉碎 Bashisms
-            if echo "$PORT" | grep -q -E ',|-|:'; then
-                port_formatted=$(echo "$PORT" | tr '-' ':')
-                port="-m multiport --dports ${port_formatted}"
-            fi
-            
-            if [ "$PORT" = "0" ] || [ "$PROTOCOL" = 'ICMP' ]; then
-                port=""
-            fi
-
-            if [ "$TYPE" = "FTP" ] || [ "$PORT" = '21' ]; then
-                if [ "$conntrack_ftp" != 'no' ]; then
-                    state="-m conntrack --ctstate NEW"
-                else
-                    port="-m multiport --dports 20,21,12000:12100"
-                fi
-            fi
-            echo "$iptables -A INPUT $proto $port $ip $state $action" >> "$tmp"
-        fi
-    done
-    unset IFS
-
-    echo "$iptables -P INPUT DROP" >> "$tmp"
-    echo "$iptables -N hestia" >> "$tmp"
-    bash "$tmp" 2> /dev/null
-    rm -f "$tmp"
-
-    # Fail2ban Linux iptables section
-    if [ -n "$FIREWALL_EXTENSION" ]; then
-        tmp="$(mktemp)"
-        if [ -f "$chains" ]; then
-            for chain in $(cat "$chains"); do
-                parse_object_kv_list "$chain"
-                if echo "$PORT" | grep -q -E ',|-|:'; then
-                    port="-m multiport --dports $PORT"
-                else
-                    port="--dport $PORT"
-                fi
-                echo "$iptables -N fail2ban-$CHAIN" >> "$tmp"
-                echo "$iptables -F fail2ban-$CHAIN" >> "$tmp"
-                echo "$iptables -I fail2ban-$CHAIN -s 0.0.0.0/0 -j RETURN" >> "$tmp"
-                echo "$iptables -I INPUT -p $PROTOCOL $port -j fail2ban-$CHAIN" >> "$tmp"
-            done
-            bash "$tmp" 2> /dev/null
-            rm -f "$tmp"
-        fi
-        
-        if [ -f "$banlist" ]; then
-            tmp="$(mktemp)"
-            for ban in $(cat "$banlist"); do
-                parse_object_kv_list "$ban"
-                echo "$iptables -I fail2ban-$CHAIN 1 -s $IP -j REJECT --reject-with icmp-port-unreachable" >> "$tmp"
-            done
-            bash "$tmp" 2> /dev/null
-            rm -f "$tmp"
-        fi
-    fi
-
-    # Saving to iptables file
-    if [ -d "/etc/sysconfig" ]; then
-        /sbin/iptables-save | sed -e 's/[[0-9]\+:[0-9]\+]/[0:0]/g' -e '/^-A fail2ban-[A-Z]\+ -s .\+$/d' > /etc/sysconfig/iptables
-    else
-        /sbin/iptables-save | sed -e 's/[[0-9]\+:[0-9]\+]/[0:0]/g' -e '/^-A fail2ban-[A-Z]\+ -s .\+$/d' > /etc/iptables.rules
-        iptablesversion="$(iptables --version | head -1 | awk '{print $2}' | cut -f -2 -d .)"
-        sd_unit="/lib/systemd/system/hestia-iptables.service"
-        if [ ! -e "$sd_unit" ]; then
-            {
-                echo "[Unit]"
-                echo "Description=Loading Hestia firewall rules"
-                echo "DefaultDependencies=no"
-                echo "Wants=network-pre.target local-fs.target"
-                echo "Before=network-pre.target"
-                echo "After=local-fs.target"
-                echo ""
-                echo "[Service]"
-                echo "Type=oneshot"
-                echo "RemainAfterExit=yes"
-                echo "ExecStartPre=-${HESTIA}/bin/v-update-firewall-ipset load"
-                if [ "$iptablesversion" = "v1.6" ]; then
-                    echo "ExecStart=/sbin/iptables-restore /etc/iptables.rules"
-                else
-                    echo "ExecStart=/sbin/iptables-restore --wait=10 /etc/iptables.rules"
-                fi
-                echo ""
-                echo "[Install]"
-                echo "WantedBy=multi-user.target"
-            } >> "$sd_unit"
-            systemctl -q daemon-reload
-        fi
-        systemctl -q is-enabled hestia-iptables 2> /dev/null || systemctl -q enable hestia-iptables
-    fi
 fi
 
-# --- Check Custom Trigger ---
+# 添加 ipset 表
+if [ -d "$HESTIA/data/firewall/ipset" ]; then
+    for ipset_file in $(ls $HESTIA/data/firewall/ipset/*.iplist 2>/dev/null); do
+        ipset_base=$(basename "$ipset_file" | cut -f1 -d.)
+        echo "table <${ipset_base}> persist file \"${ipset_file}\"" >> "$pf_tmp"
+    done
+fi
+
+# 默认策略
+cat << 'EOF' >> "$pf_tmp"
+
+# 3. 默认策略：阻止所有入站，允许所有出站
+block in all
+pass out all keep state
+
+# 4. 允许本地 IP
+EOF
+
+# 允许本地 IP
+if [ -d "$HESTIA/data/ips" ]; then
+    for local_ip_file in "$HESTIA/data/ips"/*; do
+        if [ -f "$local_ip_file" ]; then
+            local_ip=$(basename "$local_ip_file")
+            echo "pass in quick from $local_ip to any" >> "$pf_tmp"
+        fi
+    done
+fi
+echo "pass in quick from 127.0.0.1 to any" >> "$pf_tmp"
+echo "pass inet proto icmp icmp-type echoreq" >> "$pf_tmp"
+
+# 5. Fail2ban 阻断规则
+cat << 'EOF' >> "$pf_tmp"
+
+# 5. Fail2ban 动态阻断规则
+EOF
+
+if [ -f "$chains" ]; then
+    for chain_line in $(cat "$chains"); do
+        parse_object_kv_list "$chain_line"
+        c_name=$(echo "$CHAIN" | tr '[:upper:]' '[:lower:]')
+        p_proto=$(echo "$PROTOCOL" | tr '[:upper:]' '[:lower:]')
+        
+        if [[ "$PORT" =~ ,|-|: ]]; then
+            p_port="{ ${PORT//,/ } }"
+            p_port="${p_port//-/:}"
+        else
+            p_port="$PORT"
+        fi
+        
+        if [ "$PORT" = "0" ] || [ "$PROTOCOL" = "ICMP" ]; then
+            echo "block in quick proto ${p_proto} from <fail2ban-${c_name}> to any" >> "$pf_tmp"
+        else
+            echo "block in quick proto ${p_proto} from <fail2ban-${c_name}> to any port ${p_port}" >> "$pf_tmp"
+        fi
+    done
+fi
+
+# 6. 用户自定义规则
+cat << 'EOF' >> "$pf_tmp"
+
+# 6. 用户自定义防火墙规则
+EOF
+
+IFS=$'\n'
+for line in $(sort -r -n -k 2 -t \' "$rules"); do
+    parse_object_kv_list "$line"
+    if [ "$SUSPENDED" = 'no' ]; then
+        p_proto=$(echo "$PROTOCOL" | tr '[:upper:]' '[:lower:]')
+        p_action=$(echo "$ACTION" | tr '[:upper:]' '[:lower:]')
+        
+        [ "$p_action" = "drop" ] && p_action="block"
+        [ "$p_action" = "accept" ] && p_action="pass"
+
+        if [[ "$PORT" =~ ,|-|: ]]; then
+            p_port="{ ${PORT//,/ } }"
+            p_port="${p_port//-/:}"
+        else
+            p_port="$PORT"
+        fi
+
+        if [[ "$IP" =~ ^ipset: ]]; then
+            ipset_name="${IP#ipset:}"
+            p_src="<${ipset_name}_v4>"
+        elif [ "$IP" = "0.0.0.0/0" ] || [ "$IP" = "any" ]; then
+            p_src="any"
+        else
+            p_src="$IP"
+        fi
+
+        if [ "$PORT" = "0" ] || [ "$PROTOCOL" = "ICMP" ]; then
+            echo "${p_action} in proto ${p_proto} from ${p_src} to any keep state" >> "$pf_tmp"
+        else
+            echo "${p_action} in proto ${p_proto} from ${p_src} to any port ${p_port} keep state" >> "$pf_tmp"
+        fi
+    fi
+done
+unset IFS
+
+# 应用配置
+cp -f "$pf_tmp" /etc/pf.conf
+chmod 644 /etc/pf.conf
+rm -f "$pf_tmp"
+
+# 加载防火墙规则
+$pfctl -f /etc/pf.conf > /dev/null 2>&1
+
+# 处理黑名单（动态添加）
+if [ -f "$banlist" ] && [ -n "$FIREWALL_EXTENSION" ]; then
+    for ban in $(cat "$banlist"); do
+        parse_object_kv_list "$ban"
+        c_name=$(echo "$CHAIN" | tr '[:upper:]' '[:lower:]')
+        $pfctl -t "fail2ban-${c_name}" -T add "$IP" >/dev/null 2>&1 || true
+    done
+fi
+
+# 自定义触发脚本
 if [ -x "$HESTIA/data/firewall/custom.sh" ]; then
     bash "$HESTIA/data/firewall/custom.sh"
 fi
@@ -312,6 +212,5 @@ fi
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-# Logging
 log_event "$OK" "$ARGUMENTS"
 exit

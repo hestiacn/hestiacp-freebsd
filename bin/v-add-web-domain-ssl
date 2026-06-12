@@ -26,8 +26,8 @@ domain=$domain
 domain_idn=$(idn2 --quiet "$domain")
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -68,33 +68,38 @@ is_web_domain_cert_valid
 #----------------------------------------------------------#
 
 # Adding certificate to user data directory
-cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/$domain.crt
-cp -f $ssl_dir/$domain.key $USER_DATA/ssl/$domain.key
-cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/$domain.pem
+cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/$domain.crt"
+cp -f "$ssl_dir/$domain.key" "$USER_DATA/ssl/$domain.key"
+cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/$domain.pem"
 if [ -e "$ssl_dir/$domain.ca" ]; then
-	cp -f $ssl_dir/$domain.ca $USER_DATA/ssl/$domain.ca
-	echo >> $USER_DATA/ssl/$domain.pem
-	cat $USER_DATA/ssl/$domain.ca >> $USER_DATA/ssl/$domain.pem
+	cp -f "$ssl_dir/$domain.ca" "$USER_DATA/ssl/$domain.ca"
+	printf "\n" >> "$USER_DATA/ssl/$domain.pem"
+	cat "$USER_DATA/ssl/$domain.ca" >> "$USER_DATA/ssl/$domain.pem"
 fi
 chmod 660 $USER_DATA/ssl/$domain.*
 
 # Ensure SSL directory exists
 if [ ! -d "$HOMEDIR/$user/conf/web/$domain/ssl" ]; then
-	mkdir -p $HOMEDIR/$user/conf/web/$domain/ssl/
+	mkdir -p "$HOMEDIR/$user/conf/web/$domain/ssl/"
 fi
 
 # Adding certificate to user dir
-cp -f $USER_DATA/ssl/$domain.crt $HOMEDIR/$user/conf/web/$domain/ssl/$domain.crt
-cp -f $USER_DATA/ssl/$domain.key $HOMEDIR/$user/conf/web/$domain/ssl/$domain.key
-cp -f $USER_DATA/ssl/$domain.pem $HOMEDIR/$user/conf/web/$domain/ssl/$domain.pem
+cp -f "$USER_DATA/ssl/$domain.crt" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.crt"
+cp -f "$USER_DATA/ssl/$domain.key" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.key"
+cp -f "$USER_DATA/ssl/$domain.pem" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.pem"
 if [ -e "$USER_DATA/ssl/$domain.ca" ]; then
-	cp -f $USER_DATA/ssl/$domain.ca $HOMEDIR/$user/conf/web/$domain/ssl/$domain.ca
+	cp -f "$USER_DATA/ssl/$domain.ca" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.ca"
 fi
 
-if [ "$SSL_FORCE" == "yes" ]; then
+chown -R "$user:www" "$HOMEDIR/$user/conf/web/$domain/ssl"
+chmod 750 "$HOMEDIR/$user/conf/web/$domain/ssl"
+chmod 640 "$HOMEDIR/$user/conf/web/$domain/ssl"/*
+
+if [ "$SSL_FORCE" = "yes" ]; then
 	# Enabling SSL redirection on demand
 	$BIN/v-add-web-domain-ssl-force "$user" "$domain"
 fi
+
 # Parsing domain values
 get_domain_values 'web'
 local_ip=$(get_real_ip "$IP")

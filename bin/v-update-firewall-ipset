@@ -13,9 +13,7 @@
 refresh=${1:-no}
 
 # Includes
-source /etc/profile.d/hestia.sh
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -45,13 +43,8 @@ for ipset_name in $(search_objects "$ipset_hstobject" 'SUSPENDED' 'no' 'LISTNAME
 		continue
 	fi
 
-	if [ "$OS" = "freebsd" ]; then
-		last_updated_ts=$(date -j -f "%Y-%m-%d %H:%M:%S" "$ipset_date $ipset_time" +%s 2>/dev/null)
-		[ -z "$last_updated_ts" ] && last_updated_ts=$(date -j -f "%Y-%m-%d" "$ipset_date" +%s 2>/dev/null)
-	else
-		# Linux 原版写法
-		last_updated_ts=$(date -d "$ipset_date $ipset_time" +%s)
-	fi
+	last_updated_ts=$(date -j -f "%H:%M:%S %Y-%m-%d" "$ipset_time $ipset_date" +%s 2>/dev/null)
+	[ -z "$last_updated_ts" ] && last_updated_ts=$(date -j -f "%Y-%m-%d" "$ipset_date" +%s 2>/dev/null)
 
 	[ -z "$last_updated_ts" ] && last_updated_ts=0
 

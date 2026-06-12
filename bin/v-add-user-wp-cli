@@ -1,10 +1,11 @@
 #!/bin/bash
-# info: add wp-cli for a user
+# info: add wp-cli for a user on FreeBSD
 # options: USER
 #
 # example: v-add-user-wp-cli user
 #
 # This function adds support for wp-cli to the user account
+# Homepage: <https://wp-cli.org>
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -18,8 +19,9 @@ if [ -z "$HESTIA" ]; then
 	HESTIA="/usr/local/hestia"
 fi
 
+# Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -53,13 +55,13 @@ if [ -f "$WPCLI_BIN" ]; then
 	exit
 fi
 
-[ -z "$(readlink -m "$WPCLI_DIR" | egrep "^$HOMEDIR/$user/")" ] && check_result "$E_FORBIDEN" "Path outside of user homedir (WP Cli dir)"
-[ -z "$(readlink -m "$WPCLI_BIN" | egrep "^$HOMEDIR/$user/")" ] && check_result "$E_FORBIDEN" "Path outside of user homedir (WP Cli bin)"
+[ -z "$(/usr/bin/realpath -q "$WPCLI_DIR" | egrep "^$HOMEDIR/$user/")" ] && check_result "$E_FORBIDEN" "Path outside of user homedir (WP Cli dir)"
+[ -z "$(/usr/bin/realpath -q "$WPCLI_BIN" | egrep "^$HOMEDIR/$user/")" ] && check_result "$E_FORBIDEN" "Path outside of user homedir (WP Cli bin)"
 
 mkdir -p "$WPCLI_DIR"
 chown $user:$user "$WPCLI_DIR"
 
-user_exec wget --tries=3 --timeout=15 --read-timeout=15 --waitretry=3 --no-dns-cache --quiet -O "$WPCLI_BIN" https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+user_exec fetch -q -T15 -w3 -o "$WPCLI_BIN" https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
 user_exec chmod +x "$WPCLI_BIN"
 echo "alias wp=/home/"$user"/.wp-cli/wp" >> /home/$user/.bash_aliases
 
@@ -71,4 +73,4 @@ echo "alias wp=/home/"$user"/.wp-cli/wp" >> /home/$user/.bash_aliases
 $BIN/v-log-action "$user" "Info" "Plugins" "WP-CLI support enabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

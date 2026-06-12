@@ -1,10 +1,10 @@
 #!/bin/bash
-# info: add ftp account for web domain.
+# info: add ftp account for web domain on FreeBSD
 # options: USER DOMAIN FTP_USER FTP_PASSWORD [FTP_PATH]
 #
 # example: v-add-web-domain-ftp alice wonderland.com alice_ftp p4$$vvOrD
 #
-# This function creates additional ftp account for web domain.
+# This function creates additional ftp account for web domain natively on FreeBSD.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -20,8 +20,7 @@ HIDE=4
 ftp_path=$5
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -32,7 +31,6 @@ source_conf "$HESTIA/conf/hestia.conf"
 # Additional argument formatting
 format_domain
 format_domain_idn
-# TODO: $domain_idn not used in this script - maybe $domain should be converted to $doman_idn ?
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -45,6 +43,7 @@ is_object_valid 'user' 'USER' "$user"
 is_object_unsuspended 'user' 'USER' "$user"
 is_object_valid 'web' 'DOMAIN' "$domain"
 is_object_unsuspended 'web' 'DOMAIN' "$domain"
+
 check_ftp_user=$(grep "^$ftp_user:" /etc/passwd)
 if [ -n "$check_ftp_user" ] && [ "$FTP_USER" != "$ftp_user" ]; then
 	echo "Error: ftp user $ftp_user already exists"
@@ -73,9 +72,8 @@ fi
 if [ -z "$ftp_path" ]; then
 	ftp_path_a="$HOMEDIR/$user/web/$domain"
 else
-	# Validating absolute path
-	ftp_path_a=$(readlink -f "$HOMEDIR/$user/web/$domain/$ftp_path")
-	if [ -z "$(echo $ftp_path_a | grep $HOMEDIR/$user/web/$domain)" ]; then
+	ftp_path_a=$(/usr/bin/realpath -q "$HOMEDIR/$user/web/$domain/$ftp_path")
+	if [ -z "$(echo "$ftp_path_a" | grep "$HOMEDIR/$user/web/$domain")" ]; then
 		echo "Error: absolute path $ftp_path_a is invalid"
 		log_event "$E_INVALID" "$ARGUMENTS"
 		exit "$E_INVALID"
@@ -84,30 +82,21 @@ else
 	# Creating ftp user home directory
 	if [ ! -e "$ftp_path_a" ]; then
 		mkdir -p "$ftp_path_a"
-		chown --no-dereference $user:$user "$ftp_path_a"
+		chown -h $user:$user "$ftp_path_a"
 		chmod 751 "$ftp_path_a"
 	fi
 fi
 
-# Adding ftp user
-/usr/sbin/useradd $ftp_user \
-	-s $shell \
-	-o -u $(id -u $user) \
-	-g $(id -g $user) \
-	-G hestia-users \
-	-M -d "$ftp_path_a" > /dev/null 2>&1
-
-# Set ftp user password
-echo "$ftp_user:$password" | /usr/sbin/chpasswd
+echo "$password" | /usr/sbin/pw useradd "$ftp_user" -h 0 -s "$shell" -o -u "$(id -u "$user")" -g "$(id -g "$user")" -m -d "$ftp_path_a" > /dev/null 2>&1
 
 if [ $? -ne 0 ]; then
-	# Delete user on failure again
-	/usr/sbin/deluser "$ftp_user" > /dev/null 2>&1
+	/usr/sbin/pw userdel "$ftp_user" -r > /dev/null 2>&1
 	echo "Error: Password not accepted due to PAM restrictions"
 	exit 2
 fi
 
-ftp_md5=$(awk -v user=$ftp_user -F : 'user == $1 {print $2}' /etc/shadow)
+/usr/sbin/pw groupmod "hestia-users" -m "$ftp_user"
+ftp_md5=$(awk -v u="$ftp_user" -F : 'u == $1 {print $2}' /etc/master.passwd)
 
 # Adding jailed sftp env
 $BIN/v-add-user-sftp-jail "$ftp_user"
@@ -117,7 +106,7 @@ $BIN/v-add-user-sftp-jail "$ftp_user"
 #----------------------------------------------------------#
 
 # Transforming absolute path to relative
-ftp_path_r=$(echo $ftp_path_a | sed "s%$HOMEDIR/$user/web/$domain%%")
+ftp_path_r=$(echo "$ftp_path_a" | sed "s%$HOMEDIR/$user/web/$domain%%")
 
 # Concatenating ftp variables
 if [ ! -z "$FTP_USER" ]; then
@@ -138,4 +127,4 @@ update_object_value 'web' 'DOMAIN' "$domain" '$FTP_PATH' "$ftp_path"
 $BIN/v-log-action "$user" "Info" "Web" "Added new FTP account (Name: ${1}_${3}@$domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

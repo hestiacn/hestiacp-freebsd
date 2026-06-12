@@ -21,7 +21,7 @@ type=$3
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -60,10 +60,9 @@ get_domain_values 'web'
 # Adding statistic config
 prepare_web_domain_values
 
-if [ -z "${aliases//,/ }" ]; then
+stats_alias=$(echo "$aliases_idn" | tr ',' ' ')
+if [ -z "$stats_alias" ]; then
 	stats_alias="localhost"
-else
-	stats_alias=${aliases_idn//,/ }
 fi
 
 cat $WEBTPL/$type/$type.tpl \
@@ -83,10 +82,11 @@ cat $WEBTPL/$type/$type.tpl \
 		-e "s|%alias_idn%|$stats_alias|g" \
 		> $HOMEDIR/$user/conf/web/$domain/$type.conf
 
-if [ "$type" == 'awstats' ]; then
-	rm -f /etc/awstats/$type.$domain_idn.conf
-	ln -s $HOMEDIR/$user/conf/web/$domain/$type.conf \
-		/etc/awstats/$type.$domain_idn.conf
+if [ "$type" = 'awstats' ]; then
+	mkdir -p /usr/local/etc/awstats
+	rm -f /usr/local/etc/awstats/$type.$domain_idn.conf
+	ln -f -s $HOMEDIR/$user/conf/web/$domain/$type.conf \
+		/usr/local/etc/awstats/$type.$domain_idn.conf
 fi
 
 #----------------------------------------------------------#

@@ -11,8 +11,7 @@
 #----------------------------------------------------------#
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -22,7 +21,7 @@ source_conf "$HESTIA/conf/hestia.conf"
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-if [ "$FIREWALL_SYSTEM" = 'iptables' ]; then
+if [ "$FIREWALL_SYSTEM" = 'pf' ]; then
 	exit
 fi
 
@@ -36,11 +35,9 @@ check_hestia_demo_mode
 # Adding default ruleset
 if [ -z "$(ls -A $HESTIA/data/firewall 2> /dev/null)" ]; then
 	cp -rf $HESTIA_COMMON_DIR/firewall $HESTIA/data/
-	rm -f $HESTIA/data/firewall/ipset/blacklist.sh $HESTIA/data/firewall/ipset/blacklist.ipv6.sh
 fi
 
-# Updating FIREWAL_SYSTEM value
-$BIN/v-change-sys-config-value "FIREWALL_SYSTEM" "iptables"
+$BIN/v-change-sys-config-value "FIREWALL_SYSTEM" "pf"
 
 # Updating firewall rules
 $BIN/v-update-firewall

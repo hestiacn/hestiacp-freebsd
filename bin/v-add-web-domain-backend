@@ -18,7 +18,7 @@ restart=$4
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -77,7 +77,7 @@ if [ -n "$CUSTOM_DOCROOT" ]; then
 	if [ -n "$CUSTOM_PHPROOT" ]; then
 		docroot="$CUSTOM_PHPROOT"
 	fi
-	sed -i "s|/home\/$user\/web\/$domain\/public_html|$docroot|g" $pool/$backend_type.conf
+	sed -i "" "s|/home\/$user\/web\/$domain\/public_html|$docroot|g" $pool/$backend_type.conf
 else
 	docroot="$HOMEDIR/$user/web/$domain/public_html/"
 fi
@@ -94,4 +94,4 @@ check_result $? "PHP restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "Web" "Web domain configuration applied (Domain: $domain, Backend: $WEB_BACKEND)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

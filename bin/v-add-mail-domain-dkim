@@ -17,8 +17,7 @@ domain_idn=$2
 dkim_size=${3-2048}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -27,11 +26,7 @@ source $HESTIA/func/domain.sh
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Define mail user
-if [ "$MAIL_SYSTEM" = 'exim4' ]; then
-	MAIL_USER=Debian-exim
-else
-	MAIL_USER=exim
-fi
+MAIL_USER=mailnull
 
 # Additional argument formatting
 format_domain

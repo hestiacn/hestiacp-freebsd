@@ -22,7 +22,7 @@ path=${5-/backup}
 port=$6
 
 # CPU Architecture
-arch=$(arch)
+arch=$(uname -m)
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
@@ -38,7 +38,6 @@ source_conf "$HESTIA/install/upgrade/upgrade.conf"
 
 # Paths
 b2cli="/usr/local/bin/b2"
-b2lnk="https://github.com/Backblaze/B2_Command_Line_Tool/releases/download/v$b2_v/b2-linux"
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -74,14 +73,12 @@ if [ "$type" != 'local' ]; then
 	fi
 fi
 
-# Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Checking network connection
 if [ "$type" = 'ftp' ]; then
 	if [ -z $port ]; then
 		port=21
@@ -101,7 +98,6 @@ if [ "$type" = 'ftp' ]; then
 		exit "$E_CONNECT"
 	fi
 
-	# Checking write permissions
 	if [ -z $path ]; then
 		ftmpdir="vst.bK76A9SUkt"
 	else
@@ -151,13 +147,12 @@ if [ "$type" = 'sftp' ]; then
 fi
 
 if [ "$type" = 'b2' ]; then
-	# Download b2 binary
 	if [ ! -f "$b2cli" ]; then
 		if [ "$arch" = 'aarch64' ] || [ "$arch" = 'arm64' ]; then
 			echo "Error: B2 binary for arm64 must be downloaded manually."
 			exit 3
 		else
-			wget -O $b2cli $b2lnk > /dev/null 2>&1
+			pkg install -y py311-b2 > /dev/null 2>&1
 			chmod +x $b2cli > /dev/null 2>&1
 		fi
 		if [ ! -f "$b2cli" ]; then
@@ -166,11 +161,12 @@ if [ "$type" = 'b2' ]; then
 		fi
 	fi
 
-	# Validate b2 binary
-	b2version="$(b2 version)"
-	if [[ ! "$b2version" =~ "b2 command line tool" ]]; then
-		echo "Error: Binary download failed, b2 doesn't work as expected."
-		exit 3
+	b2version="$(b2 version 2>/dev/null)"
+	if [[ -z "$b2version" ]]; then
+		if [ ! -x "$b2cli" ]; then
+			echo "Error: Binary verification failed, b2 doesn't work as expected."
+			exit 3
+		fi
 	fi
 
 	b2 clear-account > /dev/null 2>&1
@@ -183,11 +179,10 @@ if [ "$type" = 'b2' ]; then
 fi
 
 if [ "$type" = 'rclone' ]; then
-	curl -s https://rclone.org/install.sh | bash /dev/null > /dev/null 2>&1
-	# Verify account exists
-	if [ ! -z "$(cat /root/.config/rclone/rclone.conf | grep "\[$host\]")" ]; then
+	pkg install -y rclone > /dev/null 2>&1
+	
+	if [ ! -z "$(cat /root/.config/rclone/rclone.conf 2>/dev/null | grep "\[$host\]")" ]; then
 		echo "test" > /tmp/hestia-backup.txt
-		# Try to upload a single file
 		if [ -z "$path" ]; then
 			rclone copy /tmp/hestia-backup.txt $host:/hestia-backup.txt
 			rclone delete $host:/hestia-backup.txt
@@ -205,19 +200,19 @@ if [ $type == 'ftp' ] || [ $type = 'sftp' ]; then
 	new_timestamp
 	str="HOST='$host'\nUSERNAME='$user'\nPASSWORD='$password'\nPRIVATEKEY='$privatekey'"
 	str="$str\nBPATH='$path'\nPORT='$port'\nTIME='$time'\nDATE='$date'"
-	echo -e "$str" > $HESTIA/conf/$type.backup.conf
+	printf "%b\n" "$str" > $HESTIA/conf/$type.backup.conf
 	chmod 660 $HESTIA/conf/$type.backup.conf
 elif [ $type == 'b2' ]; then
 	new_timestamp
 	str="BUCKET='$host'\nB2_KEYID='$user'\nB2_KEY='$raw_password'"
 	str="$str\nTIME='$time'\nDATE='$date'"
-	echo -e "$str" > $HESTIA/conf/$type.backup.conf
+	printf "%b\n" "$str" > $HESTIA/conf/$type.backup.conf
 	chmod 660 $HESTIA/conf/$type.backup.conf
 elif [ $type == "rclone" ]; then
 	new_timestamp
 	str="HOST='$host'\nBPATH='$path'"
 	str="$str\nTIME='$time'\nDATE='$date'"
-	echo -e "$str" > $HESTIA/conf/$type.backup.conf
+	printf "%b\n" "$str" > $HESTIA/conf/$type.backup.conf
 fi
 
 #----------------------------------------------------------#
@@ -233,10 +228,8 @@ else
 		| sort -r -u \
 		| sed "/^$/d" \
 		| sed ':a;N;$!ba;s/\n/,/g')
-	sed -i "s/BACKUP_SYSTEM=.*/BACKUP_SYSTEM='$bckp'/g" $HESTIA/conf/hestia.conf
+	sed -i "" "s/BACKUP_SYSTEM=.*/BACKUP_SYSTEM='$bckp'/g" $HESTIA/conf/hestia.conf
 fi
 
-# Logging
 log_event "$OK" "$ARGUMENTS"
-
 exit

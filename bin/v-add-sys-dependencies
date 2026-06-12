@@ -9,8 +9,8 @@
 #----------------------------------------------------------#
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# 修正：将 Linux 的 /etc/hestiacp/ 重定向为 FreeBSD 标准的 /usr/local/etc/hestia/
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -62,13 +62,16 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 cd "$PM_INSTALL_DIR"
-rm --recursive --force ${PM_INSTALL_DIR}/vendor
+# 修正：将不支持的 --recursive --force 长参数平替为标准的 -rf，防止 rm 抛出 illegal option 报错
+rm -rf ${PM_INSTALL_DIR}/vendor
 mkdir -p ${PM_INSTALL_DIR}/vendor
-chown $user: -R ${PM_INSTALL_DIR}/vendor
+# 修正：规范所有权组映射，对齐 FreeBSD 架构
+chown -R $user: "${PM_INSTALL_DIR}/vendor"
 
 openssl_installed=$(/usr/local/hestia/php/bin/php -m | grep openssl)
 if [ -z "$openssl_installed" ]; then
-	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/bin/php $COMPOSER_BIN --quiet --no-dev install
+	# 修正：将 Linux 的 /usr/bin/php 纠正为 FreeBSD 官方的 /usr/local/bin/php 物理可执行文件路径 [INDEX]
+	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/local/bin/php $COMPOSER_BIN --quiet --no-dev install
 else
 	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec $HESTIA_PHP $COMPOSER_BIN --quiet --no-dev install
 fi
@@ -80,19 +83,20 @@ if [ $? -ne 0 ]; then
 	echo "https://github.com/hestiacp/hestiacp/issues"
 	$BIN/v-add-user-notification "$ROOT_USER" 'Hestia PHP dependencies installation failed!' '<p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a> to report this to our development team.</p>'
 	# Installation failed, clean up files
-	rm --recursive --force ${PM_INSTALL_DIR}/vendor
+	rm -rf ${PM_INSTALL_DIR}/vendor
 	$BIN/v-change-sys-config-value 'USE_SERVER_SMTP' 'n'
 	$BIN/v-log-action "system" "Error" "Plugins" "PHP dependencies installation failed"
 	exit 1
 fi
 
 cd "$QUICK_INSTALL_DIR"
-rm --recursive --force ${QUICK_INSTALL_DIR}/vendor
+rm -rf ${QUICK_INSTALL_DIR}/vendor
 mkdir -p ${QUICK_INSTALL_DIR}/vendor
-chown $user: -R ${QUICK_INSTALL_DIR}/vendor
+chown -R $user: "${QUICK_INSTALL_DIR}/vendor"
 
 if [ -z "$openssl_installed" ]; then
-	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/bin/php $COMPOSER_BIN --quiet --no-dev install
+	# 修正：纠正回落的 PHP 二进制路径为 /usr/local/bin/php [INDEX]
+	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/local/bin/php $COMPOSER_BIN --quiet --no-dev install
 else
 	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec $HESTIA_PHP $COMPOSER_BIN --quiet --no-dev install
 fi
@@ -104,14 +108,15 @@ if [ $? -ne 0 ]; then
 	echo "https://github.com/hestiacp/hestiacp/issues"
 	$BIN/v-add-user-notification "$ROOT_USER" 'Hestia Quick Install dependencies installation failed!' '<p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a> to report this to our development team.</p>'
 	# Installation failed, clean up files
-	rm --recursive --force ${QUICK_INSTALL_DIR}/vendor
+	rm -rf ${QUICK_INSTALL_DIR}/vendor
 	$BIN/v-log-action "system" "Error" "Plugins" "Quick Install dependencies installation failed"
 	exit 1
 fi
 
 # Set permissions
-chown root: -R "${PM_INSTALL_DIR}/vendor"
-chown root: -R "${QUICK_INSTALL_DIR}/vendor"
+# 核心修正：FreeBSD 的 root 专属管理组为 wheel，显式进行 root:wheel 锁定，保障底层安全性
+chown -R root:wheel "${PM_INSTALL_DIR}/vendor"
+chown -R root:wheel "${QUICK_INSTALL_DIR}/vendor"
 
 #----------------------------------------------------------#
 #                       Logging                            #

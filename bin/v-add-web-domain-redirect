@@ -23,8 +23,8 @@ code=${4-301}
 restart=${5-no}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -56,7 +56,7 @@ if [[ "$3" =~ http://|https:// ]]; then
 		redirect="$scheme://$host:$port$path"
 	fi
 
-	isValidUrl=$(php -r '$url=$argv[1]; $url=filter_var($url,FILTER_VALIDATE_URL); echo $url;' "$redirect")
+	isValidUrl=$($HESTIA_PHP -r '$url=$argv[1]; $url=filter_var($url,FILTER_VALIDATE_URL); echo $url;' "$redirect")
 	if [ -z "$isValidUrl" ]; then
 		check_result $E_INVALID "Invalid redirect"
 	fi
@@ -72,7 +72,7 @@ else
 		redirect="$host:$port$path"
 	fi
 
-	isValidUrl=$(php -r '$url=$argv[1]; $url=filter_var($url,FILTER_VALIDATE_URL); echo $url;' "http://$redirect")
+	isValidUrl=$($HESTIA_PHP -r '$url=$argv[1]; $url=filter_var($url,FILTER_VALIDATE_URL); echo $url;' "http://$redirect")
 	if [ -z "$isValidUrl" ]; then
 		check_result $E_INVALID "Invalid redirect"
 	fi
@@ -97,7 +97,7 @@ if [ -n "$path" ]; then
 	lastchr=${path#${path%?}}
 	if [ "$lastchr" = "/" ]; then
 		requesturi=1
-		redirect=${redirect:0:-1}
+		redirect="${redirect%?}"
 	fi
 else
 	requesturi=1
@@ -107,24 +107,24 @@ fi
 if [ -n "$PROXY_SYSTEM" ] || [ "$WEB_SYSTEM" = 'nginx' ]; then
 	if [ "$scheme_check" = 1 ]; then
 		if [ "$requesturi" = 1 ]; then
-			echo "   return $code $redirect\$request_uri;" > $conf
+			echo "   return $code $redirect\$request_uri;" > "$conf"
 		else
-			echo "   return $code $redirect;" > $conf
+			echo "   return $code $redirect;" > "$conf"
 		fi
 		if [ ! -e "$sconf" ]; then
-			ln -s "$conf" "$sconf"
+			ln -f -s "$conf" "$sconf"
 		fi
 	else
-		echo "if (\$host != \"$redirect\") {" > $conf
+		echo "if (\$host != \"$redirect\") {" > "$conf"
 		if [ "$requesturi" = 1 ]; then
-			echo "   return $code \$scheme://$redirect\$request_uri;" >> $conf
+			echo "   return $code \$scheme://$redirect\$request_uri;" >> "$conf"
 		else
-			echo "   return $code \$scheme://$redirect;" >> $conf
+			echo "   return $code \$scheme://$redirect;" >> "$conf"
 		fi
-		echo "}" >> $conf
+		echo "}" >> "$conf"
 
 		if [ ! -e "$sconf" ]; then
-			ln -s "$conf" "$sconf"
+			ln -f -s "$conf" "$sconf"
 		fi
 	fi
 else
@@ -159,4 +159,4 @@ fi
 $BIN/v-log-action "$user" "Info" "Web" "Domain redirection enabled (Domain: $domain, Redirect to: $redirect)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

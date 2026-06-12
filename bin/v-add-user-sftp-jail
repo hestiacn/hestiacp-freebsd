@@ -1,10 +1,10 @@
 #!/bin/bash
-# info: add user sftp jail
+# info: add user sftp jail for FreeBSD
 # options: USER [RESTART]
 #
 # example: v-add-user-sftp-jail admin
 #
-# This function enables sftp jailed environment
+# This function enables sftp jailed environment natively on FreeBSD
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -15,12 +15,30 @@ user=$1
 restart=$2
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
+
+check_user_in_jail_list() {
+	local check_list="$1"
+	local target_user="$2"
+	local old_ifs="$IFS"
+	
+	IFS=','
+	set -- $check_list
+	IFS="$old_ifs"
+
+	for existing_user in "$@"; do
+		if [ "$existing_user" = "$target_user" ]; then
+			if [[ -d "/home/$target_user" && -z "$(find /home/$target_user -user root -print -prune -o -prune)" ]]; then
+				chown root:root "/home/$target_user"
+			fi
+			exit 0
+		fi
+	done
+}
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -32,7 +50,7 @@ check=$(is_object_valid 'user' 'USER' "$user")
 if [ $? -ne 0 ]; then
 	user_str=$(grep "^$user:" /etc/passwd | egrep "rssh|nologin")
 	#try to detect "owner" of the ftp_user if not found dont set it up
-	user_owner=$(echo $user_str | cut -f6 -d : | cut -f3 -d /)
+	user_owner=$(echo "$user_str" | cut -f6 -d : | cut -f3 -d /)
 	is_object_valid 'user' 'USER' "$user_owner"
 fi
 user_str=$(grep "^$user:" /etc/passwd | egrep "rssh|nologin")
@@ -40,18 +58,9 @@ if [ -z "$user_str" ]; then
 	exit
 fi
 
-# Get current users and split into array
+# 获取当前已经加入 SFTP 沙箱的原始逗号分隔字符串列表
 ssh_users=$(grep -A1 "^# Hestia SFTP Chroot" /etc/ssh/sshd_config | sed -n 2p | sed 's/Match User //')
-IFS=',' read -r -a users <<< "$ssh_users"
-
-# Check if jail exist
-match_string="$ssh_users,"
-if [[ "$match_string" =~ ,$user, ]]; then
-	if [[ -d /home/$user && -z "$(find /home/$user -user root -print -prune -o -prune)" ]]; then
-		chown root:root /home/$user
-	fi
-	exit
-fi
+check_user_in_jail_list "$ssh_users" "$user"
 
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
@@ -60,20 +69,17 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Add user to array
-users+=($user)
+if [ -z "$ssh_users" ]; then
+	new_users="$user"
+else
+	new_users="${ssh_users},${user}"
+fi
 
-# Write new user list to config
-users=$(
-	IFS=','
-	echo "${users[*]// /|}"
-	IFS=$' \t\n'
-)
-sed -i "s/$ssh_users/$users/g" /etc/ssh/sshd_config
+sed -i "" "s/Match User $ssh_users/Match User $new_users/g" /etc/ssh/sshd_config
 
 # Set home folder permission to root
 if [ -d "/home/$user" ]; then
-	chown root:root /home/$user
+	chown root:root "/home/$user"
 fi
 add_chroot_jail "$user"
 
@@ -86,10 +92,10 @@ if [ "$restart" = 'no' ]; then
 	# Skip restart of SSH daemon
 	echo "" > /dev/null 2>&1
 else
-	service ssh restart > /dev/null 2>&1
+	service sshd restart > /dev/null 2>&1
 fi
 
 # Logging
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -30,8 +30,8 @@ restart=${12}
 dnssec=${13}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# 核心修正：对齐为您在 FreeBSD 上亲自创立的具有 cp 后缀的全局基础配置目录
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -134,7 +134,8 @@ if [ -z $ns2 ]; then
 	done
 fi
 soa="$ns1"
-exp=$(date +%F -d "+ 1 year")
+
+exp=$(date -v+1y +'%Y-%m-%d')
 serial=$(date +'%Y%m%d01')
 ttl=14400
 
@@ -165,7 +166,7 @@ if [ -z "$dnssec" ]; then
 fi
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 

@@ -32,8 +32,7 @@ dns_user=${6-dns-cluster}
 DNS_USER=$dns_user
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/remote.sh
@@ -72,7 +71,7 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -94,11 +93,11 @@ chmod 660 $HESTIA/conf/dns-cluster.conf
 
 # Enabling DNS_CLUSTER
 if [ -z "$(grep DNS_CLUSTER= $HESTIA/conf/hestia.conf)" ]; then
-	sed -i "s/^STATS_/DNS_CLUSTER='yes'\nSTATS_/g" $HESTIA/conf/hestia.conf
+    sed -i "" "s/^STATS_/DNS_CLUSTER='yes'\\
+STATS_/g" $HESTIA/conf/hestia.conf
 else
-	sed -i "s/DNS_CLUSTER=.*/DNS_CLUSTER='yes'/g" $HESTIA/conf/hestia.conf
+    sed -i "" "s/DNS_CLUSTER=.*/DNS_CLUSTER='yes'/g" $HESTIA/conf/hestia.conf
 fi
-
 # Enabling remote dns-cluster queue
 cluster_cmd v-add-cron-restart-job
 check_result $? "$HOST connection failed" "$E_CONNECT"
@@ -118,16 +117,14 @@ check_result $? "$HOST sync failed" "$E_CONNECT"
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-# Adding local  dns-cluster cron job
+# Adding local dns-cluster cron job
 cmd="v-update-sys-queue dns-cluster"
-check_cron=$(grep "$cmd" "/var/spool/cron/crontabs/hestiaweb" 2> /dev/null)
+cron_file="/var/cron/tabs/hestiaweb"
+check_cron=$(grep "$cmd" "$cron_file" 2> /dev/null)
 if [ -z "$check_cron" ] && [ ! -z "$CRON_SYSTEM" ]; then
 	min='*/5'
 	hour='*'
-	day='*'
-	month='*'
-	wday='*'
-	sed -i -e "\$a$min $hour * * * sudo /usr/local/hestia/bin/$cmd" "/var/spool/cron/crontabs/hestiaweb"
+	printf "\n%s %s * * * /usr/local/hestia/bin/%s\n" "$min" "$hour" "$cmd" >> "$cron_file"
 fi
 
 # Logging

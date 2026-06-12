@@ -10,8 +10,7 @@
 #----------------------------------------------------------#
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -65,23 +64,23 @@ check_hestia_demo_mode
 
 openssl_installed=$(/usr/local/hestia/php/bin/php -m | grep openssl)
 
-rm --recursive --force "$FM_INSTALL_DIR"
+rm -rf "$FM_INSTALL_DIR"
 mkdir -p "$FM_INSTALL_DIR"
 cd "$FM_INSTALL_DIR"
 
-[ ! -f "${FM_INSTALL_DIR}/${FM_FILE}" ] && wget "$FM_URL" --quiet -O "${FM_INSTALL_DIR}/${FM_FILE}.zip"
+[ ! -f "${FM_INSTALL_DIR}/${FM_FILE}" ] && fetch -q -T15 -w2 -o "${FM_INSTALL_DIR}/${FM_FILE}.zip" "$FM_URL"
 
 unzip -qq "${FM_INSTALL_DIR}/${FM_FILE}.zip"
-mv --force ${FM_INSTALL_DIR}/filegator/* "${FM_INSTALL_DIR}"
-rm --recursive --force ${FM_INSTALL_DIR}/${FM_FILE}
+mv -f ${FM_INSTALL_DIR}/filegator/* "${FM_INSTALL_DIR}"
+rm -rf ${FM_INSTALL_DIR}/${FM_FILE}
 [[ -f "${FM_INSTALL_DIR}/${FM_FILE}" ]] && rm "${FM_INSTALL_DIR}/${FM_FILE}"
 
-cp --recursive --force ${HESTIA_INSTALL_DIR}/filemanager/filegator/* "${FM_INSTALL_DIR}"
+cp -Rf ${HESTIA_INSTALL_DIR}/filemanager/filegator/* "${FM_INSTALL_DIR}"
 
-chown $user: -R "${FM_INSTALL_DIR}"
+chown -R $user: "${FM_INSTALL_DIR}"
 
 if [ -z "$openssl_installed" ]; then
-	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/bin/php $COMPOSER_BIN --quiet --no-dev install
+	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/local/bin/php $COMPOSER_BIN --quiet --no-dev install
 else
 	COMPOSER_HOME="$HOMEDIR/$user/.config/composer" user_exec /usr/local/hestia/php/bin/php $COMPOSER_BIN --quiet --no-dev install
 fi
@@ -93,7 +92,7 @@ if [ $? -ne 0 ]; then
 	echo "https://github.com/hestiacp/hestiacp/issues"
 	$BIN/v-add-user-notification "$ROOT_USER" 'File Manager installation failed!' '<p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a> to report this to our development team.</p>'
 	# Installation failed, clean up files
-	rm --recursive --force ${FM_INSTALL_DIR}
+	rm -rf ${FM_INSTALL_DIR}
 	$BIN/v-change-sys-config-value 'FILE_MANAGER' 'false'
 	$BIN/v-log-action "system" "Error" "Plugins" "File Manager installation failed (Version: $fm_v)."
 	exit 1
@@ -106,12 +105,12 @@ cp -f $HESTIA_INSTALL_DIR/filemanager/filegator/configuration.php $HESTIA/web/fm
 config_file="$HESTIA/web/fm/configuration.php"
 app_name="File Manager - $APP_NAME"
 
-# Sed replaces only the value after "File Manager -"
-sed -i "s|\(\$dist_config\[\"frontend_config\"\]\[\"app_name\"\] = \"File Manager - \).*\";|\1${APP_NAME}\";|" "$config_file"
+sed -i "" "s|\(\$dist_config\[\"frontend_config\"\]\[\"app_name\"\] = \"File Manager - \).*\";|\1${APP_NAME}\";|" "$config_file"
 
 echo "$fm_v" > "${FM_INSTALL_DIR}/version"
+
 # Set permissions
-chown root: -R "${FM_INSTALL_DIR}"
+chown -R root:wheel "${FM_INSTALL_DIR}"
 chown hestiaweb: "${FM_INSTALL_DIR}/private"
 chown hestiaweb: "${FM_INSTALL_DIR}/private/logs"
 chown hestiaweb: "${FM_INSTALL_DIR}/repository"

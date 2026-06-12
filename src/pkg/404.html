@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="zh-CN" dir="ltr">
+	<head>
+		<meta charset="utf-8" />
+		<meta
+			name="viewport"
+			content="width=device-width,initial-scale=1.0,maximum-scale=5.0,minimum-scale=1.0,viewport-fit=cover"
+		/>
+		<meta name="theme-color" content="#ffcc33" />
+		<meta
+			name="description"
+			content="HestiaCP - 开源的现代化服务器控制面板，提供简单高效的网站与服务器管理解决方案"
+		/>
+		<meta name="keywords" content="服务器面板,网站管理,VPS管理,开源控制面板,Linux服务器管理" />
+		<link rel="icon" href="https://hestiacp.com/favicon.ico" type="image/x-icon" />
+		<link rel="apple-touch-icon" href="https://hestiacp.com/apple-touch-icon.png" />
+		<title>404-未找到</title>
+		<style>
+			a {
+				text-decoration: none;
+			}
+			.color-overlay {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				mix-blend-mode: multiply;
+				pointer-events: none;
+				opacity: 0.3;
+			}
+			html,
+			body {
+				height: 100%;
+				min-height: 450px;
+				font-size: 32px;
+				font-weight: 500;
+				color: #5d7399;
+				margin: 0;
+				padding: 0;
+				border: 0;
+				font-family:
+					-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+					"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+					"Noto Color Emoji";
+			}
+			.icon-large {
+				height: 132px;
+				width: 132px;
+			}
+			.info {
+				fill: #5d7399;
+			}
+			.content {
+				height: 100%;
+				position: relative;
+				z-index: 1;
+				background-color: #d2e1ec;
+				background-image: -webkit-linear-gradient(top, #bbcfe1 0%, #e8f2f6 80%);
+				background-image: linear-gradient(to bottom, #bbcfe1 0%, #e8f2f6 80%);
+				overflow: hidden;
+			}
+
+			.snow {
+				position: absolute;
+				top: 0;
+				left: 0;
+				pointer-events: none;
+				z-index: 20;
+			}
+
+			.main-text {
+				text-align: center;
+				line-height: 2em;
+				font-size: 2vh;
+			}
+
+			.main-text h1 {
+				font-size: 45px;
+				line-height: 48px;
+				margin: 0;
+				padding: 0;
+			}
+
+			.main-text-a {
+				height: 32px;
+				margin-left: auto;
+				margin-right: auto;
+				text-align: center;
+			}
+
+			.main-text-a a {
+				font-size: 16px;
+				text-decoration: none;
+				color: #0066cc;
+			}
+
+			.main-text-a a:hover {
+				color: #000;
+			}
+
+			.home-link {
+				font-size: 0.6em;
+				font-weight: 400;
+				color: inherit;
+				text-decoration: none;
+				opacity: 0.6;
+				border-bottom: 1px dashed rgba(93, 115, 153, 0.5);
+			}
+
+			.ground {
+				height: 160px;
+				width: 100%;
+				position: absolute;
+				bottom: 0;
+				left: 0;
+				background: #f6f9fa;
+				box-shadow: 0 0 10px 10px #f6f9fa;
+			}
+
+			.ground:before,
+			.ground:after {
+				content: "";
+				display: block;
+				width: 250px;
+				height: 250px;
+				position: absolute;
+				top: -62.5px;
+				z-index: -1;
+				background: transparent;
+				-webkit-transform: scaleX(0.2) rotate(45deg);
+				transform: scaleX(0.2) rotate(45deg);
+			}
+
+			.ground:after {
+				left: 50%;
+				margin-left: -166.66667px;
+				box-shadow:
+					-340px 260px 15px #8193b2,
+					-620px 580px 15px #8193b2,
+					-900px 900px 15px #b0bccf,
+					-1155px 1245px 15px #b4bed1,
+					-1515px 1485px 15px #8193b2,
+					-1755px 1845px 15px #8a9bb8,
+					-2050px 2150px 15px #91a1bc,
+					-2425px 2375px 15px #bac4d5,
+					-2695px 2705px 15px #a1aec6,
+					-3020px 2980px 15px #8193b2,
+					-3315px 3285px 15px #94a3be,
+					-3555px 3645px 15px #9aa9c2,
+					-3910px 3890px 15px #b0bccf,
+					-4180px 4220px 15px #bac4d5,
+					-4535px 4465px 15px #a7b4c9,
+					-4840px 4760px 15px #94a3be;
+			}
+
+			.ground:before {
+				right: 50%;
+				margin-right: -166.66667px;
+				box-shadow:
+					325px -275px 15px #b4bed1,
+					620px -580px 15px #adb9cd,
+					925px -875px 15px #a1aec6,
+					1220px -1180px 15px #b7c1d3,
+					1545px -1455px 15px #7e90b0,
+					1795px -1805px 15px #b0bccf,
+					2080px -2120px 15px #b7c1d3,
+					2395px -2405px 15px #8e9eba,
+					2730px -2670px 15px #b7c1d3,
+					2995px -3005px 15px #9dabc4,
+					3285px -3315px 15px #a1aec6,
+					3620px -3580px 15px #8193b2,
+					3880px -3920px 15px #aab6cb,
+					4225px -4175px 15px #9dabc4,
+					4510px -4490px 15px #8e9eba,
+					4785px -4815px 15px #a7b4c9;
+			}
+
+			.mound {
+				margin-top: -80px;
+				font-weight: 800;
+				font-size: 180px;
+				text-align: center;
+				color: #dd4040;
+				pointer-events: none;
+			}
+
+			.mound:before {
+				content: "";
+				display: block;
+				width: 600px;
+				height: 200px;
+				position: absolute;
+				left: 50%;
+				margin-left: -300px;
+				top: 50px;
+				z-index: 1;
+				border-radius: 100%;
+				background-color: #e8f2f6;
+				background-image: -webkit-linear-gradient(top, #dee8f1, #f6f9fa 60px);
+				background-image: linear-gradient(to bottom, #dee8f1, #f6f9fa 60px);
+			}
+
+			.mound:after {
+				content: "";
+				display: block;
+				width: 28px;
+				height: 6px;
+				position: absolute;
+				left: 50%;
+				margin-left: -150px;
+				top: 68px;
+				z-index: 2;
+				background: #dd4040;
+				border-radius: 100%;
+				-webkit-transform: rotate(-15deg);
+				transform: rotate(-15deg);
+				box-shadow:
+					-56px 12px 0 1px #dd4040,
+					-126px 6px 0 2px #dd4040,
+					-196px 24px 0 3px #dd4040;
+			}
+
+			.mound_text {
+				-webkit-transform: rotate(6deg) translateY(0px);
+				transform: rotate(0deg) translateY(-10px);
+				font-size: 0.7em;
+				display: block;
+				position: relative;
+			}
+
+			.mound_spade {
+				display: block;
+				width: 35px;
+				height: 30px;
+				position: absolute;
+				right: 50%;
+				top: 42%;
+				margin-right: -250px;
+				z-index: 0;
+				-webkit-transform: rotate(35deg);
+				transform: rotate(35deg);
+				background: #dd4040;
+			}
+
+			.mound_spade:before,
+			.mound_spade:after {
+				content: "";
+				display: block;
+				position: absolute;
+			}
+
+			.mound_spade:before {
+				width: 40%;
+				height: 30px;
+				bottom: 98%;
+				left: 50%;
+				margin-left: -20%;
+				background: #dd4040;
+			}
+
+			.mound_spade:after {
+				width: 100%;
+				height: 30px;
+				top: -55px;
+				left: 0%;
+				box-sizing: border-box;
+				border: 10px solid #dd4040;
+				border-radius: 4px 4px 20px 20px;
+			}
+
+			@media screen and (max-width: 768px) {
+				.mound {
+					font-size: 100px;
+					margin-top: -40px;
+				}
+				.icon-large {
+					width: 88px;
+					height: 88px;
+				}
+				.mound:before {
+					width: 300px;
+					height: 100px;
+					margin-left: -150px;
+					top: 25px;
+				}
+
+				.mound:after {
+					margin-left: -100px;
+					top: 35px;
+					box-shadow:
+						-36px 8px 0 1px #dd4040,
+						-86px 4px 0 2px #dd4040,
+						-136px 16px 0 3px #dd4040;
+				}
+
+				.mound_spade {
+					width: 25px;
+					height: 20px;
+					margin-right: -160px;
+					top: 38%;
+				}
+
+				.mound_spade:after {
+					height: 20px;
+					top: -40px;
+					border-width: 6px;
+				}
+
+				.ground {
+					height: 100px;
+				}
+
+				.ground:before,
+				.ground:after {
+					height: 150px;
+					width: 150px;
+					top: -37.5px;
+				}
+
+				.main-text h1 {
+					font-size: 32px;
+					line-height: 1.2;
+				}
+
+				.main-text h2 {
+					font-size: 18px;
+					line-height: 1.4;
+				}
+			}
+			@media screen and (max-width: 480px) {
+				.mound_text {
+					transform: rotate(6deg) translateY(10px);
+				}
+				.icon-large {
+					width: 66px;
+					height: 66px;
+				}
+				.main-text {
+					padding-top: 5vh;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="content">
+			<div class="color-overlay" id="colorOverlay"></div>
+			<canvas class="snow" id="snow" width="1349" height="400"></canvas>
+			<div class="main-text">
+				<div>
+					<svg
+						class="info icon-large fa-question-circle"
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 512 512"
+					>
+						<path
+							d="M504 256c0 136.997-111.043 248-248 248S8 392.997 8 256C8 119.083 119.043 8 256 8s248 111.083 248 248zM262.655 90c-54.497 0-89.255 22.957-116.549 63.758-3.536 5.286-2.353 12.415 2.715 16.258l34.699 26.31c5.205 3.947 12.621 3.008 16.665-2.122 17.864-22.658 30.113-35.797 57.303-35.797 20.429 0 45.698 13.148 45.698 32.958 0 14.976-12.363 22.667-32.534 33.976C247.128 238.528 216 254.941 216 296v4c0 6.627 5.373 12 12 12h56c6.627 0 12-5.373 12-12v-1.333c0-28.462 83.186-29.647 83.186-106.667 0-58.002-60.165-102-116.531-102zM256 338c-25.365 0-46 20.635-46 46 0 25.364 20.635 46 46 46s46-20.636 46-46c0-25.365-20.635-46-46-46z"
+						></path>
+					</svg>
+				</div>
+				<h2>哎呀！页面不见啦！</h2>
+				<h2>错误代码:404</h2>
+				<h2>对不起！您访问的文件不存在！请确认路径后重新访问！</h2>
+				<h2>当前时间:公元<span id="currentDateTime"></span></h2>
+				<h2 style="margin-top: 40px"><a href="/">返回首页</a></h2>
+			</div>
+			<div class="ground">
+				<div class="mound">
+					<div class="mound_text">404</div>
+					<div class="mound_spade"></div>
+				</div>
+			</div>
+		</div>
+		<script>
+			function updateDateTime() {
+				const now = new Date();
+				const year = now.getFullYear();
+				const month = String(now.getMonth() + 1).padStart(2, "0");
+				const day = String(now.getDate()).padStart(2, "0");
+				const hour = String(now.getHours()).padStart(2, "0");
+				const minute = String(now.getMinutes()).padStart(2, "0");
+				const second = String(now.getSeconds()).padStart(2, "0");
+				const formattedDateTime = `${year}年${month}月${day}日 ${hour}:${minute}:${second}`;
+				document.getElementById("currentDateTime").textContent = formattedDateTime;
+			}
+			window.onload = function () {
+				updateDateTime();
+				setInterval(updateDateTime, 1000);
+			};
+		</script>
+		<script>
+			function animateBackground() {
+				const overlay = document.getElementById("colorOverlay");
+				let hue = 0;
+
+				function updateColor() {
+					hue = (hue + 0.6) % 360;
+					overlay.style.backgroundColor = `hsla(${hue}, 80%, 50%, 1)`;
+					requestAnimationFrame(updateColor);
+				}
+				updateColor();
+			}
+
+			window.onload = function () {
+				updateDateTime();
+				setInterval(updateDateTime, 1000);
+				animateBackground();
+			};
+			(function () {
+				function ready(fn) {
+					if (document.readyState != "loading") {
+						fn();
+					} else {
+						document.addEventListener("DOMContentLoaded", fn);
+					}
+				}
+
+				function makeSnow(el) {
+					var ctx = el.getContext("2d");
+					var width = 0;
+					var height = 0;
+					var particles = [];
+
+					var Particle = function () {
+						this.x = this.y = this.dx = this.dy = 0;
+						this.angle = Math.random() * Math.PI * 2;
+						this.rotation = (Math.random() - 0.5) * 0.1;
+						this.size = Math.random() * 4 + 3;
+						this.points = 5 + Math.floor(Math.random() * 3);
+						this.reset();
+					};
+
+					Particle.prototype.reset = function () {
+						this.y = Math.random() * -height;
+						this.x = Math.random() * width;
+						this.dx = Math.random() * 2 - 1;
+						this.dy = Math.random() * 1.5 + 1.2;
+					};
+
+					function createParticles(count) {
+						particles = [];
+						for (var i = 0; i < count; i++) {
+							particles.push(new Particle());
+						}
+					}
+
+					function drawStar(ctx, particle) {
+						ctx.save();
+						ctx.translate(particle.x, particle.y);
+						ctx.rotate(particle.angle);
+						ctx.fillStyle = "#f6f9fa";
+
+						const outerRadius = particle.size;
+						const innerRadius = outerRadius * 0.5;
+						const step = Math.PI / particle.points;
+
+						ctx.beginPath();
+						for (let i = 0; i < 2 * particle.points; i++) {
+							const radius = i % 2 === 0 ? outerRadius : innerRadius;
+							const x = radius * Math.cos(i * step);
+							const y = radius * Math.sin(i * step);
+							if (i === 0) ctx.moveTo(x, y);
+							else ctx.lineTo(x, y);
+						}
+						ctx.closePath();
+						ctx.fill();
+
+						ctx.restore();
+					}
+
+					function onResize() {
+						width = window.innerWidth;
+						height = window.innerHeight;
+						el.width = width;
+						el.height = height;
+						createParticles((width * height) / 7000);
+					}
+
+					function updateParticles() {
+						ctx.clearRect(0, 0, width, height);
+
+						particles.forEach(function (particle) {
+							particle.y += particle.dy;
+							particle.x += particle.dx;
+							particle.angle += particle.rotation;
+
+							if (particle.y > height + 100 || particle.x < -100 || particle.x > width + 100) {
+								particle.reset();
+							}
+
+							drawStar(ctx, particle);
+						});
+
+						window.requestAnimationFrame(updateParticles);
+					}
+
+					onResize();
+					window.addEventListener("resize", onResize);
+					updateParticles();
+				}
+
+				ready(function () {
+					var canvas = document.getElementById("snow");
+					makeSnow(canvas);
+				});
+			})();
+		</script>
+	</body>
+</html>

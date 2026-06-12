@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change hostname
 # options: HOSTNAME
 #
@@ -14,8 +14,8 @@
 domain=$1
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -36,58 +36,53 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 current_hostname="$(hostname)"
-if [[ "$current_hostname" == "$domain" ]]; then
+if [ "$current_hostname" = "$domain" ]; then
 	echo "Current hostname \"$current_hostname\" is the same as the new one you want to use"
 	echo "I'm not going to change it"
-	exit
+	exit 0
 fi
 
 hostname "$domain"
-if [ -d "/etc/sysconfig" ]; then
-	# RHEL/CentOS/Amazon
-	touch /etc/sysconfig/network
-	if [ -z "$(grep HOSTNAME /etc/sysconfig/network)" ]; then
-		echo "HOSTNAME='$domain'" >> /etc/sysconfig/network
-	else
-		sed -i "s/HOSTNAME=.*/HOSTNAME='$domain'/" /etc/sysconfig/network
-	fi
+if grep -q "^hostname=" /etc/rc.conf; then
+    sed -i "" "s/^hostname=.*/hostname=\"$domain\"/" /etc/rc.conf
 else
-	# Debian/Ubuntu
-	hostnamectl set-hostname "$domain"
-	echo "$domain" > /etc/hostname
+    echo "hostname=\"$domain\"" >> /etc/rc.conf
 fi
+echo "$domain" > /etc/hostname
 
 # Update webmail's password plugin configuration
-if [ -d /etc/roundcube/ ]; then
-	sed -i "/password_hestia_host/c\$rcmail_config['password_hestia_host'] = '$domain';" /etc/roundcube/plugins/password/config.inc.php
+if [ -d /usr/local/www/roundcube/ ]; then
+	sed -i "" "/password_hestia_host/c\\\$rcmail_config['password_hestia_host'] = '$domain';" /usr/local/www/roundcube/plugins/password/config.inc.php
 fi
-if [ -d /etc/rainloop/ ]; then
-	sed -i "/hestia_host/c\hestia_host = \"$domain\"" /etc/rainloop/data/_data_/_default_/configs/plugin-hestia-change-password.ini
+if [ -d /usr/local/www/rainloop/ ]; then
+	sed -i "" "/hestia_host/c\hestia_host = \"$domain\"" /usr/local/www/rainloop/data/_data_/_default_/configs/plugin-hestia-change-password.ini
 fi
-if [ -d /etc/snappymail/ ]; then
-	sed -i "/\"hestia_host\":/c\\\"hestia_host\": \"$domain\"," /etc/snappymail/data/_data_/_default_/configs/plugin-change-password.json
+if [ -d /usr/local/www/snappymail/ ]; then
+	sed -i "" "/\"hestia_host\":/c\\\"hestia_host\": \"$domain\"," /usr/local/www/snappymail/data/_data_/_default_/configs/plugin-change-password.json
 fi
 
 # Update /etc/hosts
 if [ -f /etc/hosts ]; then
 	if grep -q -E "^127\.0\.0\.1\s{1,}${current_hostname}$" /etc/hosts; then
-		sed -i -E "s/127\.0\.0\.1\s{1,}${current_hostname}/127\.0\.0\.1 ${domain}/" /etc/hosts
+		sed -i "" -E "s/127\.0\.0\.1\s{1,}${current_hostname}/127\.0\.0\.1 ${domain}/" /etc/hosts
 	else
 		echo "127.0.0.1 $domain" >> /etc/hosts
 	fi
+	
 	# Check whether hostname entries are duplicated and remove all but the last one
 	ndup_hosts="$(grep -c -E "^127\.0\.0\.1\s{1,}${domain}$" /etc/hosts)"
-	if [[ "${ndup_hosts}" -gt "1" ]]; then
+	if [ "$ndup_hosts" -gt "1" ]; then
 		nlines_to_del="$((ndup_hosts - 1))"
-		lines_to_del="$(grep -n -E "^127\.0\.0\.1\s{1,}${domain}$" /etc/hosts | head -n${nlines_to_del} | awk -F ':' '{print $1}')"
+		lines_to_del="$(grep -n -E "^127\.0\.0\.1\s{1,}${domain}$" /etc/hosts | head -n"${nlines_to_del}" | awk -F ':' '{print $1}')"
+		list_lines=""
 		for i in $lines_to_del; do
-			if [[ -z $list_lines ]]; then
+			if [ -z "$list_lines" ]; then
 				list_lines="${i}d"
 			else
-				list_lines+=";${i}d"
+				list_lines="${list_lines};${i}d"
 			fi
 		done
-		sed -i "${list_lines}" /etc/hosts
+		sed -i "" "${list_lines}" /etc/hosts
 	fi
 fi
 
@@ -99,4 +94,4 @@ fi
 $BIN/v-log-action "system" "Warning" "System" "System hostname changed (Host: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0
