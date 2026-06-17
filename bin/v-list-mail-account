@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list mail domain account
 # options: USER DOMAIN ACCOUNT [FORMAT]
 #
@@ -14,32 +14,38 @@
 user=$1
 domain=$2
 account=$3
-format=${4-shell}
+format=${4:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$account'": {
-        "ALIAS": "'$ALIAS'",
-        "FWD": "'$FWD'",
-        "FWD_ONLY": "'$FWD_ONLY'",
-        "AUTOREPLY": "'$AUTOREPLY'",
-        "QUOTA": "'$QUOTA'",
-        "RATE_LIMIT": "'$RATE_LIMIT'",
-        "U_DISK": "'$U_DISK'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'",
-        "WEBMAIL_ALIAS": "'$WEBMAIL_ALIAS.$domain'"
-    }'
+	echo "    \"$account\": {"
+	echo "        \"ALIAS\": \"$ALIAS\","
+	echo "        \"FWD\": \"$FWD\","
+	echo "        \"FWD_ONLY\": \"$FWD_ONLY\","
+	echo "        \"AUTOREPLY\": \"$AUTOREPLY\","
+	echo "        \"QUOTA\": \"$QUOTA\","
+	echo "        \"RATE_LIMIT\": \"$RATE_LIMIT\","
+	echo "        \"U_DISK\": \"$U_DISK\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\","
+	echo "        \"WEBMAIL_ALIAS\": \"$WEBMAIL_ALIAS.$domain\""
+	echo "    }"
 	echo '}'
 }
 
@@ -60,16 +66,15 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$account\t$ALIAS\t$FWD\t$FWD_ONLY\t$AUTOREPLY\t$QUOTA\t"
-	echo -e "$U_DISK\t$SUSPENDED\t$TIME\t$DATE\t$WEBMAIL_ALIAS.$domain"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$account" "$ALIAS" "$FWD" "$FWD_ONLY" "$AUTOREPLY" "$QUOTA" \
+		"$U_DISK" "$SUSPENDED" "$TIME" "$DATE" "$WEBMAIL_ALIAS.$domain"
 }
 
 # CSV list function
 csv_list() {
-	echo -n "ACCOUNT,ALIAS,FWD,FWD_ONLY,AUTOREPLY,QUOTA,U_DISK"
-	echo "SUSPENDED,TIME,DATE"
-	echo -n "$ACCOUNT,\"$ALIAS\",\"$FWD\",$FWD_ONLY,$AUTOREPLY,$QUOTA,"
-	echo "$U_DISK,$SUSPENDED,$TIME,$DATE\t$WEBMAIL_ALIAS.$domain"
+	echo "ACCOUNT,ALIAS,FWD,FWD_ONLY,AUTOREPLY,QUOTA,U_DISK,SUSPENDED,TIME,DATE,WEBMAIL_ALIAS"
+	echo "$ACCOUNT,\"$ALIAS\",\"$FWD\",$FWD_ONLY,$AUTOREPLY,$QUOTA,$U_DISK,$SUSPENDED,$TIME,$DATE,$WEBMAIL_ALIAS.$domain"
 }
 
 #----------------------------------------------------------#
@@ -87,7 +92,7 @@ is_object_valid "mail/$domain" 'ACCOUNT' "$account"
 #----------------------------------------------------------#
 
 # Parsing mail account
-parse_object_kv_list $(grep "ACCOUNT='$account'" $USER_DATA/mail/$domain.conf)
+parse_object_kv_list $(grep "ACCOUNT='$account'" "$USER_DATA/mail/$domain.conf")
 
 # Listing data
 case $format in

@@ -1,10 +1,10 @@
 #!/bin/bash
-# info: add system user
+# info: add system user for FreeBSD
 # options: USER PASSWORD EMAIL [PACKAGE] [NAME] [LASTNAME]
 #
 # example: v-add-user user 'P4$$w@rD' bgates@aol.com
 #
-# This function creates new user account.
+# This function creates a new native UNIX user account on FreeBSD.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -25,8 +25,7 @@ fi
 FROM_V_ADD_USER=true
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -34,7 +33,6 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 is_user_free() {
 	# these names may cause issues with MariaDB/MySQL database names and should be reserved:
-	# sudo has been added due to Privilege escalation as sudo group has always sudo permission
 	reserved_names=("aria" "aria_log" "mysql" "mysql_upgrade" "ib" "ib_buffer" "ddl" "ddl_recovery" "performance" "sudo")
 	for value in "${reserved_names[@]}"; do
 		if [ "${user,,}" = "$value" ]; then
@@ -84,39 +82,30 @@ else
 fi
 shell=$(grep -w "$shell_conf" /etc/shells | head -n1)
 
-# Adding user
-/usr/sbin/useradd "$user" -s "$shell" -c "$email" -m -d "$HOMEDIR/$user" -U
-check_result $? "user creation failed" "$E_INVALID"
-
-# Adding password
-echo "$user:$password" | /usr/sbin/chpasswd
-
+echo "$password" | /usr/sbin/pw useradd "$user" -h 0 -s "$shell" -c "$email" -m -d "$HOMEDIR/$user"
 if [ $? -ne 0 ]; then
-	# Delete user on failure
-	/usr/sbin/deluser "$user" > /dev/null 2>&1
-	echo "Error: Password not accepted due to PAM restrictions"
-	exit 2
+	/usr/sbin/pw userdel "$user" -r > /dev/null 2>&1
+	check_result "1" "user creation failed" "$E_INVALID"
 fi
 
 # Add a general group for normal users created by Hestia
 if [ -z "$(grep ^hestia-users: /etc/group)" ]; then
-	groupadd --system "hestia-users"
+	/usr/sbin/pw groupadd "hestia-users" > /dev/null 2>&1 || true
 fi
 
-# Add membership to hestia-users group to non-admin users
 if [ "$user" = "$ROOT_USER" ]; then
-	setfacl -m "g:$ROOT_USER:r-x" "$HOMEDIR/$user"
+	/bin/setfacl -m "u:${ROOT_USER}:rx" "$HOMEDIR/$user"
 else
-	usermod -a -G "hestia-users" "$user"
-	setfacl -m "u:$user:r-x" "$HOMEDIR/$user"
+	/usr/sbin/pw groupmod "hestia-users" -m "$user"
+	/bin/setfacl -m "u:${user}:rx" "$HOMEDIR/$user"
 fi
-setfacl -m "g:hestia-users:---" "$HOMEDIR/$user"
+/bin/setfacl -m "g:hestia-users::" "$HOMEDIR/$user"
 
 # Building directory tree
-mkdir $HOMEDIR/$user/conf
+mkdir -p $HOMEDIR/$user/conf
 
 if [ -n "$WEB_SYSTEM" ]; then
-	mkdir $HOMEDIR/$user/conf/web $HOMEDIR/$user/web $HOMEDIR/$user/tmp
+	mkdir -p $HOMEDIR/$user/conf/web $HOMEDIR/$user/web $HOMEDIR/$user/tmp
 	chmod 751 $HOMEDIR/$user/conf/web
 	chmod 700 $HOMEDIR/$user/tmp
 	chown $user:$user $HOMEDIR/$user/tmp
@@ -124,7 +113,7 @@ if [ -n "$WEB_SYSTEM" ]; then
 fi
 
 if [ -n "$MAIL_SYSTEM" ]; then
-	mkdir $HOMEDIR/$user/conf/mail $HOMEDIR/$user/mail
+	mkdir -p $HOMEDIR/$user/conf/mail $HOMEDIR/$user/mail
 	chmod 751 $HOMEDIR/$user/mail
 	chmod 755 $HOMEDIR/$user/conf/mail
 fi
@@ -135,13 +124,13 @@ if [ -n "$DNS_SYSTEM" ]; then
 	else
 		dns_group='bind'
 	fi
-	mkdir $HOMEDIR/$user/conf/dns
+	mkdir -p $HOMEDIR/$user/conf/dns
 	chmod 771 $HOMEDIR/$user/conf/dns
 	chown root:$dns_group $HOMEDIR/$user/conf/dns
 fi
 
 # Create default writeable folders
-mkdir $HOMEDIR/$user/.config \
+mkdir -p $HOMEDIR/$user/.config \
 	$HOMEDIR/$user/.cache \
 	$HOMEDIR/$user/.local \
 	$HOMEDIR/$user/.composer \
@@ -150,7 +139,7 @@ mkdir $HOMEDIR/$user/.config \
 	$HOMEDIR/$user/.npm \
 	$HOMEDIR/$user/.wp-cli
 
-chown $user:$user \
+chown -R $user:$user \
 	$HOMEDIR/$user/.config \
 	$HOMEDIR/$user/.cache \
 	$HOMEDIR/$user/.local \
@@ -162,7 +151,7 @@ chown $user:$user \
 
 # Set permissions
 chmod a+x $HOMEDIR/$user
-chattr +i $HOMEDIR/$user/conf > /dev/null 2>&1
+/bin/chflags schg $HOMEDIR/$user/conf > /dev/null 2>&1
 
 # Adding user dir
 mkdir -p $USER_DATA/ssl $USER_DATA/dns $USER_DATA/mail
@@ -207,7 +196,7 @@ if [ -n "$DB_SYSTEM" ]; then
 fi
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -225,8 +214,8 @@ PACKAGE='$package'
 $pkg_data
 CONTACT='$email'
 CRON_REPORTS='yes'
-MD5='$(awk -v user=$user -F : 'user == $1 {print $2}' /etc/shadow)'
-RKEY='$(generate_password)'
+MD5="$(awk -v u="$user" -F: '$1 == u {print $2}' /etc/master.passwd)"
+RKEY='$(gen_pass)'
 TWOFA=''
 QRCODE=''
 PHPCLI=''
@@ -275,7 +264,7 @@ if [ "$disk_quota_enabled" = 'yes' ]; then
 	$BIN/v-update-user-quota "$user"
 fi
 
-# Update resource limitation (cgroup)
+# Update resource limitation (cgroup) 
 if [ "$resource_enabled" = 'yes' ]; then
 	$BIN/v-update-user-cgroup "$user"
 fi
@@ -291,7 +280,7 @@ if [ -x "$HESTIA/data/packages/$package.sh" ]; then
 fi
 
 # Adding jailed sftp env
-$BIN/v-add-user-sftp-jail $user
+$BIN/v-add-user-sftp-jail "$user"
 
 #----------------------------------------------------------#
 #                       Hestia                             #

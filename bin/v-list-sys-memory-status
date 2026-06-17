@@ -1,27 +1,42 @@
 #!/bin/bash
 # info: list virtual memory info
-# options:
 #
 # example: v-list-sys-memory-status
-#
-# This function lists virtual memory information
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
 
 # Displaying memory and swap usage
-free -t -m
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if command -v free >/dev/null 2>&1; then
+	# Linux
+	free -t -m
+else
+	# FreeBSD
+	top -d1 -s1 2>/dev/null || top -n 37
+fi
+
+printf -- "\n-----------------------------------------------"
+printf -- "-----------------------------------------------\n"
 
 # Displaying memory stats
-vmstat -S m -s
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if vmstat -S m -s 2>/dev/null | grep -q "total memory"; then
+	# Linux
+	vmstat -S m -s
+else
+	# FreeBSD
+	vmstat -s | head -20
+fi
+
+printf -- "\n-----------------------------------------------"
+printf -- "-----------------------------------------------\n"
 
 # Displaying ram information
-dmidecode -t 17 2> /dev/null
+if command -v dmidecode >/dev/null 2>&1; then
+	dmidecode -t 17
+else
+	echo "dmidecode command not found"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

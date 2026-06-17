@@ -13,14 +13,21 @@
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
+
 # Argument definition
 queue=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -34,25 +41,41 @@ check_args '1' "$#" 'QUEUE'
 #                       Action                             #
 #----------------------------------------------------------#
 
-b_task=$(ps auxf | grep -v "grep" | grep "$BIN/v-update-sys-queue backup")
-b_task=$(echo "$b_task" | grep -v sudo | wc -l)
-d_task=$(ps auxf | grep -v "grep" | grep "$BIN/v-update-sys-queue dns")
-d_task=$(echo "$d_task" | grep -v sudo | wc -l)
+b_task=$(ps auxf | grep -v "grep" | grep "$BIN/v-update-sys-queue backup" | grep -v sudo | wc -l | tr -d ' ')
+d_task=$(ps auxf | grep -v "grep" | grep "$BIN/v-update-sys-queue dns" | grep -v sudo | wc -l | tr -d ' ')
 if [ "$b_task" -gt 2 ] || [ "$d_task" -gt 2 ]; then
 	exit
 fi
 
 # Defining pipe functions
 case $queue in
-	restart) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	webstats) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	backup) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	disk) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	daily) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	traffic) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	dns-cluster) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	letsencrypt) bash $HESTIA/data/queue/$queue.pipe > /dev/null 2>&1 ;;
-	*) check_args '1' '0' 'QUEUE' ;;
+	restart)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	webstats)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	backup)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	disk)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	daily)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	traffic)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	dns-cluster)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	letsencrypt)
+		bash "$HESTIA/data/queue/$queue.pipe" > /dev/null 2>&1
+		;;
+	*)
+		check_args '1' '0' 'QUEUE'
+		;;
 esac
 
 #----------------------------------------------------------#

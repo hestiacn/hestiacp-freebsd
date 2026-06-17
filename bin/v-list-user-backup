@@ -14,13 +14,19 @@
 # Argument definition
 user=$1
 backup=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -30,19 +36,19 @@ fields="$fields \$RUNTIME \$TIME \$DATE"
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$BACKUP'": {
-        "TYPE": "'$TYPE'",
-        "SIZE": "'$SIZE'",
-        "WEB": "'$WEB'",
-        "DNS": "'$DNS'",
-        "MAIL": "'$MAIL'",
-        "DB": "'$DB'",
-        "CRON": "'$CRON'",
-        "UDIR": "'$UDIR'",
-        "RUNTIME": "'$RUNTIME'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+	echo "    \"$BACKUP\": {"
+	echo "        \"TYPE\": \"$TYPE\","
+	echo "        \"SIZE\": \"$SIZE\","
+	echo "        \"WEB\": \"$WEB\","
+	echo "        \"DNS\": \"$DNS\","
+	echo "        \"MAIL\": \"$MAIL\","
+	echo "        \"DB\": \"$DB\","
+	echo "        \"CRON\": \"$CRON\","
+	echo "        \"UDIR\": \"$UDIR\","
+	echo "        \"RUNTIME\": \"$RUNTIME\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -64,15 +70,15 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$BACKUP\t$TYPE\t$SIZE\t$WEB\t$DNS\t$MAIL\t$DB\t$CRON\t"
-	echo -e "$UDIR\t$RUNTIME\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$BACKUP" "$TYPE" "$SIZE" "$WEB" "$DNS" "$MAIL" "$DB" "$CRON" \
+		"$UDIR" "$RUNTIME" "$TIME" "$DATE"
 }
 
 # CSV list function
 csv_list() {
 	echo "BACKUP,TYPE,SIZE,WEB,DNS,MAIL,DB,CRON,UDIR,RUNTIME,TIME,DATE"
-	echo -n "$BACKUP,$TYPE,$SIZE,\"$WEB\",\"$DNS\",\"$MAIL\",\"$DB\","
-	echo "\"$CRON\",\"$UDIR\",$RUNTIME,$TIME,$DATE"
+	echo "$BACKUP,$TYPE,$SIZE,\"$WEB\",\"$DNS\",\"$MAIL\",\"$DB\",\"$CRON\",\"$UDIR\",$RUNTIME,$TIME,$DATE"
 }
 
 #----------------------------------------------------------#
@@ -89,7 +95,7 @@ is_object_valid 'backup' 'BACKUP' "$backup"
 #----------------------------------------------------------#
 
 # Parsing backup config
-parse_object_kv_list $(grep "BACKUP='$backup'" $USER_DATA/backup.conf)
+parse_object_kv_list $(grep "BACKUP='$backup'" "$USER_DATA/backup.conf")
 
 # Listing data
 case $format in

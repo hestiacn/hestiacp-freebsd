@@ -12,13 +12,19 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -31,24 +37,24 @@ json_list() {
 	objects=$(echo "${WEB//,/ }" | wc -w)
 	for object in $(echo "${WEB//,/ }"); do
 		j=1
-		object_keys=$(echo ${object//:/ } | wc -w)
+		object_keys=$(echo "${object//:/ }" | wc -w)
 		for key in $(echo "${object/:/ }"); do
 			if [ "$j" -eq 1 ]; then
-				echo -n "        \"${key}\": "
+				printf '        "%s": ' "$key"
 				if [ "$object_keys" -eq 1 ]; then
-					echo -n '""'
+					printf '""'
 				fi
 			else
-				echo -n "\"${key//:/,}\""
+				printf '"%s"' "${key//:/,}"
 			fi
-			((j++))
+			j=$((j + 1))
 		done
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
 		else
 			echo
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo '    },'
 	i=1
@@ -56,24 +62,24 @@ json_list() {
 	objects=$(echo "${MAIL//,/ }" | wc -w)
 	for object in $(echo "${MAIL//,/ }"); do
 		j=1
-		object_keys=$(echo ${object//:/ } | wc -w)
+		object_keys=$(echo "${object//:/ }" | wc -w)
 		for key in $(echo "${object/:/ }"); do
 			if [ "$j" -eq 1 ]; then
-				echo -n "        \"$key\": "
+				printf '        "%s": ' "$key"
 				if [ "$object_keys" -eq 1 ]; then
-					echo -n '""'
+					printf '""'
 				fi
 			else
-				echo -n "\"${key//:/,}\""
+				printf '"%s"' "${key//:/,}"
 			fi
-			((j++))
+			j=$((j + 1))
 		done
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
 		else
 			echo
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo '    },'
 	i=1
@@ -81,24 +87,24 @@ json_list() {
 	objects=$(echo "${DB//,/ }" | wc -w)
 	for object in $(echo "${DB//,/ }"); do
 		j=1
-		object_keys=$(echo ${object//:/ } | wc -w)
+		object_keys=$(echo "${object//:/ }" | wc -w)
 		for key in $(echo "${object/:/ }"); do
 			if [ "$j" -eq 1 ]; then
-				echo -n "        \"$key\": "
+				printf '        "%s": ' "$key"
 				if [ "$object_keys" -eq 1 ]; then
-					echo -n '""'
+					printf '""'
 				fi
 			else
-				echo -n "\"${key//:/,}\""
+				printf '"%s"' "${key//:/,}"
 			fi
-			((j++))
+			j=$((j + 1))
 		done
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
 		else
 			echo
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo '    },'
 	i=1
@@ -106,28 +112,28 @@ json_list() {
 	objects=$(echo "${USER//,/ }" | wc -w)
 	for object in $(echo "${USER//,/ }"); do
 		j=1
-		object_keys=$(echo ${object//:/ } | wc -w)
+		object_keys=$(echo "${object//:/ }" | wc -w)
 		for key in $(echo "${object/:/ }"); do
 			if [ "$j" -eq 1 ]; then
-				echo -n "        \"$key\": "
+				printf '        "%s": ' "$key"
 				if [ "$object_keys" -eq 1 ]; then
-					echo -n '""'
+					printf '""'
 				fi
 			else
-				echo -n "\"${key//:/,}\""
+				printf '"%s"' "${key//:/,}"
 			fi
-			((j++))
+			j=$((j + 1))
 		done
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
 		else
 			echo
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo '    }'
 	echo '}'
-
+	set +f
 }
 
 # SHELL list function
@@ -140,7 +146,7 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo "$WEB\t$MAIL\t$DB\t$USER"
+	printf "%s\t%s\t%s\t%s\n" "$WEB" "$MAIL" "$DB" "$USER"
 }
 
 # CSV list function

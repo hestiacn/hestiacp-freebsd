@@ -13,11 +13,17 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -37,12 +43,13 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-SearchResults=$(ls -a $BIN/ | sort)
-TotalItems=$(ls -a $BIN/ | sort | wc -l)
+SearchResults=$(ls -a "$BIN/" 2>/dev/null | sort)
+TotalItems=$(echo "$SearchResults" | wc -l)
+OriginalResults="$SearchResults"
 
-for i; do
-	SearchResults=$(echo $SearchResults | tr " " "\n" | grep $i)
-	FoundItems=$(echo $SearchResults | tr " " "\n" | grep $i | wc -l)
+for i in "$@"; do
+	SearchResults=$(echo "$SearchResults" | grep "$i")
+	FoundItems=$(echo "$SearchResults" | wc -l)
 done
 
 if [ -z "$SearchResults" ]; then
@@ -51,8 +58,9 @@ if [ -z "$SearchResults" ]; then
 else
 	echo "Command Search Results"
 	echo "================================="
-	echo $SearchResults | tr " " "\n"
+	echo "$SearchResults"
 	echo "================================="
 	echo "Found $FoundItems matching items in $TotalItems commands."
 fi
+
 exit

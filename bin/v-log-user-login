@@ -1,6 +1,12 @@
 #!/bin/bash
-# info: add user login
-# options: USER IP STATUS [FINGERPRINT]
+# info: log user login
+# options: USER IP STATUS SESSION_ID USER_AGENT [AUTHLOG] [REASON]
+
+if [ $# -lt 5 ]; then
+	echo "View login logs at:"
+	echo "  /usr/local/hestia/data/users/<username>/auth.log"
+	exit 0
+fi
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -12,7 +18,7 @@ ip=$2
 status=$3
 session_id=$4
 user_agent=$5
-authlog="${6-no}"
+authlog="${6:-no}"
 reason="${7}"
 
 active="yes"
@@ -20,11 +26,17 @@ if [ "$status" = "failed" ]; then
 	active="no"
 fi
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -32,7 +44,7 @@ source_conf "$HESTIA/conf/hestia.conf"
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-check_args '2' "$#" 'USER IP SESSION_ID USER_AGENT [AUTHLOG] [REASON]'
+check_args '5' "$#" 'USER IP SESSION_ID USER_AGENT [AUTHLOG] [REASON]'
 is_format_valid 'user' 'ip'
 is_common_format_valid "$session_id" "SESSION_ID"
 format_no_quotes "$user_agent" "USER_AGENT"
@@ -42,9 +54,9 @@ format_no_quotes "$reason" "REASON"
 is_object_valid 'user' 'USER' "$user"
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
-time=$(echo "$time_n_date" | cut -f 1 -d \ )
-date=$(echo "$time_n_date" | cut -f 2 -d \ )
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
+time=$(echo "$time_n_date" | cut -f 1 -d ' ')
+date=$(echo "$time_n_date" | cut -f 2 -d ' ')
 
 if [ ! -f "$USER_DATA/auth.log" ]; then
 	touch "$USER_DATA/auth.log"
@@ -64,4 +76,4 @@ fi
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-exit
+exit 0

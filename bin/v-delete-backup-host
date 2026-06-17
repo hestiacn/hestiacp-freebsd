@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete backup ftp server
 # options: TYPE [HOST]
 #
@@ -13,9 +13,15 @@
 # Argument definition
 type=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -28,9 +34,9 @@ source_conf "$HESTIA/conf/hestia.conf"
 check_args '1' "$#" 'TYPE [HOST]'
 types=$(echo "$BACKUP_SYSTEM" | sed "s/,/\n/g" | grep "^$type$")
 if [ -z "$types" ]; then
-	echo "Error: invalid backup type"
-	log_event "$E_INVALID" "$ARGUMENTS"
-	exit "$E_INVALID"
+    echo "Error: invalid backup type"
+    log_event "$E_INVALID" "$ARGUMENTS"
+    exit "$E_INVALID"
 fi
 
 # Perform verification if read-only mode is enabled
@@ -41,7 +47,7 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Deleting host config
-rm -f $HESTIA/conf/$type.backup.conf
+rm -f "$HESTIA/conf/$type.backup.conf"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -49,11 +55,11 @@ rm -f $HESTIA/conf/$type.backup.conf
 
 # Updating hestia.conf
 bckp=$(echo "$BACKUP_SYSTEM" \
-	| sed "s/,/\n/g" \
-	| sed "s/^$type$//" \
-	| sed "/^$/d" \
-	| sed ':a;N;$!ba;s/\n/,/g')
-sed -i "s/BACKUP_SYSTEM=.*/BACKUP_SYSTEM='$bckp'/g" $HESTIA/conf/hestia.conf
+    | sed "s/,/\n/g" \
+    | sed "s/^$type$//" \
+    | sed "/^$/d" \
+    | sed ':a;N;$!ba;s/\n/,/g')
+sed -i "" "s/BACKUP_SYSTEM=.*/BACKUP_SYSTEM='$bckp'/g" "$HESTIA/conf/hestia.conf"
 
 # Logging
 $BIN/v-log-action "system" "Info" "Backup" "Removed remote backup host (Host: $host, Type: $type)."

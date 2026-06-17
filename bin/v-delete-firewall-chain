@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete firewall chain
 # options: CHAIN
 #
@@ -13,10 +13,22 @@
 # Argument definition
 chain=$(echo "$1" | tr '[:lower:]' '[:upper:]')
 
-iptables='/sbin/iptables'
+# FreeBSD: pf or ipfw commands
+if [ "$FIREWALL_SYSTEM" = "pf" ]; then
+    pfctl="/sbin/pfctl"
+elif [ "$FIREWALL_SYSTEM" = "ipfw" ]; then
+    ipfw="/sbin/ipfw"
+fi
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/firewall.sh
@@ -39,8 +51,7 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Self heal iptables links
-heal_iptables_links
+# heal_iptables_links
 
 # Deleting chain
 chains="$HESTIA/data/firewall/chains.conf"
@@ -48,16 +59,24 @@ banlist="$HESTIA/data/firewall/banlist.conf"
 chain_param=""
 [ -f "$chains" ] && chain_param=$(grep "CHAIN='$chain'" "$chains")
 if [ -n "$chain_param" ]; then
-	parse_object_kv_list "$chain_param"
-	sed -i "/CHAIN='$chain'/d" "$chains"
-	sed -i "/CHAIN='$chain'/d" "$banlist"
-	$iptables -D INPUT -p $PROTOCOL \
-		--dport $PORT -j fail2ban-$CHAIN 2> /dev/null
+    parse_object_kv_list "$chain_param"
+    sed -i "" "/CHAIN='$chain'/d" "$chains"
+    sed -i "" "/CHAIN='$chain'/d" "$banlist"
+    if [ "$FIREWALL_SYSTEM" = "pf" ]; then
+        $pfctl -a "fail2ban/$chain" -F all 2>/dev/null
+        $pfctl -a "fail2ban" -F all 2>/dev/null
+    elif [ "$FIREWALL_SYSTEM" = "ipfw" ]; then
+        rule_num=$($ipfw list | grep -w "fail2ban-$chain" | awk '{print $1}' | head -1)
+        $ipfw delete "$rule_num" 2>/dev/null
+    fi
 fi
 
-# Deleting iptables chain
-$iptables -F fail2ban-$CHAIN 2> /dev/null
-$iptables -X fail2ban-$CHAIN 2> /dev/null
+# Deleting pf table or ipfw chain
+if [ "$FIREWALL_SYSTEM" = "pf" ]; then
+    $pfctl -t "fail2ban-$chain" -T kill 2>/dev/null
+elif [ "$FIREWALL_SYSTEM" = "ipfw" ]; then
+    $ipfw delete set "fail2ban-$chain" 2>/dev/null
+fi
 
 # Changing permissions
 [ -f "$chains" ] && chmod 660 "$chains"
@@ -69,4 +88,4 @@ $iptables -X fail2ban-$CHAIN 2> /dev/null
 # Logging
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

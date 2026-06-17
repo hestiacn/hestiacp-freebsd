@@ -1,10 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 # info: list database
 # options: USER DATABASE [FORMAT]
 #
-# example: v-list-database wp_db
-#
-# This function for obtaining of all database's parameters.
+# example: v-list-database admin wp_db
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -13,30 +11,36 @@
 # Argument definition
 user=$1
 database=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$database'": {
-        "DATABASE": "'$DB'",
-        "DBUSER": "'$DBUSER'",
-        "HOST": "'$HOST'",
-        "TYPE": "'$TYPE'",
-        "CHARSET": "'$CHARSET'",
-        "U_DISK": "'$U_DISK'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+	echo "    \"$database\": {"
+	echo "        \"DATABASE\": \"$DB\","
+	echo "        \"DBUSER\": \"$DBUSER\","
+	echo "        \"HOST\": \"$HOST\","
+	echo "        \"TYPE\": \"$TYPE\","
+	echo "        \"CHARSET\": \"$CHARSET\","
+	echo "        \"U_DISK\": \"$U_DISK\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -55,8 +59,8 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$DB\t$DBUSER\t$HOST\t$TYPE\t$CHARSET\t$U_DISK\t"
-	echo -e "$SUSPENDED\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$DB" "$DBUSER" "$HOST" "$TYPE" "$CHARSET" "$U_DISK" "$SUSPENDED" "$TIME" "$DATE"
 }
 
 # CSV list function
@@ -79,7 +83,12 @@ is_object_valid 'db' 'DB' "$database"
 #----------------------------------------------------------#
 
 # Parsing database
-parse_object_kv_list $(grep "DB='$database'" $USER_DATA/db.conf)
+db_line=$(grep "DB='$database'" "$USER_DATA/db.conf")
+if [ -z "$db_line" ]; then
+	echo "Error: Database $database not found for user $user"
+	exit 3
+fi
+parse_object_kv_list "$db_line"
 
 # Listing data
 case $format in

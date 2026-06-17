@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: get user salt
 # options: USER [IP] [FORMAT]
 #
@@ -12,12 +12,18 @@
 
 # Argument definition
 user=$1
-ip46=${2-127.0.0.1}
-format=${3-shell}
+ip46=${2:-127.0.0.1}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/conf/hestia.conf
@@ -26,36 +32,36 @@ source $HESTIA/conf/hestia.conf
 source_conf "$HESTIA/conf/hestia.conf"
 
 time_n_date=$(date +'%T %F')
-time=$(echo "$time_n_date" | cut -f 1 -d \ )
-date=$(echo "$time_n_date" | cut -f 2 -d \ )
+time=$(echo "$time_n_date" | cut -d' ' -f1)
+date=$(echo "$time_n_date" | cut -d' ' -f2)
 
 # JSON list function
 json_list() {
-	echo '{'
-	echo '    "'$user'": {
-        "METHOD": "'$method'",
-        "SALT": "'$salt'",
-        "TIME": "'$time'",
-        "DATE": "'$date'"
-        }'
-	echo '}'
+    echo '{'
+    echo "    \"$user\": {"
+    echo "        \"METHOD\": \"$method\","
+    echo "        \"SALT\": \"$salt\","
+    echo "        \"TIME\": \"$time\","
+    echo "        \"DATE\": \"$date\""
+    echo "    }"
+    echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "METHOD:         $method"
-	echo "SALT:           $salt"
+    echo "METHOD:         $method"
+    echo "SALT:           $salt"
 }
 
 # PLAIN list function
 plain_list() {
-	echo -e "$method\t$salt"
+    printf "%s\t%s\n" "$method" "$salt"
 }
 
 # CSV list function
 csv_list() {
-	echo "METHOD,SALT"
-	echo "$method, $salt"
+    echo "METHOD,SALT"
+    echo "$method,$salt"
 }
 
 #----------------------------------------------------------#
@@ -67,9 +73,9 @@ is_format_valid 'user' 'ip46'
 
 # Checking user
 if [ ! -d "$HESTIA/data/users/$user" ]; then
-	echo "Error: password missmatch"
-	echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
-	exit 9
+    echo "Error: password mismatch"
+    echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
+    exit 9
 fi
 
 #----------------------------------------------------------#
@@ -77,44 +83,56 @@ fi
 #----------------------------------------------------------#
 
 # Parsing user's salt
-shadow=$(grep "^$user:" /etc/shadow | cut -f 2 -d :)
+shadow=$(grep "^$user:" /etc/master.passwd | cut -f 2 -d ':')
 
-if echo "$shadow" | grep -qE '^\$[0-9a-z]+\$[^\$]+\$'; then
-	salt=$(echo "$shadow" | cut -f 3 -d \$)
-	method=$(echo "$shadow" | cut -f 2 -d \$)
-	if [ "$method" = "y" ]; then
-		method='yescrypt'
-		salt=$(echo "$shadow" | cut -f 4 -d \$)
-	elif [ "$method" -eq '1' ]; then
-		method='md5'
-	elif [ "$method" -eq '6' ]; then
-		method='sha-512'
-	else
-		echo "Error: password missmatch"
-		echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
-		exit 9
-	fi
-elif [[ "$shadow" =~ ! ]]; then
-	echo "Error: Account has been suspended"
-	echo "$date $time $user $ip46 has been suspended" >> $HESTIA/log/auth.log
-	exit 5
-else
-	salt=${shadow:0:2}
-	method='des'
-fi
+case "$shadow" in
+    \$*\$*\$*)
+        method=$(echo "$shadow" | cut -d'$' -f2)
+        salt=$(echo "$shadow" | cut -d'$' -f3)
+        case "$method" in
+            y)
+                method='yescrypt'
+                salt=$(echo "$shadow" | cut -d'$' -f4)
+                ;;
+            1)
+                method='md5'
+                ;;
+            5)
+                method='sha-256'
+                ;;
+            6)
+                method='sha-512'
+                ;;
+            *)
+                echo "Error: password mismatch"
+                echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
+                exit 9
+                ;;
+        esac
+        ;;
+    *!*)
+        echo "Error: Account has been suspended"
+        echo "$date $time $user $ip46 has been suspended" >> $HESTIA/log/auth.log
+        exit 5
+        ;;
+    *)
+        salt=$(echo "$shadow" | cut -c1-2)
+        method='des'
+        ;;
+esac
 
 if [ -z "$salt" ]; then
-	echo "Error: password missmatch"
-	echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
-	exit 9
+    echo "Error: password mismatch"
+    echo "$date $time $user $ip46 failed to login" >> $HESTIA/log/auth.log
+    exit 9
 fi
 
 # Listing data
 case $format in
-	json) json_list ;;
-	plain) plain_list ;;
-	csv) csv_list ;;
-	shell) shell_list ;;
+    json) json_list ;;
+    plain) plain_list ;;
+    csv) csv_list ;;
+    shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

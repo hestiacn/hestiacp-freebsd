@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -28,13 +34,13 @@ json_list() {
 	echo '['
 	for template in $templates; do
 		if [ "$i" -lt "$objects" ]; then
-			echo -e "\t\"$template\","
+			printf '    "%s",\n' "$template"
 		else
-			echo -e "\t\"$template\""
+			printf '    "%s"\n' "$template"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
@@ -67,10 +73,24 @@ csv_list() {
 
 # Parsing backend templates
 if [ -n "$WEB_BACKEND" ]; then
-	templates=$(ls -t $WEBTPL/$WEB_BACKEND \
-		| cut -f1 -d . \
-		| grep -v proxy_ip \
-		| sort -u)
+	tpl_path="$WEBTPL/$WEB_BACKEND"
+	if [ -d "$tpl_path" ]; then
+		templates=$(ls -t "$tpl_path" | cut -f1 -d . | grep -v proxy_ip | sort -u)
+	else
+		templates=""
+	fi
+else
+	templates=""
+fi
+
+if [ -z "$templates" ]; then
+	case $format in
+		json) echo "[]" ;;
+		shell) echo "No templates found" ;;
+		plain) ;;
+		csv) echo "TEMPLATE" ;;
+	esac
+	exit 0
 fi
 
 # Listing data

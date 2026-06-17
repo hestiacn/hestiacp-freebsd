@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns status
 # options:
 #
@@ -10,14 +10,19 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Argument definition
-#format=${1-shell}
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	rndc="/usr/sbin/rndc"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	rndc="/usr/local/sbin/rndc"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -27,28 +32,33 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # Checking dns system
 if [ -z "$DNS_SYSTEM" ]; then
-	exit
+	exit 0
 fi
 
-# Checking statistics-file on RHEL/CentOS
+# Checking statistics-file on RHEL/CentOS/Linux
 if [ -e "/etc/named/named.conf" ]; then
 	conf="/etc/named/named.conf"
 	dump_file='/var/named/data/named_stats.txt'
 	dump_option="    dump-file           \"$dump_file\";"
-	opt_check=$(grep $dump_file $conf | grep -v //)
+	opt_check=$(grep "$dump_file" "$conf" | grep -v //)
 	if [ -z "$opt_check" ]; then
-		sed -i "s|options {|options {\n$dump_option|" $conf
-		service named restart > /dev/null 2>&1
+		sed -i "s|options {|options {\n$dump_option |" "$conf"
+		if command -v service >/dev/null 2>&1; then
+			service named restart > /dev/null 2>&1
+		fi
 	fi
 fi
+
 if [ -e "/etc/named.conf" ]; then
 	conf="/etc/named.conf"
 	dump_file='/var/named/data/named_stats.txt'
 	dump_option="    dump-file           \"$dump_file\";"
-	opt_check=$(grep $dump_file $conf | grep -v //)
+	opt_check=$(grep "$dump_file" "$conf" | grep -v //)
 	if [ -z "$opt_check" ]; then
-		sed -i "s|options {|options {\n$dump_option|" $conf
-		service named restart > /dev/null 2>&1
+		sed -i "s|options {|options {\n$dump_option |" "$conf"
+		if command -v service >/dev/null 2>&1; then
+			service named restart > /dev/null 2>&1
+		fi
 	fi
 fi
 
@@ -57,20 +67,36 @@ if [ -e "/etc/bind/named.conf" ]; then
 	conf="/etc/bind/named.conf.options"
 	dump_file='/var/cache/bind/named.stats'
 	#dump_option="    dump-file           \"$dump_file\";"
-	#opt_check=$(grep $dump_file $conf |grep -v //)
+	#opt_check=$(grep "$dump_file" "$conf" | grep -v //)
 	#if [ -z "$opt_check" ]; then
-	#    sed -i "s|options {|options {\n$dump_option|" $conf
+	#    sed -i "s|options {|options {\n$dump_option |" "$conf"
 	#    service named restart >/dev/null 2>&1
 	#fi
 fi
 
+# Checking statistics-file on FreeBSD
+if [ -e "/usr/local/etc/namedb/named.conf" ]; then
+	conf="/usr/local/etc/namedb/named.conf"
+	dump_file='/var/db/named/named.stats'
+	dump_option="    dump-file \"$dump_file\";"
+	opt_check=$(grep "$dump_file" "$conf" | grep -v //)
+	if [ -z "$opt_check" ]; then
+		sed -i '' "s|options {|options {\n$dump_option |" "$conf"
+		if command -v service >/dev/null 2>&1; then
+			service named restart > /dev/null 2>&1
+		fi
+	fi
+fi
+
 # Generating dns stats
-rm -f $dump_file 2> /dev/null
-/usr/sbin/rndc stats 2> /dev/null
+rm -f "$dump_file" 2> /dev/null
+if command -v rndc >/dev/null 2>&1; then
+	$rndc stats 2> /dev/null
+fi
 
 # Displaying dns status
 if [ -e "$dump_file" ]; then
-	cat $dump_file
+	cat "$dump_file"
 fi
 
 #----------------------------------------------------------#

@@ -11,47 +11,63 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	proftpd_conf="/etc/proftpd.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	proftpd_conf="/usr/local/etc/proftpd.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	echo '{
-    "CONFIG": {
-        "config_path": "'$config_path'"
-        }
-}'
+	echo '{'
+	echo '    "CONFIG": {'
+	echo "        \"config_path\": \"$proftpd_conf\""
+	echo '    }'
+	echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "config_path:    $config_path"
+	echo "config_path:    $proftpd_conf"
 }
 
 # PLAIN list function
 plain_list() {
-	echo "$config_path"
+	echo "$proftpd_conf"
 }
 
 # CSV list function
 csv_list() {
 	echo "config_path"
-	echo "$config_path"
+	echo "$proftpd_conf"
 }
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Defining config path
-config_path=$(find /etc/proftpd* -name proftpd.conf 2> /dev/null)
+# Check if config exists
+if [ ! -f "$proftpd_conf" ]; then
+	case $format in
+		json) echo '{"CONFIG": {"config_path": ""}}' ;;
+		shell) echo "config_path:    Not found" ;;
+		plain) echo "" ;;
+		csv) echo "config_path" ; echo "" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in

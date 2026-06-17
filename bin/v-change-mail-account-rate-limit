@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change mail account rate limit
 # options: USER DOMAIN ACCOUNT RATE
 #
@@ -18,8 +18,8 @@ account=$3
 rate=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -41,7 +41,7 @@ format_domain_idn
 check_args '4' "$#" 'USER DOMAIN ACCOUNT RATE'
 is_format_valid 'user' 'domain' 'account'
 if [ "$rate" != 'system' ]; then
-	is_format_valid 'rate'
+    is_format_valid 'rate'
 fi
 is_system_enabled "$MAIL_SYSTEM" 'MAIL_SYSTEM'
 is_object_valid 'user' 'USER' "$user"
@@ -59,29 +59,40 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 md5=$(get_object_value "mail/$domain" 'ACCOUNT' "$account" '$MD5')
-if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	if [ "$rate" = "system" ]; then
-		user_rate_limit=$(get_object_value 'mail' 'DOMAIN' "$domain" '$RATE_LIMIT')
-		if [ -n "$user_rate_limit" ]; then
-			sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
-			echo "$account@$domain_idn:$user_rate_limit" >> $HOMEDIR/$user/conf/mail/$domain/limits
-		else
-			system=$(cat /etc/exim4/limit.conf)
-			sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
-			echo "$account@$domain_idn:$system" >> $HOMEDIR/$user/conf/mail/$domain/limits
-		fi
-	else
-		sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
-		echo "$account@$domain_idn:$rate" >> $HOMEDIR/$user/conf/mail/$domain/limits
-	fi
-fi
+case "$MAIL_SYSTEM" in
+    *exim*)
+        if [ "$rate" = "system" ]; then
+            user_rate_limit=$(get_object_value 'mail' 'DOMAIN' "$domain" '$RATE_LIMIT')
+            if [ -n "$user_rate_limit" ]; then
+                sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+                echo "$account@$domain_idn:$user_rate_limit" >> $HOMEDIR/$user/conf/mail/$domain/limits
+            else
+                if [ -f "/usr/local/etc/exim/limit.conf" ]; then
+                    system=$(cat /usr/local/etc/exim/limit.conf)
+                elif [ -f "/etc/exim/limit.conf" ]; then
+                    system=$(cat /etc/exim/limit.conf)
+                else
+                    # Default fallback - no limit
+                    system=""
+                fi
+                sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+                if [ -n "$system" ]; then
+                    echo "$account@$domain_idn:$system" >> $HOMEDIR/$user/conf/mail/$domain/limits
+                fi
+            fi
+        else
+            sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+            echo "$account@$domain_idn:$rate" >> $HOMEDIR/$user/conf/mail/$domain/limits
+        fi
+        ;;
+esac
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-if [[ "$rate" = "system" ]]; then
-	rate=''
+if [ "$rate" = "system" ]; then
+    rate=''
 fi
 
 syshealth_repair_mail_account_config
@@ -93,4 +104,4 @@ update_object_value "mail/$domain" 'ACCOUNT' "$account" '$RATE_LIMIT' "$rate"
 $BIN/v-log-action "$user" "Info" "Mail" "Mail account rate limit changed (Rate: $rate, Account: $account@$domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

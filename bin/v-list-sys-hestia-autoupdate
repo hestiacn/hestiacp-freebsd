@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list hestia autoupdate settings
 # options: [FORMAT]
 #
@@ -11,13 +11,21 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	cron="/var/spool/cron/crontabs/hestiaweb"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	cron="/var/cron/tabs/hestiaweb"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -25,16 +33,16 @@ source_conf "$HESTIA/conf/hestia.conf"
 json_list() {
 	echo '['
 	if [ -z "$check_cron" ]; then
-		echo -e "\t\"Disabled\","
+		echo '    "Disabled"'
 	else
-		echo -e "\t\"Enabled\""
+		echo '    "Enabled"'
 	fi
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
 shell_list() {
-	echo -n "AUTOUPDATE:     "
+	printf "AUTOUPDATE:     "
 	if [ -z "$check_cron" ]; then
 		echo "Disabled"
 	else
@@ -66,7 +74,7 @@ csv_list() {
 #----------------------------------------------------------#
 
 # Check cron tab
-check_cron=$(grep 'v-update-sys-hestia-all' /var/spool/cron/crontabs/hestiaweb)
+check_cron=$(grep 'v-update-sys-hestia-all' "$cron")
 
 # Listing data
 case $format in

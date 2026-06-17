@@ -10,11 +10,17 @@
 user=$1
 session_id=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -35,7 +41,9 @@ fi
 #                       Action                             #
 #----------------------------------------------------------#
 
-sed -i "s/SESSION='$session_id' ACTIVE='yes'/SESSION='$session_id' ACTIVE='no'/g" "$USER_DATA/auth.log"
+tmp_file="$USER_DATA/auth.log.tmp"
+sed "s/SESSION='$session_id' ACTIVE='yes'/SESSION='$session_id' ACTIVE='no'/g" "$USER_DATA/auth.log" > "$tmp_file"
+mv "$tmp_file" "$USER_DATA/auth.log"
 
 #----------------------------------------------------------#
 #                       Hestia                             #

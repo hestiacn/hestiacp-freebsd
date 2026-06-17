@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete web terminal
 # options: NONE
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -23,7 +29,7 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 
 if [ -z "$WEB_TERMINAL" ]; then
-	exit
+    exit 0
 fi
 
 # Perform verification if read-only mode is enabled
@@ -38,7 +44,7 @@ $BIN/v-change-sys-config-value "WEB_TERMINAL" "false"
 
 # Stopping web terminal websocket server
 $BIN/v-stop-service "hestia-web-terminal"
-systemctl disable hestia-web-terminal
+sysrc hestia_web_terminal_enable="NO"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -48,4 +54,4 @@ systemctl disable hestia-web-terminal
 $BIN/v-log-action "system" "Warning" "Web Terminal" "Web terminal disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete exim mail queue
 # options: none
 #
@@ -11,9 +11,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -22,19 +28,33 @@ source_conf "$HESTIA/conf/hestia.conf"
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
+if ! command -v exim > /dev/null 2>&1; then
+    echo "Error: Exim is not installed or not in PATH"
+    exit 1
+fi
+
 message_count=$(exim -bpc)
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
 
-if [ "$message_count" -gt 0 ]; then
-	read -p "Are you sure you want to delete $message_count messages from the exim queue? [y/N] " answer
+if [ -n "$message_count" ] && [ "$message_count" -gt 0 ]; then
+    printf "Are you sure you want to delete %s messages from the exim queue? [y/N] " "$message_count"
+    read -r answer
 
-	if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-		exiqgrep -i | xargs exim -Mrm
-	fi
+    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+        exiqgrep -i 2>/dev/null | xargs exim -Mrm 2>/dev/null
+        echo "Deleted $message_count messages from the mail queue."
+    else
+        echo "Operation cancelled."
+    fi
+elif [ -n "$message_count" ]; then
+    echo "Mail queue is empty."
+else
+    echo "Unable to determine mail queue size."
 fi
+
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
@@ -42,4 +62,4 @@ fi
 $BIN/v-log-action "system" "Info" "System" "Mail queue ($message_count) has been deleted"
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

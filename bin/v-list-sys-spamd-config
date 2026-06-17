@@ -11,23 +11,33 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	spamassassin_path="/etc/spamassassin"
+	mail_path="/etc/mail"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	spamassassin_path="/usr/local/etc/spamassassin"
+	mail_path="/usr/local/etc/mail"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	echo '{
-    "CONFIG": {
-        "config_path": "'$config_path'"
-        }
-}'
+	echo '{'
+	echo '    "CONFIG": {'
+	echo "        \"config_path\": \"$config_path\""
+	echo '    }'
+	echo '}'
 }
 
 # SHELL list function
@@ -51,7 +61,7 @@ csv_list() {
 #----------------------------------------------------------#
 
 # Defining config path
-config_path=$(find /etc/spamassassin /etc/mail -name local.cf 2> /dev/null)
+config_path=$(find "$spamassassin_path" "$mail_path" -name local.cf)
 
 # Listing data
 case $format in

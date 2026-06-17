@@ -13,11 +13,21 @@
 user=$1
 clicmd=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	passwd="/etc/passwd"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	passwd="/etc/master.passwd"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -30,7 +40,7 @@ is_format_valid 'user'
 is_object_valid 'user' 'USER' "$user"
 
 # Checking user homedir
-homedir=$(grep "^$user:" /etc/passwd | cut -f 6 -d :)
+homedir=$(grep "^$user:" "$passwd" | cut -f 6 -d :)
 if [ -z "$homedir" ]; then
 	check_result "$E_NOTEXIST" "Error: user home directory doesn't exist"
 fi
@@ -43,48 +53,74 @@ if [ "$clicmd" = "wp" ]; then
 	clicmd="$homedir/.wp-cli/wp"
 fi
 
-if [ -z "$(which "$clicmd")" ]; then
-	check_result "$E_NOTEXIST" "Cli command does not exist $clicmd"
-fi
+# 获取命令基础名称
 basecmd="$(basename "$clicmd")"
-if [ "$basecmd" != 'ps' -a \
-	"$basecmd" != 'ls' -a \
-	"$basecmd" != 'tar' -a \
-	"$basecmd" != 'zip' -a \
-	"$basecmd" != 'unzip' -a \
-	"$basecmd" != 'gzip' -a \
-	"$basecmd" != 'gunzip' -a \
-	"$basecmd" != 'mkdir' -a \
-	"$basecmd" != 'find' -a \
-	"$basecmd" != 'id' -a \
-	"$basecmd" != 'grep' -a \
-	"$basecmd" != 'egrep' -a \
-	"$basecmd" != 'sed' -a \
-	"$basecmd" != 'cat' -a \
-	"$basecmd" != 'php5.6' -a \
-	"$basecmd" != 'php7.0' -a \
-	"$basecmd" != 'php7.1' -a \
-	"$basecmd" != 'php7.2' -a \
-	"$basecmd" != 'php7.3' -a \
-	"$basecmd" != 'php7.4' -a \
-	"$basecmd" != 'php8.0' -a \
-	"$basecmd" != 'php8.1' -a \
-	"$basecmd" != 'php8.2' -a \
-	"$basecmd" != 'php8.3' -a \
-	"$basecmd" != 'php8.4' -a \
-	"$basecmd" != 'php8.5' -a \
-	"$basecmd" != 'php' -a \
-	"$basecmd" != "wp" -a \
-	"$basecmd" != 'composer' ]; then
-	check_result "$E_FORBIDEN" "Error: Cli command not enabled"
+
+# FreeBSD: 将 php8.4 转换为 php84 (去掉点号)
+if [ "$OS" = "freebsd" ]; then
+	case "$basecmd" in
+		php5.6) basecmd="php56" ;;
+		php7.0) basecmd="php70" ;;
+		php7.1) basecmd="php71" ;;
+		php7.2) basecmd="php72" ;;
+		php7.3) basecmd="php73" ;;
+		php7.4) basecmd="php74" ;;
+		php8.0) basecmd="php80" ;;
+		php8.1) basecmd="php81" ;;
+		php8.2) basecmd="php82" ;;
+		php8.3) basecmd="php83" ;;
+		php8.4) basecmd="php84" ;;
+		php8.5) basecmd="php85" ;;
+		php)    basecmd="php" ;;
+	esac
 fi
 
-all_scriptargs=("$@")
-for ((I = 3; I <= $#; I++)); do
-	cmdArgs="$cmdArgs ${all_scriptargs[${I} - 1]}"
+# Check if command exists
+if ! command -v "$basecmd" >/dev/null 2>&1; then
+	check_result "$E_NOTEXIST" "Cli command does not exist: $basecmd"
+fi
+
+if [ "$basecmd" != 'ps' ] && \
+   [ "$basecmd" != 'ls' ] && \
+   [ "$basecmd" != 'tar' ] && \
+   [ "$basecmd" != 'zip' ] && \
+   [ "$basecmd" != 'unzip' ] && \
+   [ "$basecmd" != 'gzip' ] && \
+   [ "$basecmd" != 'gunzip' ] && \
+   [ "$basecmd" != 'mkdir' ] && \
+   [ "$basecmd" != 'find' ] && \
+   [ "$basecmd" != 'id' ] && \
+   [ "$basecmd" != 'grep' ] && \
+   [ "$basecmd" != 'egrep' ] && \
+   [ "$basecmd" != 'sed' ] && \
+   [ "$basecmd" != 'cat' ] && \
+   [ "$basecmd" != 'php5.6' ] && \
+   [ "$basecmd" != 'php7.0' ] && \
+   [ "$basecmd" != 'php7.1' ] && \
+   [ "$basecmd" != 'php7.2' ] && \
+   [ "$basecmd" != 'php7.3' ] && \
+   [ "$basecmd" != 'php7.4' ] && \
+   [ "$basecmd" != 'php8.0' ] && \
+   [ "$basecmd" != 'php8.1' ] && \
+   [ "$basecmd" != 'php8.2' ] && \
+   [ "$basecmd" != 'php8.3' ] && \
+   [ "$basecmd" != 'php8.4' ] && \
+   [ "$basecmd" != 'php8.5' ] && \
+   [ "$basecmd" != 'php' ] && \
+   [ "$basecmd" != 'wp' ] && \
+   [ "$basecmd" != 'composer' ]; then
+	check_result "$E_FORBIDDEN" "Error: Cli command not enabled: $basecmd"
+fi
+
+# 构建参数
+cmdArgs=""
+shift 2
+for arg in "$@"; do
+	cmdArgs="$cmdArgs $arg"
 done
 
-runuser -u "$user" -- $clicmd $cmdArgs 2>&1
+# 执行命令
+runuser -u "$user" -- "$basecmd" $cmdArgs 2>&1
 if [ $? -ne 0 ]; then
 	echo "Error: cmd exited with errors"
 	exit 3

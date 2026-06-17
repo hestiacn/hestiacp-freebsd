@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change database owner
 # options: DATABASE USER
 #
@@ -15,8 +15,8 @@ database=$1
 user=$2
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/db.sh
@@ -39,39 +39,39 @@ is_object_unsuspended 'user' 'USER' "$user"
 # Check owner existence
 owner=$(echo "$database" | cut -f 1 -d '_')
 if [ ! -d "$HESTIA/data/users/$owner" ]; then
-	echo "Error: database owner doesn't exist"
-	log_event "$E_NOTEXIST" "$ARGUMENTS"
-	exit "$E_NOTEXIST"
+    echo "Error: database owner doesn't exist"
+    log_event "$E_NOTEXIST" "$ARGUMENTS"
+    exit "$E_NOTEXIST"
 fi
 
 # Check if owner is the same as the dst user
 if [ "$owner" = "$user" ]; then
-	exit
+    exit
 fi
 
 # Check db existence
-db_data=$(grep "DB='$database'" $HESTIA/data/users/$owner/db.conf)
+db_data=$(grep "DB='$database'" "$HESTIA/data/users/$owner/db.conf")
 if [ -z "$db_data" ]; then
-	echo "Error: database $database doesn't exist"
-	log_event "$E_NOTEXIST" "$ARGUMENTS"
-	exit "$E_NOTEXIST"
+    echo "Error: database $database doesn't exist"
+    log_event "$E_NOTEXIST" "$ARGUMENTS"
+    exit "$E_NOTEXIST"
 fi
 
 parse_object_kv_list "$db_data"
-#Fix issue #1084 with "Upper case not allowed with PGSQL"
-if [ "$TYPE" == "pgsql" ]; then
-	usersmall=$(echo "$user" | tr '[:upper:]' '[:lower:]')
+# Fix issue #1084 with "Upper case not allowed with PGSQL"
+if [ "$TYPE" = "pgsql" ]; then
+    usersmall=$(echo "$user" | tr '[:upper:]' '[:lower:]')
 else
-	usersmall=$user
+    usersmall="$user"
 fi
 
-# Check if database name is uniqe
+# Check if database name is unique
 new_db=$(echo "$database" | sed "s/^${owner}_/${usersmall}_/")
-check_db=$(grep "DB='$new_db'" $HESTIA/data/users/$user/db.conf)
+check_db=$(grep "DB='$new_db'" "$HESTIA/data/users/$user/db.conf")
 if [ -n "$check_db" ]; then
-	echo "Error: $new_db database exists"
-	log_event "$E_EXISTS" "$ARGUMENTS"
-	exit "$E_EXISTS"
+    echo "Error: $new_db database exists"
+    log_event "$E_EXISTS" "$ARGUMENTS"
+    exit "$E_EXISTS"
 fi
 
 # Perform verification if read-only mode is enabled
@@ -82,22 +82,22 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Creating temporary directory
-tmpdir=$(mktemp -p $BACKUP -d "tmp.$database.XXXXXXXXXX")
+tmpdir=$(mktemp -d "${BACKUP}/tmp.${database}.XXXXXXXXXX")
 
 # Suspend database
-$BIN/v-suspend-database $owner $database > /dev/null 2>&1
+$BIN/v-suspend-database "$owner" "$database" > /dev/null 2>&1
 
 # Dump database
 dump="$tmpdir/$database.$TYPE.sql"
 grants="$tmpdir/$database.$TYPE.$DBUSER"
 case $TYPE in
-	mysql) dump_mysql_database ;;
-	pgsql) dump_pgsql_database ;;
+    mysql) dump_mysql_database ;;
+    pgsql) dump_pgsql_database ;;
 esac
 
 # Import configuration
 db_data=$(echo "$db_data" | sed "s/'${owner}_/'${usersmall}_/g")
-echo "$db_data" >> $HESTIA/data/users/$user/db.conf
+printf "%b\n" "$db_data" >> "$HESTIA/data/users/$user/db.conf"
 parse_object_kv_list "$db_data"
 
 # Unsuspend db
@@ -108,12 +108,12 @@ $BIN/v-rebuild-databases "$user"
 
 # Import dump
 case $TYPE in
-	mysql) import_mysql_database "$dump" ;;
-	pgsql) import_pgsql_database "$dump" ;;
+    mysql) import_mysql_database "$dump" ;;
+    pgsql) import_pgsql_database "$dump" ;;
 esac
 
 # Deleting tmpdir
-rm -rf $tmpdir
+rm -rf "$tmpdir"
 
 # Remove old database
 $BIN/v-unsuspend-database "$owner" "$database" > /dev/null 2>&1

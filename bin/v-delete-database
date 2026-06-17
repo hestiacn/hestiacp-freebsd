@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete database
 # options: USER DATABASE
 #
@@ -15,9 +15,15 @@
 user=$1
 database=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/db.sh
@@ -49,8 +55,8 @@ suspended=$SUSPENDED
 
 # Switching on db type
 case $TYPE in
-	mysql) delete_mysql_database ;;
-	pgsql) delete_pgsql_database ;;
+    mysql) delete_mysql_database ;;
+    pgsql) delete_pgsql_database ;;
 esac
 
 #----------------------------------------------------------#
@@ -58,7 +64,7 @@ esac
 #----------------------------------------------------------#
 
 # Deleting database
-sed -i "/DB='$database' /d" $USER_DATA/db.conf
+sed -i "" "/DB='$database' /d" "$USER_DATA/db.conf"
 
 # Decreasing counters
 decrease_dbhost_values
@@ -66,13 +72,13 @@ decrease_user_value "$user" '$U_DATABASES'
 
 # Check if is suspended to decrease the suspended value
 if [ -n "$suspended" ]; then
-	if [ "$suspended" == "yes" ]; then
-		decrease_user_value "$user" '$SUSPENDED_DB'
-	fi
+    if [ "$suspended" = "yes" ]; then
+        decrease_user_value "$user" '$SUSPENDED_DB'
+    fi
 fi
 
 # Logging
 $BIN/v-log-action "$user" "Info" "Database" "Deleted database (Name: $database)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -11,17 +11,29 @@
 #----------------------------------------------------------#
 
 # Displaying network stats
-ss -s
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if command -v ss >/dev/null 2>&1; then
+	ss -s
+else
+	netstat
+fi
+printf -- "\n---------------------------------------------"
+printf -- "---------------------------------------------\n\n"
 
 # Displaying network usage
-lsof -iudp -itcp -n -P
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if command -v lsof >/dev/null 2>&1; then
+	lsof -iudp -itcp -n -P
+else
+	lsof -i -n -P | sed -E 's/IPv4 0x[0-9a-f]+/IPv4/g; s/IPv6 0x[0-9a-f]+/IPv6/g'
+fi
+printf -- "\n---------------------------------------------"
+printf -- "---------------------------------------------\n\n"
 
 # Displaying network interfaces
-ip addr list
+if command -v ip >/dev/null 2>&1; then
+	ip addr list
+else
+	ifconfig -a
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

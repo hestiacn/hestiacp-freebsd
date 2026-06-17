@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete mail domain
 # options: USER DOMAIN
 #
@@ -16,9 +16,15 @@ user=$1
 domain=$2
 domain_idn=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -52,36 +58,43 @@ get_domain_values 'mail'
 accounts=$(wc -l "$USER_DATA/mail/$domain.conf" | cut -f 1 -d ' ')
 
 # Deleting exim configuration files
-if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	rm -f /etc/$MAIL_SYSTEM/domains/$domain_idn
-	rm -rf $HOMEDIR/$user/conf/mail/$domain
-	rm -rf $HOMEDIR/$user/mail/$domain_idn
-fi
+case "$MAIL_SYSTEM" in
+    *exim*)
+        # FreeBSD: exim config path
+        if [ "$OS" = "freebsd" ]; then
+            rm -f "/usr/local/etc/exim/domains/$domain_idn"
+        else
+            rm -f "/etc/$MAIL_SYSTEM/domains/$domain_idn"
+        fi
+        rm -rf "$HOMEDIR/$user/conf/mail/$domain"
+        rm -rf "$HOMEDIR/$user/mail/$domain_idn"
+        ;;
+esac
 
 # Deleting dkim dns record
 if [ "$DKIM" = 'yes' ] && [ -e "$USER_DATA/dns/$domain.conf" ]; then
-	# Legacy _domainkey policy records are deprecated but still cleaned up; remove once obsolete.
-	dkim_records=$($BIN/v-list-dns-records "$user" "$domain" | grep -E "\s(mail\._domainkey|_domainkey)\s" | cut -f 1 -d ' ')
-	for id in $dkim_records; do
-		$BIN/v-delete-dns-record "$user" "$domain" "$id" '' 'yes'
-	done
+    # Legacy _domainkey policy records are deprecated but still cleaned up; remove once obsolete.
+    dkim_records=$($BIN/v-list-dns-records "$user" "$domain" | grep -E "\s(mail\._domainkey|_domainkey)\s" | cut -f 1 -d ' ')
+    for id in $dkim_records; do
+        $BIN/v-delete-dns-record "$user" "$domain" "$id" '' 'yes'
+    done
 fi
 
 # Delete SSL certificates and configuration
 if [ "$SSL" = 'yes' ] || [ -e "$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.crt" ]; then
-	$BIN/v-delete-mail-domain-ssl "$user" "$domain"
+    $BIN/v-delete-mail-domain-ssl "$user" "$domain"
 fi
 
 # Delete webmail configuration if it exists
 if [ -n "$WEB_SYSTEM" ] || [ -n "$PROXY_SYSTEM" ]; then
-	if [ -n "$IMAP_SYSTEM" ]; then
-		$BIN/v-delete-mail-domain-webmail "$user" "$domain" 'yes'
-	fi
+    if [ -n "$IMAP_SYSTEM" ]; then
+        $BIN/v-delete-mail-domain-webmail "$user" "$domain" 'yes'
+    fi
 fi
 
 # Run extension trigger
 if [ -x "$HESTIA/data/extensions/delete-mail-domain.sh" ]; then
-	$HESTIA/data/extensions/delete-mail-domain.sh "$user" "$domain"
+    $HESTIA/data/extensions/delete-mail-domain.sh "$user" "$domain"
 fi
 
 #----------------------------------------------------------#
@@ -89,29 +102,29 @@ fi
 #----------------------------------------------------------#
 
 # Delete domain config
-sed -i "/DOMAIN='$domain'/ d" $USER_DATA/mail.conf
-rm -f $USER_DATA/mail/$domain.conf
-rm -f $USER_DATA/mail/$domain.pem
-rm -f $USER_DATA/mail/$domain.pub
-rm -f $USER_DATA/mail/*@$domain.msg
+sed -i "" "/DOMAIN='$domain'/ d" "$USER_DATA/mail.conf"
+rm -f "$USER_DATA/mail/$domain.conf"
+rm -f "$USER_DATA/mail/$domain.pem"
+rm -f "$USER_DATA/mail/$domain.pub"
+rm -f "$USER_DATA/mail/"*"@$domain.msg"
 
 # Decreasing domain value
 decrease_user_value "$user" '$U_MAIL_DOMAINS'
 if [ "$DKIM" = 'yes' ]; then
-	decrease_user_value "$user" '$U_MAIL_DKIM'
+    decrease_user_value "$user" '$U_MAIL_DKIM'
 fi
 
 decrease_user_value "$user" '$U_MAIL_ACCOUNTS' "$accounts"
 
 # Check if is suspended to decrease the suspended value
 if [ -n "$SUSPENDED" ]; then
-	if [ "$SUSPENDED" == "yes" ]; then
-		decrease_user_value "$user" '$SUSPENDED_MAIL'
-	fi
+    if [ "$SUSPENDED" = "yes" ]; then
+        decrease_user_value "$user" '$SUSPENDED_MAIL'
+    fi
 fi
 
 # Logging
 $BIN/v-log-action "$user" "Info" "Mail" "Mail domain deleted (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

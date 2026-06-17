@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,18 +53,20 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/web" ]; then
-	mkdir "$RRD/web"
+	mkdir -p "$RRD/web"
 fi
 
 # Checking database
 if [ ! -e "$RRD/web/nginx.rrd" ]; then
 	# Adding database
-	rrdtool create $RRD/web/nginx.rrd --step $RRD_STEP \
+	rrdtool create "$RRD/web/nginx.rrd" --step "$RRD_STEP" \
 		DS:A:GAUGE:600:U:U \
 		RRA:AVERAGE:0.5:1:600 \
 		RRA:AVERAGE:0.5:6:700 \
@@ -72,14 +80,22 @@ fi
 
 # Parsing data
 if [ "$period" = 'daily' ]; then
-	a=$(wget -qO- http://localhost:8084/ | head -n1 | cut -f 3 -d ' ')
+	if command -v wget; then
+		data=$(wget -qO- http://localhost:8084/ | head -n1)
+	elif command -v fetch; then
+		data=$(fetch -q -o - http://localhost:8084/ 2>/dev/null | head -n1)
+	else
+		data=""
+	fi
+	a=$(echo "$data" | cut -f 3 -d ' ')
+	[ -z "$a" ] && a=0
 
 	# Updating rrd database
-	rrdtool update $RRD/web/nginx.rrd N:$a
+	rrdtool update "$RRD/web/nginx.rrd" "N:$a"
 fi
 
 # Updating rrd graph
-rrdtool graph $RRD/web/$period-nginx.png \
+rrdtool graph "$RRD/web/$period-nginx.png" \
 	--imgformat PNG \
 	--height="150" \
 	--width="670" \
@@ -96,7 +112,7 @@ rrdtool graph $RRD/web/$period-nginx.png \
 	-c "MGRID#AAAAAA" \
 	-c "FRAME#302c2d" \
 	-c "ARROW#FFFFFF" \
-	DEF:a=$RRD/web/nginx.rrd:A:AVERAGE \
+	DEF:"a=$RRD/web/nginx.rrd:A:AVERAGE" \
 	COMMENT:'\r' \
 	LINE1:a#fefda0:"Connections " \
 	GPRINT:a:'LAST:Current\:''%8.0lf' \

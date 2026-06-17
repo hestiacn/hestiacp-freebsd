@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: Delete auth log file for user
 #
 # This function for deleting a users auth log file
@@ -10,9 +10,15 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -35,10 +41,10 @@ is_object_valid 'user' 'USER' "$user"
 
 # Remove log file and log event
 if [ -f "$USER_DATA/auth.log" ]; then
-	rm -f $USER_DATA/auth.log
-	$BIN/v-log-action "system" "Warning" "Security" "User authentication log deleted (User: $user)."
-	$BIN/v-log-action "$user" "Warning" "Security" "Login history cleared."
-	log_event "$OK" "$ARGUMENTS"
+    rm -f "$USER_DATA/auth.log"
+    $BIN/v-log-action "system" "Warning" "Security" "User authentication log deleted (User: $user)."
+    $BIN/v-log-action "$user" "Warning" "Security" "Login history cleared."
+    log_event "$OK" "$ARGUMENTS"
 fi
 
-exit
+exit 0

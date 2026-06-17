@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,24 +53,26 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/mem" ]; then
-	mkdir $RRD/mem
+	mkdir -p "$RRD/mem"
 fi
 
 # Checking database
 if [ -e "$RRD/mem/mem.rrd" ]; then
-	rrd_check=$(rrdtool info $RRD/mem/mem.rrd | grep "FREE")
+	rrd_check=$(rrdtool info "$RRD/mem/mem.rrd" | grep "FREE")
 	if [ -z "$rrd_check" ]; then
-		rm -f $RRD/mem/mem.rrd
+		rm -f "$RRD/mem/mem.rrd"
 	fi
 fi
 if [ ! -e "$RRD/mem/mem.rrd" ]; then
 	# Adding database
-	rrdtool create $RRD/mem/mem.rrd --step $RRD_STEP \
+	rrdtool create "$RRD/mem/mem.rrd" --step "$RRD_STEP" \
 		DS:RAM:GAUGE:600:U:U \
 		DS:SWAP:GAUGE:600:U:U \
 		DS:FREE:GAUGE:600:U:U \
@@ -80,21 +88,41 @@ fi
 
 # Parsing data
 if [ "$period" = 'daily' ]; then
-	mem=$(LC_ALL=C free -m)
-	used=$(echo "$mem" | grep Mem | awk '{print $3}')
-	if [ -z "$(echo "$mem" | grep available)" ]; then
-		free=$(echo "$mem" | grep buffers/cache | awk '{print $4}')
+	if [ "$(uname)" = "FreeBSD" ]; then
+		total_mem=$(sysctl -n hw.physmem)
+		total_mem_mb=$((total_mem / 1048576))
+		free_mem=$(sysctl -n vm.stats.vm.v_free_count)
+		page_size=$(sysctl -n hw.pagesize)
+		free_mb=$((free_mem * page_size / 1048576))
+		used=$((total_mem_mb - free_mb))
+		swap_total=$(sysctl -n vm.swap_total 2>/dev/null)
+		swap_used=$(sysctl -n vm.swap_used 2>/dev/null)
+		if [ -n "$swap_total" ] && [ "$swap_total" -gt 0 ]; then
+			swap=$((swap_used / 1048576))
+		else
+			swap=0
+		fi
+		free=$free_mb
 	else
-		free=$(echo "$mem" | grep Mem | awk '{print $7}')
+		mem=$(LC_ALL=C free -m)
+		used=$(echo "$mem" | grep Mem | awk '{print $3}')
+		if echo "$mem" | grep -q available; then
+			free=$(echo "$mem" | grep Mem | awk '{print $7}')
+		else
+			free=$(echo "$mem" | grep buffers/cache | awk '{print $4}')
+		fi
+		swap=$(echo "$mem" | grep Swap | awk '{print $3}')
 	fi
-	swap=$(echo "$mem" | grep Swap | awk '{print $3}')
+	[ -z "$used" ] && used=0
+	[ -z "$swap" ] && swap=0
+	[ -z "$free" ] && free=0
 
 	# Updating rrd
-	rrdtool update $RRD/mem/mem.rrd N:$used:$swap:$free
+	rrdtool update "$RRD/mem/mem.rrd" "N:$used:$swap:$free"
 fi
 
 # Updating rrd graph
-rrdtool graph $RRD/mem/$period-mem.png \
+rrdtool graph "$RRD/mem/$period-mem.png" \
 	--imgformat PNG \
 	--height="150" \
 	--width="670" \
@@ -111,9 +139,9 @@ rrdtool graph $RRD/mem/$period-mem.png \
 	-c "MGRID#AAAAAA" \
 	-c "FRAME#302c2d" \
 	-c "ARROW#FFFFFF" \
-	DEF:used=$RRD/mem/mem.rrd:RAM:AVERAGE \
-	DEF:swap=$RRD/mem/mem.rrd:SWAP:AVERAGE \
-	DEF:free=$RRD/mem/mem.rrd:FREE:AVERAGE \
+	DEF:"used=$RRD/mem/mem.rrd:RAM:AVERAGE" \
+	DEF:"swap=$RRD/mem/mem.rrd:SWAP:AVERAGE" \
+	DEF:"free=$RRD/mem/mem.rrd:FREE:AVERAGE" \
 	COMMENT:'\r' \
 	AREA:used#867995:"USED" \
 	GPRINT:used:'LAST: Current\:''%8.0lf' \

@@ -13,13 +13,19 @@
 # Argument definition
 user=$1
 job=$2
-restart=$3
+restart=${3:-no}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -52,8 +58,9 @@ sync_cron_jobs
 #----------------------------------------------------------#
 
 # Restarting crond
-$BIN/v-restart-cron "$restart"
-check_result $? "Cron restart failed" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-cron "$restart"
+fi
 
 # Logging
 $BIN/v-log-action "system" "Info" "Cron Jobs" "Cron job suspended (Job: $job)."

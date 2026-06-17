@@ -20,8 +20,7 @@ HIDE=4
 quota=${5-unlimited}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -65,19 +64,17 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Generating hashed password
-
 if [ -n "$(doveadm pw -l | grep BLF-CRYPT)" ]; then
 	set +H # disable ! style history substitution
 	md5="$(doveadm pw -s BLF-CRYPT -p "$password")"
 elif [ -n "$(doveadm pw -l | grep ARGON2ID)" ]; then
-	# Fall back on Argon2id if bcrypt is not available
 	set +H # disable ! style history substitution
 	md5="$(doveadm pw -s ARGON2ID -p "$password")"
 else
-	# Fall back on MD5 if neither bcrypt nor argon2id is available
-	salt=$(generate_password "$PW_MATRIX" "8")
-	md5="{MD5}$($BIN/v-generate-password-hash md5 $salt <<< $password)"
+	salt=$(gen_pass "$PW_MATRIX" "8")
+	md5="{MD5}$(echo "$password" | $BIN/v-generate-password-hash md5 $salt)"
 fi
+
 # Adding account info into password file
 if [[ "$MAIL_SYSTEM" =~ exim ]]; then
 	if [ "$quota" = 'unlimited' ]; then
@@ -90,7 +87,7 @@ if [[ "$MAIL_SYSTEM" =~ exim ]]; then
 fi
 
 # Create mail account folder (mailbox)
-mkdir $HOMEDIR/$user/mail/$domain_idn/$account
+mkdir -p $HOMEDIR/$user/mail/$domain_idn/$account
 chown $user:mail $HOMEDIR/$user/mail/$domain_idn/$account
 chmod 700 $HOMEDIR/$user/mail/$domain_idn/$account
 
@@ -99,7 +96,7 @@ chmod 700 $HOMEDIR/$user/mail/$domain_idn/$account
 #----------------------------------------------------------#
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -119,11 +116,15 @@ touch $HOMEDIR/$user/conf/mail/$domain/limits
 
 user_rate_limit=$(get_object_value 'mail' 'DOMAIN' "$domain" '$RATE_LIMIT')
 if [ -n "$user_rate_limit" ]; then
-	sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+	sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
 	echo "$account@$domain_idn:$user_rate_limit" >> $HOMEDIR/$user/conf/mail/$domain/limits
 else
-	system=$(cat /etc/exim4/limit.conf)
-	sed -i "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
+	if [ -f "/usr/local/etc/exim/limit.conf" ]; then
+		system=$(cat /usr/local/etc/exim/limit.conf)
+	else
+		system="100"
+	fi
+	sed -i "" "/^$account@$domain_idn:/ d" $HOMEDIR/$user/conf/mail/$domain/limits
 	echo "$account@$domain_idn:$system" >> $HOMEDIR/$user/conf/mail/$domain/limits
 fi
 

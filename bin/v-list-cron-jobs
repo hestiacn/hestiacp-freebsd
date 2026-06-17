@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list user cron jobs
 # options: USER [FORMAT]
 #
@@ -12,80 +12,80 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep JOB $USER_DATA/cron.conf | wc -l)
+	objects=$(grep -c "JOB" "$USER_DATA/cron.conf" || echo 0)
 	echo "{"
-	while read str; do
+	while read -r str; do
 		parse_object_kv_list "$str"
 		CMD=$(echo "$CMD" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g")
-		echo -n '    "'$JOB'": {
-        "MIN": "'$MIN'",
-        "HOUR": "'$HOUR'",
-        "DAY": "'$DAY'",
-        "MONTH": "'$MONTH'",
-        "WDAY": "'$WDAY'",
-        "CMD": "'$CMD'",
-        "JOB": "'$JOB'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$JOB\": {"
+		echo -n "\"MIN\": \"$MIN\", "
+		echo -n "\"HOUR\": \"$HOUR\", "
+		echo -n "\"DAY\": \"$DAY\", "
+		echo -n "\"MONTH\": \"$MONTH\", "
+		echo -n "\"WDAY\": \"$WDAY\", "
+		echo -n "\"CMD\": \"$CMD\", "
+		echo -n "\"JOB\": \"$JOB\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $USER_DATA/cron.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$USER_DATA/cron.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "JOB^MIN^HOUR^DAY^MONTH^WDAY^COMMAND"
-	echo "---^---^----^---^-----^----^-------"
-	while read str; do
+	printf "%-6s %-6s %-6s %-6s %-8s %-6s %-50s\n" "JOB" "MIN" "HOUR" "DAY" "MONTH" "WDAY" "COMMAND"
+	printf "%-6s %-6s %-6s %-6s %-8s %-6s %-50s\n" "---" "---" "----" "---" "-----" "----" "-------"
+	while read -r str; do
 		parse_object_kv_list "$str"
 		CMD=$(echo "$CMD" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g")
-		echo "$JOB^$MIN^$HOUR^$DAY^$MONTH^$WDAY^$CMD"
-	done < <(cat $USER_DATA/cron.conf)
+		printf "%-6s %-6s %-6s %-6s %-8s %-6s %-50s\n" "$JOB" "$MIN" "$HOUR" "$DAY" "$MONTH" "$WDAY" "$CMD"
+	done < "$USER_DATA/cron.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
 		parse_object_kv_list "$str"
 		CMD=$(echo "$CMD" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g")
-		echo -ne "$JOB\t$MIN\t$HOUR\t$DAY\t$MONTH\t$WDAY\t$CMD\t"
-		echo -e "$SUSPENDED\t$TIME\t$DATE"
-	done < <(cat $USER_DATA/cron.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$JOB" "$MIN" "$HOUR" "$DAY" "$MONTH" "$WDAY" "$CMD" "$SUSPENDED" "$TIME" "$DATE"
+	done < "$USER_DATA/cron.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
-	echo "MIN,HOUR,DAY,WDAY,CMD,SUSPENDED,TIME,DATE"
-	while read str; do
+	echo "JOB,MIN,HOUR,DAY,MONTH,WDAY,CMD,SUSPENDED,TIME,DATE"
+	while read -r str; do
 		parse_object_kv_list "$str"
 		CMD=$(echo "$CMD" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g")
-		echo -n "$JOB,$MIN,$HOUR,$DAY,$MONTH,$WDAY,\"$CMD\","
-		echo "$SUSPENDED,$TIME,$DATE"
-	done < <(cat $USER_DATA/cron.conf)
+		echo "\"$JOB\",\"$MIN\",\"$HOUR\",\"$DAY\",\"$MONTH\",\"$WDAY\",\"$CMD\",\"$SUSPENDED\",\"$TIME\",\"$DATE\""
+	done < "$USER_DATA/cron.conf"
 }
 
 #----------------------------------------------------------#
@@ -99,13 +99,16 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
-
+if [ ! -f "$USER_DATA/cron.conf" ]; then
+	echo "No cron jobs found for user $user"
+	exit 0
+fi
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t -s '^' ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

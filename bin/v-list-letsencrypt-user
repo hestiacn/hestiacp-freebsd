@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list letsencrypt key
 # options: USER [FORMAT]
 #
@@ -12,26 +12,32 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$user'": {
-        "EMAIL": "'$EMAIL'",
-        "EXPONENT": "'$EXPONENT'",
-        "MODULUS": "'$MODULUS'",
-        "THUMB": "'$THUMB'",
-        "KID": "'$KID'"
-    }'
+	echo "    \"$user\": {"
+	echo "        \"EMAIL\": \"$EMAIL\","
+	echo "        \"EXPONENT\": \"$EXPONENT\","
+	echo "        \"MODULUS\": \"$MODULUS\","
+	echo "        \"THUMB\": \"$THUMB\","
+	echo "        \"KID\": \"$KID\""
+	echo "    }"
 	echo '}'
 }
 
@@ -47,7 +53,8 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -e "$user\t$EMAIL\t$EXPONENT\t$MODULUS\t$THUMB\t$KID"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$user" "$EMAIL" "$EXPONENT" "$MODULUS" "$THUMB" "$KID"
 }
 
 # CSV list function

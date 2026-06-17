@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete user package
 # options: PACKAGE
 #
@@ -16,9 +16,15 @@
 # Argument definition
 package=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -26,12 +32,12 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # Functions
 is_package_in_use() {
-	check_package=$(grep "PACKAGE='$package" $HESTIA/data/users/*/user.conf | cut -d'/' -f7)
-	if [ -n "$check_package" ]; then
-		for user in $check_package; do
-			$BIN/v-change-user-package "$user" 'default'
-		done
-	fi
+    check_package=$(grep "PACKAGE='$package" "$HESTIA/data/users/"*/user.conf | sed 's|.*/users/\([^/]*\)/.*|\1|')
+    if [ -n "$check_package" ]; then
+        for user in $check_package; do
+            $BIN/v-change-user-package "$user" 'default'
+        done
+    fi
 }
 
 #----------------------------------------------------------#
@@ -60,4 +66,4 @@ rm -f "$HESTIA/data/packages/$package.pkg"
 $BIN/v-log-action "system" "Info" "System" "Deleted package (Name: $package)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

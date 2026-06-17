@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list user IPs
 # options: USER [FORMAT]
 #
@@ -12,52 +12,53 @@
 
 # Argument definition
 user="$1"
-format="${2-shell}"
+format="${2:-shell}"
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	ip_count="$(echo "$ips" | wc -l)"
+	ip_count=$(echo "$ips" | wc -w | tr -d ' ')
 	i=1
 	for IP in $ips; do
 		source_conf "$HESTIA/data/ips/$IP"
-		echo -n '    "'$IP'": {
-        "OWNER": "'$OWNER'",
-        "STATUS": "'$STATUS'",
-        "NAME": "'$NAME'",
-        "NAT": "'$NAT'"
-        }'
+		echo -n "    \"$IP\": {"
+		echo -n "\"OWNER\": \"$OWNER\", "
+		echo -n "\"STATUS\": \"$STATUS\", "
+		echo -n "\"NAME\": \"$NAME\", "
+		echo "\"NAT\": \"$NAT\"}"
 		if [ "$i" -lt "$ip_count" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "IP  NAT  OWNER   STATUS   NAME"
-	echo "--  ---  -----   ------   ---"
+	printf "%-16s %-8s %-10s %-8s %-10s\n" "IP" "NAT" "OWNER" "STATUS" "NAME"
+	printf "%-16s %-8s %-10s %-8s %-10s\n" "--" "---" "-----" "------" "----"
 	for IP in $ips; do
 		source_conf "$HESTIA/data/ips/$IP"
-		if [ -z "$NAT" ]; then
-			NAT='no'
-		fi
-		if [ -z "$NAME" ]; then
-			NAME='no'
-		fi
-		echo "$IP $NAT $OWNER $STATUS $NAME"
+		[ -z "$NAT" ] && NAT='no'
+		[ -z "$NAME" ] && NAME='no'
+		printf "%-16s %-8s %-10s %-8s %-10s\n" "$IP" "$NAT" "$OWNER" "$STATUS" "$NAME"
 	done
 }
 
@@ -65,7 +66,7 @@ shell_list() {
 plain_list() {
 	for IP in $ips; do
 		source_conf "$HESTIA/data/ips/$IP"
-		echo -e "$IP\t$OWNER\t$STATUS\t$NAME\t$NAT"
+		printf "%s\t%s\t%s\t%s\t%s\n" "$IP" "$OWNER" "$STATUS" "$NAME" "$NAT"
 	done
 }
 
@@ -90,22 +91,48 @@ is_object_valid 'user' 'USER' "$user"
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Defining fileds to select
 owner="$ROOT_USER"
-owner_ips="$(grep -A 1 -H "OWNER='$owner'" $HESTIA/data/ips/*)"
-owner_ips="$(echo "$owner_ips" | grep "STATUS='shared'")"
-owner_ips="$(echo "$owner_ips" | cut -f 7 -d / | cut -f 1 -d -)"
-user_ips="$(grep -H "OWNER='$user'" $HESTIA/data/ips/*)"
-user_ips="$(echo "$user_ips" | cut -f 7 -d / | cut -f 1 -d :)"
-ips="$(echo -e "$user_ips\n$owner_ips" | sort -u | sed "/^$/d")"
-fields='$IP $OWNER $STATUS $NAME $NAT'
+
+owner_ips=""
+if [ -d "$HESTIA/data/ips" ]; then
+	for ip_file in "$HESTIA/data/ips"/*; do
+		[ -f "$ip_file" ] || continue
+		if grep -q "OWNER='$owner'" "$ip_file" && grep -q "STATUS='shared'" "$ip_file"; then
+			ip_name=$(basename "$ip_file")
+			owner_ips="${owner_ips} ${ip_name}"
+		fi
+	done
+fi
+
+user_ips=""
+if [ -d "$HESTIA/data/ips" ]; then
+	for ip_file in "$HESTIA/data/ips"/*; do
+		[ -f "$ip_file" ] || continue
+		if grep -q "OWNER='$user'" "$ip_file"; then
+			ip_name=$(basename "$ip_file")
+			user_ips="${user_ips} ${ip_name}"
+		fi
+	done
+fi
+
+ips=$(printf "%s\n%s\n" "$user_ips" "$owner_ips" | sort -u | sed '/^$/d' | tr '\n' ' ' | sed 's/ $//')
+
+if [ -z "$ips" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No IPs found for user $user" ;;
+		plain) ;;
+		csv) echo "IP,OWNER,STATUS,NAME,NAT" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

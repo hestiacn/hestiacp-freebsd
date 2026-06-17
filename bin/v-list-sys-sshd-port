@@ -11,11 +11,17 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 
 json_list() {
 	sh_counter=$(echo "$ports" | wc -l)
@@ -23,13 +29,13 @@ json_list() {
 	echo '['
 	for port in $ports; do
 		if [ "$i" -lt "$sh_counter" ]; then
-			echo -e "\t\"$port\","
+			printf '    "%s",\n' "$port"
 		else
-			echo -e "\t\"$port\""
+			printf '    "%s"\n' "$port"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
@@ -60,9 +66,11 @@ csv_list() {
 #                       Action                             #
 #----------------------------------------------------------#
 
-version=$(lsb_release -s -r)
+if command -v lsb_release; then
+	version=$(lsb_release -s -r)
+fi
 
-if [[ "$version" = 9 || "$version" = 10 ]]; then
+if [ -n "$version" ] && [ "$version" = "9" ] || [ "$version" = "10" ]; then
 	ports=$(sshd -T -C "user=root" | grep '^port' | cut -d ' ' -f2)
 else
 	ports=$(sshd -T | grep '^port' | cut -d ' ' -f2)

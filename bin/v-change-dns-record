@@ -1,11 +1,11 @@
-#!/bin/bash
-# info: change dns domain record
+#!/bin/sh
+# info: change dns domain record for FreeBSD (Official Enhanced Edition)
 # options: USER DOMAIN ID RECORD TYPE VALUE [PRIORITY] [RESTART] [TTL]
 #
 # example: v-change-dns-record admin domain.ua 42 192.18.22.43
 #
-# This function for changing DNS record.
-
+# This function for changing DNS record natively on FreeBSD.
+# 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
@@ -23,8 +23,8 @@ restart=$8
 ttl=$9
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -65,7 +65,6 @@ if [ "$record" = "@" ] && [ "$rtype" = "CNAME" ]; then
 fi
 
 # Make sure the variable for the optional parameter TTL is empty before parsing
-# We depend on that later on
 unset TTL
 
 # Parsing domain config
@@ -86,49 +85,51 @@ if [ "$rtype" != 'MX' ] && [ "$rtype" != 'SRV' ]; then
 fi
 
 # Add trailing dot at the end of NS/CNAME/MX/PTR/SRV record
-if [[ $rtype =~ ^NS|CNAME|MX|PTR|SRV ]]; then
+if [ "$rtype" = "NS" ] || [ "$rtype" = "CNAME" ] || [ "$rtype" = "MX" ] || [ "$rtype" = "PTR" ] || [ "$rtype" = "SRV" ]; then
 	trailing_dot=$(echo "$dvalue" | grep "\.$")
 	if [ -z "$trailing_dot" ]; then
 		dvalue="$dvalue."
 	fi
 fi
 
-if [[ $rtype =~ NS|CNAME|MX|PTR|SRV ]]; then
+if [ "$rtype" = "NS" ] || [ "$rtype" = "CNAME" ] || [ "$rtype" = "MX" ] || [ "$rtype" = "PTR" ] || [ "$rtype" = "SRV" ]; then
 	dvalue=$(idn2 --quiet "$dvalue")
 	record=$(idn2 --quiet "$record")
 fi
 
 if [ "$rtype" != "CAA" ]; then
-	dvalue=${dvalue//\"/}
+	# FreeBSD: replace bash ${var//\"/} with POSIX tr
+	dvalue=$(echo "$dvalue" | tr -d '"')
 
 	case "$rtype" in
 		SRV | DNSKEY | DS | TLSA | KEY | IPSECKEY) ;;
 		*)
-			if [[ "$dvalue" =~ [\;[:space:]] ]]; then
+			if echo "$dvalue" | grep -q "[;[:space:]]"; then
 				dvalue='"'"$dvalue"'"'
 			fi
 			;;
 	esac
 fi
 
-#RTYPE wasn't checked make sure to do it now correctly
+# RTYPE format check
 is_format_valid 'user' 'domain' 'id' 'record' 'rtype' 'dvalue'
 
 # Additional verifications
 is_dns_fqnd "$rtype" "$dvalue"
 is_dns_nameserver_valid "$domain" "$rtype" "$dvalue"
 
-current_value_canon=${VALUE//\'/%quote%}
-new_value_canon=${dvalue//\'/%quote%}
+# FreeBSD: replace bash ${var//\'/%quote%} with POSIX sed
+current_value_canon=$(echo "$VALUE" | sed "s/'/%quote%/g")
+new_value_canon=$(echo "$dvalue" | sed "s/'/%quote%/g")
 
-if [[ "$RECORD" == "$record" ]] && [[ "$TYPE" == "$rtype" ]] && [[ "$PRIORITY" -eq "$priority" ]] \
-	&& [[ "$current_value_canon" == "$new_value_canon" ]] && [[ "$SUSPENDED" == 'no' ]] && [[ "$TTL" -eq "$ttl" ]]; then
+if [ "$RECORD" = "$record" ] && [ "$TYPE" = "$rtype" ] && [ "$PRIORITY" -eq "$priority" ] \
+	&& [ "$current_value_canon" = "$new_value_canon" ] && [ "$SUSPENDED" = 'no' ] && [ "$TTL" -eq "$ttl" ]; then
 	echo "No pending changes in DNS entry."
 	exit "$E_EXISTS"
 fi
 
-# Generating timestamp
-time_n_date=$(date +'%T %F')
+# FreeBSD: replace Linux %T %F with POSIX-compliant format
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -139,8 +140,9 @@ dvalue="$new_value_canon"
 dns_rec="ID='$id' RECORD='$record' TYPE='$rtype' PRIORITY='$priority'"
 dns_rec="$dns_rec VALUE='$dvalue' SUSPENDED='no' TIME='$time' DATE='$date'"
 [ -n "$ttl" ] && dns_rec="$dns_rec TTL='$ttl'"
-# Deleting old record
-sed -i "/^ID='$id'/d" $USER_DATA/dns/$domain.conf
+
+# Deleting old record (FreeBSD sed requires empty backup suffix)
+sed -i "" "/^ID='$id'/d" $USER_DATA/dns/$domain.conf
 # Add new entry
 echo "$dns_rec" >> $USER_DATA/dns/$domain.conf
 
@@ -149,15 +151,16 @@ sort_dns_records
 
 # Update serial
 update_domain_serial
-# Updating zone
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
+
+# Update zone for FreeBSD (named only)
+if [ "$DNS_SYSTEM" = "named" ]; then
 	rebuild_dns_domain_conf
 fi
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
 	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
+	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe 2>/dev/null)
 	if [ -z "$dlock" ]; then
 		cmd="$BIN/v-add-remote-dns-domain $user $domain records"
 		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
@@ -176,4 +179,4 @@ check_result $? "DNS restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "DNS" "DNS record value changed (Type: $rtype, Record: $record, Value: $log_value, Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

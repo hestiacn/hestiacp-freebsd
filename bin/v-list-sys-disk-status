@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list disk information
 # options:
 #
@@ -12,21 +12,29 @@
 
 # Displaying disk usage
 df -h
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+printf "\n---------------------------------------------"
+printf "---------------------------------------------\n\n"
 
 # Displaying inodes usage
 df -ih
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+printf "\n---------------------------------------------"
+printf "---------------------------------------------\n\n"
 
 # Displaying I/O usage
-iostat -m
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if command -v iostat >/dev/null 2>&1; then
+	iostat -m
+else
+	echo "iostat command not found"
+fi
+printf "\n---------------------------------------------"
+printf "---------------------------------------------\n\n"
 
 # Displaying disk information
-fdisk -l
+if command -v fdisk >/dev/null 2>&1; then
+	fdisk -l
+else
+	echo "fdisk command not found"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

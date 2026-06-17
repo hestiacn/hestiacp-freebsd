@@ -14,11 +14,19 @@
 service=$1
 restart=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 source_conf "$HESTIA/conf/hestia.conf"
 
 #----------------------------------------------------------#
@@ -31,6 +39,7 @@ is_format_valid 'service' 'restart'
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
+
 if [[ "$service" =~ ^php[0-9]+$ ]] || [[ "$service" =~ ^[0-9][0-9]$ ]]; then
 	service="php-fpm"
 fi
@@ -42,73 +51,37 @@ fi
 
 # Multi-instance service restart request handling
 if [ "$service" = "php-fpm" ]; then
-    service_list=''
-    php_versions=$($BIN/v-list-sys-php plain)
-    for version in $php_versions; do
-        if [ "$OS" = "freebsd" ]; then
-            service_list="${service_list} php${version//./}_fpm"
-        else
-            service_list="${service_list} php${version}-fpm"
-        fi
-    done
+	service_list=''
+	php_versions=$($BIN/v-list-sys-php plain)
+	for version in $php_versions; do
+		if [ "$OS" = "freebsd" ]; then
+			version_clean=$(echo "$version" | tr -d '.')
+			service_list="${service_list} php${version_clean}_fpm"
+		else
+			service_list="${service_list} php${version}-fpm"
+		fi
+	done
 else
-    if [ "$OS" = "freebsd" ]; then
-        case "$service" in
-            bind9|named)          service_list="named" ;;
-            exim4|exim)           service_list="exim" ;;
-            dovecot)              service_list="dovecot" ;;
-            iptables|pf)          service_list="pf" ;;
-            cron|crond)           service_list="cron" ;;
-            ssh|sshd)             service_list="sshd" ;;
-            apache2|apache|httpd) service_list="apache24" ;;
-            nginx)                service_list="nginx" ;;
-            mysql|mysqld|mariadb) service_list="mysql-server" ;;
-            postgresql|pgsql)     service_list="postgresql" ;;
-            pure-ftpd|vsftpd)     service_list="pure-ftpd" ;;
-            fail2ban)             service_list="fail2ban" ;;
-            *)                    service_list="$service" ;;
-        esac
-    else
-        if [ -f /etc/redhat-release ]; then
-            case "$service" in
-                apache2|apache|httpd) service_list="httpd" ;;
-                bind9|named)          service_list="named" ;;
-                mysql|mysqld|mariadb) service_list="mariadb" ;;
-                postgresql|pgsql)     service_list="postgresql" ;; 
-                *)                    service_list="$service" ;;
-            esac
-        else
-            service_list="$service"
-        fi
-    fi
+	service_list="$service"
 fi
 
 for service in $service_list; do
-	# 💡 FreeBSD 适配：防火墙控制器置换
-	if [ "$service" = "iptables" ] || [ "$service" = "pf" ]; then
-		# 映射到未来你要重构的 FreeBSD PF 防火墙启停逻辑
-		$BIN/v-stop-firewall
-		$BIN/v-update-firewall
-		continue
-	fi
-
-	# 执行重载或重启逻辑的分流
 	if [ "$OS" = "freebsd" ]; then
-		#----------------------------------------------------------#
-		#                    FreeBSD 服务管理总控 (RC 系统)         #
-		#----------------------------------------------------------#
-		if [ "$restart" = "ssl" ] && [ "$service" = "nginx" ]; then
-			service "$service" onereload >> $log 2>&1
+		if [ "$service" = "pf" ] || [ "$service" = "ipfw" ]; then
+			$BIN/v-stop-firewall
+			$BIN/v-update-firewall
+		elif [ "$restart" = "ssl" ] && [ "$service" = "nginx" ]; then
+			service nginx onereload >> "$log" 2>&1
 		elif [ -z "$restart" ] || [ "$restart" = "no" ]; then
-			service "$service" onereload >> $log 2>&1 || service "$service" onerestart >> $log 2>&1
+			service "$service" onereload >> "$log" 2>&1 || service "$service" onerestart >> "$log" 2>&1
 		else
-			service "$service" onerestart >> $log 2>&1
+			service "$service" onerestart >> "$log" 2>&1
 		fi
 	else
-		#----------------------------------------------------------#
-		#                    Linux 服务管理总控 (Systemd)           #
-		#----------------------------------------------------------#
-		if [ "$restart" = "ssl" ] && [ "$service" = "nginx" ]; then
+		if [ "$service" = "iptables" ]; then
+			$BIN/v-stop-firewall
+			$BIN/v-update-firewall
+		elif [ "$restart" = "ssl" ] && [ "$service" = "nginx" ]; then
 			service $service upgrade >> $log 2>&1
 		elif [ -z "$restart" -o "$restart" = "no" ] && [ \
 			"$service" = "nginx" -o \
@@ -117,7 +90,6 @@ for service in $service_list; do
 			"$service" = "dovecot" -o \
 			"$service" = "bind9" -o \
 			"$service" = "named" -o \
-			"$service" = "vsftpd" -o \
 			"$service" = "php5.6-fpm" -o \
 			"$service" = "php7.0-fpm" -o \
 			"$service" = "php7.1-fpm" -o \
@@ -133,10 +105,10 @@ for service in $service_list; do
 			"$service" = "proftpd" -o \
 			"$service" = "ssh" -o \
 			"$service" = "fail2ban" ]; then
-			systemctl reload-or-restart "$service" >> $log 2>&1
+			systemctl reload-or-restart "$service" >> "$log" 2>&1
 		else
-			systemctl reset-failed "$service" >> $log 2>&1
-			systemctl restart "$service" >> $log 2>&1
+			systemctl reset-failed "$service" >> "$log" 2>&1
+			systemctl restart "$service" >> "$log" 2>&1
 		fi
 	fi
 

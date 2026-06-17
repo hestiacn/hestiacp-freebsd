@@ -11,11 +11,19 @@ user=$1
 src_file=$2
 dst_file=$3
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	passwd="/etc/passwd"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	passwd="/etc/master.passwd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -29,7 +37,7 @@ is_object_valid 'user' 'USER' "$user"
 check_hestia_demo_mode
 
 # Checking user homedir
-homedir=$(grep "^$user:" /etc/passwd | cut -f 6 -d :)
+homedir=$(grep "^$user:" "$passwd" | cut -f 6 -d :)
 if [ -z "$homedir" ]; then
 	echo "Error: user home directory doesn't exist"
 	exit 12
@@ -43,14 +51,14 @@ fi
 
 # Checking source path
 rpath=$(readlink -f "$src_file")
-if [ -z "$(echo $rpath | egrep "^/tmp|^$homedir")" ]; then
+if [ -z "$(echo "$rpath" | grep -E "^/tmp|^$homedir")" ]; then
 	echo "Error: invalid source path $src_file"
 	exit 2
 fi
 
 # Checking destination path
 rpath=$(readlink -f "$dst_file")
-if [ -z "$(echo $rpath | egrep "^/tmp|^$homedir")" ]; then
+if [ -z "$(echo "$rpath" | grep -E "^/tmp|^$homedir")" ]; then
 	echo "Error: invalid destination path $dst_file"
 	exit 2
 fi

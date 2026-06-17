@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/sh
 
 #===========================================================================#
 #                                                                           #
 # Hestia Control Panel - Domain Function Library                            #
 #                                                                           #
 #===========================================================================#
-
+path=/usr/local/etc/
 #----------------------------------------------------------#
 #                        WEB                               #
 #----------------------------------------------------------#
@@ -45,7 +45,7 @@ is_backend_template_valid() {
 is_web_domain_new() {
 	web=$(grep -F -H "DOMAIN='$1'" $HESTIA/data/users/*/web.conf)
 	if [ -n "$web" ]; then
-		if [ "$type" == 'web' ]; then
+		if [ "$type" = 'web' ]; then
 			check_result "$E_EXISTS" "Web domain $1 exists"
 		fi
 		web_user=$(echo "$web" | cut -f 7 -d /)
@@ -63,28 +63,28 @@ is_web_alias_new() {
 		parse_object_kv_list $string
 		if [ -n "$ALIAS" ]; then
 			a1=$(echo "'$ALIAS'" | grep -F "'$1'")
-			if [ -n "$a1" ] && [ "$2" == "web" ]; then
+			if [ -n "$a1" ] && [ "$2" = "web" ]; then
 				return "$E_EXISTS"
 			fi
 			if [ -n "$a1" ] && [ "$user" != "$user" ]; then
 				return "$E_EXISTS"
 			fi
 			a2=$(echo "'$ALIAS'" | grep -F "'$1,")
-			if [ -n "$a2" ] && [ "$2" == "web" ]; then
+			if [ -n "$a2" ] && [ "$2" = "web" ]; then
 				return "$E_EXISTS"
 			fi
 			if [ -n "$a2" ] && [ "$user" != "$user" ]; then
 				return "$E_EXISTS"
 			fi
 			a3=$(echo "'$ALIAS'" | grep -F ",$1,")
-			if [ -n "$a3" ] && [ "$2" == "web" ]; then
+			if [ -n "$a3" ] && [ "$2" = "web" ]; then
 				return "$E_EXISTS"
 			fi
 			if [ -n "$a3" ] && [ "$user" != "$user" ]; then
 				return "$E_EXISTS"
 			fi
 			a4=$(echo "'$ALIAS'" | grep -F ",$1'")
-			if [ -n "$a4" ] && [ "$2" == "web" ]; then
+			if [ -n "$a4" ] && [ "$2" = "web" ]; then
 				return "$E_EXISTS"
 			fi
 			if [ -n "$a4" ] && [ "$user" != "$user" ]; then
@@ -102,16 +102,18 @@ prepare_web_backend() {
 	# Accept first function argument as backend template otherwise fallback to $template global variable
 	local backend_template=${1:-$template}
 
-	pool=$(find -L /etc/php/ -name "$domain.conf" -exec dirname {} \;)
+	pool=$(find -L $path/php/ -name "$domain.conf" -exec dirname {} \; 2>/dev/null)
+	
 	# Check if multiple-PHP installed
-	regex="socket-(\d+)_(\d+)"
-	if [[ $backend_template =~ ^.*PHP-([0-9])\_([0-9])$ ]]; then
-		backend_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
-		pool=$(find -L /etc/php/$backend_version -type d \( -name "pool.d" -o -name "*fpm.d" \))
+	if echo "$backend_template" | grep -qE 'PHP-([0-9])_([0-9])'; then
+		backend_version=$(echo "$backend_template" | sed -E 's/.*PHP-([0-9])_([0-9]).*/\1.\2/')
+		backend_version_clean=$(echo "$backend_version" | tr -d '.')
+		pool=$(find -L $path/php${backend_version_clean} -type d \( -name "pool.d" -o -name "*fpm.d" \) 2>/dev/null)
 	else
 		backend_version=$(multiphp_default_version)
 		if [ -z "$pool" ] || [ -z "$BACKEND" ]; then
-			pool=$(find -L /etc/php/$backend_version -type d \( -name "pool.d" -o -name "*fpm.d" \))
+			backend_version_clean=$(echo "$backend_version" | tr -d '.')
+			pool=$(find -L $path/php${backend_version_clean} -type d \( -name "pool.d" -o -name "*fpm.d" \) 2>/dev/null)
 		fi
 	fi
 
@@ -133,7 +135,7 @@ prepare_web_backend() {
 
 # Delete web backend
 delete_web_backend() {
-	find -L /etc/php/ -type f -name "$backend_type.conf" -exec rm -f {} \;
+	find -L $path/php/ -type f -name "$backend_type.conf" -exec rm -f {} \; 2>/dev/null
 }
 
 # Prepare web aliases
@@ -141,30 +143,30 @@ prepare_web_aliases() {
 	i=1
 	for tmp_alias in ${1//,/ }; do
 		tmp_alias_idn="$tmp_alias"
-		if [[ "$tmp_alias" = *[![:ascii:]]* ]]; then
+		if echo "$tmp_alias" | grep -q '[^[:ascii:]]'; then
 			tmp_alias_idn=$(idn2 --quiet $tmp_alias)
 		fi
-		if [[ $i -eq 1 ]]; then
+		if [ $i -eq 1 ]; then
 			aliases="$tmp_alias"
 			aliases_idn="$tmp_alias_idn"
 			alias_string="ServerAlias $tmp_alias_idn"
 		else
 			aliases="$aliases,$tmp_alias"
 			aliases_idn="$aliases_idn,$tmp_alias_idn"
-			if (($i % 100 == 0)); then
+			if [ $((i % 100)) -eq 0 ]; then
 				alias_string="$alias_string\n    ServerAlias $tmp_alias_idn"
 			else
 				alias_string="$alias_string $tmp_alias_idn"
 			fi
 		fi
 		alias_number=$i
-		((i++))
+		i=$((i + 1))
 	done
 }
 
 # Update web domain values
 prepare_web_domain_values() {
-	if [[ "$domain" = *[![:ascii:]]* ]]; then
+	if echo "$domain" | grep -q '[^[:ascii:]]'; then
 		domain_idn=$(idn2 --quiet $domain)
 	else
 		domain_idn=$domain
@@ -176,7 +178,7 @@ prepare_web_domain_values() {
 		sdocroot="$HOMEDIR/$user/web/$domain/public_shtml"
 		$BIN/v-add-fs-directory "$user" "$HOMEDIR/$user/web/$domain/public_shtml"
 		chmod 751 $HOMEDIR/$user/web/$domain/public_shtml
-		chown www-data:$user $HOMEDIR/$user/web/$domain/public_shtml
+		chown www:$user $HOMEDIR/$user/web/$domain/public_shtml
 	fi
 
 	if [ -n "$WEB_BACKEND" ]; then
@@ -224,7 +226,7 @@ prepare_web_domain_values() {
 	if [ "$SUSPENDED" = 'yes' ]; then
 		docroot="$HESTIA/data/templates/web/suspend"
 		sdocroot="$HESTIA/data/templates/web/suspend"
-		if [ "$PROXY_SYSTEM" == "nginx" ]; then
+		if [ "$PROXY_SYSTEM" = "nginx" ]; then
 			PROXY="suspended"
 		else
 			TPL="suspended"
@@ -240,9 +242,9 @@ add_web_config() {
 	fi
 
 	conf="$HOMEDIR/$user/conf/web/$domain/$1.conf"
-	if [[ "$2" =~ stpl$ ]]; then
-		conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf"
-	fi
+	case "$2" in
+		*stpl*) conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf" ;;
+	esac
 
 	domain_idn=$domain
 	format_domain_idn
@@ -294,43 +296,51 @@ add_web_config() {
 	chown root:$user $conf
 	chmod 640 $conf
 
-	if [[ "$2" =~ stpl$ ]]; then
-		rm -f /etc/$1/conf.d/domains/$domain.ssl.conf
-		ln -s $conf /etc/$1/conf.d/domains/$domain.ssl.conf
+	case "$2" in
+		*stpl*)
+			rm -f $path/$1/conf.d/domains/$domain.ssl.conf
+			ln -s $conf $path/$1/conf.d/domains/$domain.ssl.conf
 
-		# Rename/Move extra SSL config files
-		find=$(find $HOMEDIR/$user/conf/web/*.$domain.org* 2> /dev/null)
-		for f in $find; do
-			if [[ $f =~ .*/s(nginx|apache2)\.$domain\.conf(.*) ]]; then
-				ServerType="${BASH_REMATCH[1]}"
-				CustomConfigName="${BASH_REMATCH[2]}"
-				if [ "$CustomConfigName" = "_letsencrypt" ]; then
-					rm -f "$f"
-					continue
-				fi
-				mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.ssl.conf_old$CustomConfigName"
-			fi
-		done
-	else
-		rm -f /etc/$1/conf.d/domains/$domain.conf
-		ln -s $conf /etc/$1/conf.d/domains/$domain.conf
-		# Rename/Move extra config files
-		find=$(find $HOMEDIR/$user/conf/web/*.$domain.org* 2> /dev/null)
-		for f in $find; do
-			if [[ $f =~ .*/(nginx|apache2)\.$domain\.conf(.*) ]]; then
-				ServerType="${BASH_REMATCH[1]}"
-				CustomConfigName="${BASH_REMATCH[2]}"
-				if [ "$CustomConfigName" = "_letsencrypt" ]; then
-					rm -f "$f"
-					continue
-				fi
-				mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.conf_old$CustomConfigName"
-			elif [[ $f =~ .*/forcessl\.(nginx|apache2)\.$domain\.conf ]]; then
-				ServerType="${BASH_REMATCH[1]}"
-				mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.forcessl.conf"
-			fi
-		done
-	fi
+			# Rename/Move extra SSL config files
+			find=$(find $HOMEDIR/$user/conf/web/*.$domain.org* 2> /dev/null)
+			for f in $find; do
+				case "$f" in
+					*/snginx.$domain.conf*|*/sapache24.$domain.conf*)
+						ServerType=$(echo "$f" | sed -E 's/.*\/s(nginx|apache24)\.'$domain'\.conf.*/\1/')
+						CustomConfigName=$(echo "$f" | sed -E 's/.*\/s(nginx|apache24)\.'$domain'\.conf(.*)/\2/')
+						if [ "$CustomConfigName" = "_letsencrypt" ]; then
+							rm -f "$f"
+							continue
+						fi
+						mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.ssl.conf_old$CustomConfigName"
+						;;
+				esac
+			done
+			;;
+		*)
+			rm -f $path/$1/conf.d/domains/$domain.conf
+			ln -s $conf $path/$1/conf.d/domains/$domain.conf
+			# Rename/Move extra config files
+			find=$(find $HOMEDIR/$user/conf/web/*.$domain.org* 2> /dev/null)
+			for f in $find; do
+				case "$f" in
+					*/nginx.$domain.conf*|*/apache24.$domain.conf*)
+						ServerType=$(echo "$f" | sed -E 's/.*\/(nginx|apache24)\.'$domain'\.conf.*/\1/')
+						CustomConfigName=$(echo "$f" | sed -E 's/.*\/(nginx|apache24)\.'$domain'\.conf(.*)/\2/')
+						if [ "$CustomConfigName" = "_letsencrypt" ]; then
+							rm -f "$f"
+							continue
+						fi
+						mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.conf_old$CustomConfigName"
+						;;
+					*/forcessl.nginx.$domain.conf|*/forcessl.apache24.$domain.conf)
+						ServerType=$(echo "$f" | sed -E 's/.*\/forcessl\.(nginx|apache24)\.'$domain'\.conf/\1/')
+						mv "$f" "$HOMEDIR/$user/conf/web/$domain/$ServerType.forcessl.conf"
+						;;
+				esac
+			done
+			;;
+	esac
 
 	trigger="${2/.*pl/.sh}"
 	if [ -x "${WEBTPL_LOCATION}/$trigger" ]; then
@@ -369,12 +379,12 @@ get_web_config_lines() {
 # Replace web config
 replace_web_config() {
 	conf="$HOMEDIR/$user/conf/web/$domain/$1.conf"
-	if [[ "$2" =~ stpl$ ]]; then
-		conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf"
-	fi
+	case "$2" in
+		*stpl*) conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf" ;;
+	esac
 
 	if [ -e "$conf" ]; then
-		sed -i "s|$old|$new|g" $conf
+		sed -i "" "s|$old|$new|g" $conf
 	fi
 }
 
@@ -382,31 +392,33 @@ replace_web_config() {
 del_web_config() {
 	conf="$HOMEDIR/$user/conf/web/$domain/$1.conf"
 	local confname="$domain.conf"
-	if [[ "$2" =~ stpl$ ]]; then
-		conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf"
-		confname="$domain.ssl.conf"
-	fi
+	case "$2" in
+		*stpl*)
+			conf="$HOMEDIR/$user/conf/web/$domain/$1.ssl.conf"
+			confname="$domain.ssl.conf"
+			;;
+	esac
 
 	# Clean up legacy configuration files
 	if [ ! -e "$conf" ]; then
 		local legacyconf="$HOMEDIR/$user/conf/web/$1.conf"
-		if [[ "$2" =~ stpl$ ]]; then
-			legacyconf="$HOMEDIR/$user/conf/web/s$1.conf"
-		fi
+		case "$2" in
+			*stpl*) legacyconf="$HOMEDIR/$user/conf/web/s$1.conf" ;;
+		esac
 		rm -f $legacyconf
 
 		# Remove old global includes file
-		rm -f /etc/$1/conf.d/hestia.conf
+		rm -f $path/$1/conf.d/hestia.conf
 	fi
 
 	# Remove domain configuration files and clean up symbolic links
 	rm -f "$conf"
 
 	if [ -n "$WEB_SYSTEM" ] && [ "$WEB_SYSTEM" = "$1" ]; then
-		rm -f "/etc/$WEB_SYSTEM/conf.d/domains/$confname"
+		rm -f "$path/$WEB_SYSTEM/conf.d/domains/$confname"
 	fi
 	if [ -n "$PROXY_SYSTEM" ] && [ "$PROXY_SYSTEM" = "$1" ]; then
-		rm -f "/etc/$PROXY_SYSTEM/conf.d/domains/$confname"
+		rm -f "$path/$PROXY_SYSTEM/conf.d/domains/$confname"
 	fi
 }
 
@@ -475,7 +487,7 @@ is_dns_template_valid() {
 is_dns_domain_new() {
 	dns=$(ls $HESTIA/data/users/*/dns/$1.conf 2> /dev/null)
 	if [ -n "$dns" ]; then
-		if [ "$2" == 'dns' ]; then
+		if [ "$2" = 'dns' ]; then
 			check_result "$E_EXISTS" "DNS domain $1 exists"
 		fi
 		dns_user=$(echo "$dns" | cut -f 7 -d /)
@@ -544,7 +556,7 @@ update_domain_zone() {
 	if [ -z "$SERIAL" ]; then
 		SERIAL=$(date +'%Y%m%d01')
 	fi
-	if [[ "$domain" = *[![:ascii:]]* ]]; then
+	if echo "$domain" | grep -q '[^[:ascii:]]'; then
 		domain_idn=$(idn2 --quiet "$domain")
 	else
 		domain_idn=$domain
@@ -589,14 +601,13 @@ update_domain_zone() {
 			txtlength=${#VALUE}
 			if [ $txtlength -gt 255 ]; then
 				already_chunked=0
-				if [[ $VALUE == *"\" \""* ]] || [[ $VALUE == *"\"\""* ]]; then
-					already_chunked=1
-				fi
+				case "$VALUE" in
+					*"\" \""*|*"\"\""*) already_chunked=1 ;;
+				esac
 				if [ $already_chunked -eq 0 ]; then
-					if [[ ${VALUE:0:1} = '"' ]]; then
-						txtlength=$(($txtlength - 2))
-						VALUE=${VALUE:1:txtlength}
-					fi
+					case "$VALUE" in
+						'"'*) txtlength=$((txtlength - 2)); VALUE=${VALUE:1:txtlength} ;;
+					esac
 					VALUE=$(echo $VALUE | fold -w 255 | xargs -I '$' echo -n '"$"')
 				fi
 			fi
@@ -616,7 +627,7 @@ update_domain_serial() {
 		zn_serial=$(head $zn_conf | grep 'SOA' -A1 | tail -n 1 | sed "s/ //g")
 		s_date=$(echo ${zn_serial:0:8})
 		c_date=$(date +'%Y%m%d')
-		if [ "$s_date" == "$c_date" ]; then
+		if [ "$s_date" = "$c_date" ]; then
 			cur_value=$(echo ${zn_serial:8})
 			new_value=$(expr $cur_value + 1)
 			len_value=$(expr length $new_value)
@@ -677,7 +688,7 @@ is_dns_fqnd() {
 	fi
 	fqdn_type=$(echo $t | grep "^NS\|CNAME\|MX\|PTR\|SRV")
 	tree_length=3
-	if [[ $t = 'CNAME' || $t = 'MX' || $t = 'PTR' ]]; then
+	if [ "$t" = 'CNAME' ] || [ "$t" = 'MX' ] || [ "$t" = 'PTR' ]; then
 		tree_length=2
 	fi
 	if [ -n "$fqdn_type" ]; then
@@ -718,7 +729,7 @@ is_dns_nameserver_valid() {
 is_mail_domain_new() {
 	mail=$(ls $HESTIA/data/users/*/mail/$1.conf 2> /dev/null)
 	if [ -n "$mail" ]; then
-		if [ "$2" == 'mail' ]; then
+		if [ "$2" = 'mail' ]; then
 			check_result $E_EXISTS "Mail domain $1 exists"
 		fi
 		mail_user=$(echo "$mail" | cut -f 7 -d /)
@@ -730,12 +741,12 @@ is_mail_domain_new() {
 	mail_nosub=$(echo "$1" | cut -f 1 -d . --complement)
 	for mail_reserved in $(echo "mail $WEBMAIL_ALIAS"); do
 		if [ -n "$(ls $HESTIA/data/users/*/mail/$mail_reserved.$1.conf 2> /dev/null)" ]; then
-			if [ "$2" == 'mail' ]; then
+			if [ "$2" = 'mail' ]; then
 				check_result "$E_EXISTS" "Required subdomain \"$mail_reserved.$1\" already exists"
 			fi
 		fi
 		if [ -n "$(ls $HESTIA/data/users/*/mail/$mail_nosub.conf 2> /dev/null)" ] && [ "$mail_sub" = "$mail_reserved" ]; then
-			if [ "$2" == 'mail' ]; then
+			if [ "$2" = 'mail' ]; then
 				check_result "$E_INVALID" "The subdomain \"$mail_sub.\" is reserved by \"$mail_nosub\""
 			fi
 		fi
@@ -770,8 +781,9 @@ add_mail_ssl_config() {
 		mkdir -p $HESTIA/ssl/mail
 	fi
 
-	if [ ! -d /etc/dovecot/conf.d/domains ]; then
-		mkdir -p /etc/dovecot/conf.d/domains
+	# FreeBSD: Dovecot config path
+	if [ ! -d $path/dovecot/conf.d/domains ]; then
+		mkdir -p $path/dovecot/conf.d/domains
 	fi
 
 	# Add certificate to Hestia user configuration data directory
@@ -797,8 +809,8 @@ add_mail_ssl_config() {
 	fi
 
 	# Clean up dovecot configuration (if it exists)
-	if [ -f /etc/dovecot/conf.d/domains/$domain.conf ]; then
-		rm -f /etc/dovecot/conf.d/domains/$domain.conf
+	if [ -f $path/dovecot/conf.d/domains/$domain.conf ]; then
+		rm -f $path/dovecot/conf.d/domains/$domain.conf
 	fi
 
 	# Check if using custom / wildcard mail certificate
@@ -807,25 +819,25 @@ add_mail_ssl_config() {
 
 	if [ -n "$mail_cert_match" ]; then
 		# Add domain SSL configuration to dovecot
-		echo "" >> /etc/dovecot/conf.d/domains/$domain.conf
-		echo "local_name $domain {" >> /etc/dovecot/conf.d/domains/$domain.conf
-		echo "  ssl_cert = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem" >> /etc/dovecot/conf.d/domains/$domain.conf
-		echo "  ssl_key = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key" >> /etc/dovecot/conf.d/domains/$domain.conf
-		echo "}" >> /etc/dovecot/conf.d/domains/$domain.conf
+		echo "" >> $path/dovecot/conf.d/domains/$domain.conf
+		echo "local_name $domain {" >> $path/dovecot/conf.d/domains/$domain.conf
+		echo "  ssl_cert = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem" >> $path/dovecot/conf.d/domains/$domain.conf
+		echo "  ssl_key = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key" >> $path/dovecot/conf.d/domains/$domain.conf
+		echo "}" >> $path/dovecot/conf.d/domains/$domain.conf
 
-		# Add domain SSL configuration to exim4
+		# Add domain SSL configuration to exim
 		ln -s $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem $HESTIA/ssl/mail/$domain.crt
 		ln -s $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key $HESTIA/ssl/mail/$domain.key
 	fi
 
 	# Add domain SSL configuration to dovecot
-	echo "" >> /etc/dovecot/conf.d/domains/$domain.conf
-	echo "local_name mail.$domain {" >> /etc/dovecot/conf.d/domains/$domain.conf
-	echo "  ssl_cert = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem" >> /etc/dovecot/conf.d/domains/$domain.conf
-	echo "  ssl_key = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key" >> /etc/dovecot/conf.d/domains/$domain.conf
-	echo "}" >> /etc/dovecot/conf.d/domains/$domain.conf
+	echo "" >> $path/dovecot/conf.d/domains/$domain.conf
+	echo "local_name mail.$domain {" >> $path/dovecot/conf.d/domains/$domain.conf
+	echo "  ssl_cert = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem" >> $path/dovecot/conf.d/domains/$domain.conf
+	echo "  ssl_key = <$HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key" >> $path/dovecot/conf.d/domains/$domain.conf
+	echo "}" >> $path/dovecot/conf.d/domains/$domain.conf
 
-	# Add domain SSL configuration to exim4
+	# Add domain SSL configuration to exim
 	ln -s $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem $HESTIA/ssl/mail/mail.$domain.crt
 	ln -s $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key $HESTIA/ssl/mail/mail.$domain.key
 
@@ -848,12 +860,12 @@ del_mail_ssl_config() {
 	rm -f $HOMEDIR/$user/conf/mail/$domain/ssl/*
 
 	# Remove dovecot configuration
-	rm -f /etc/dovecot/conf.d/domains/$domain.conf
+	rm -f $path/dovecot/conf.d/domains/$domain.conf
 
 	# Remove SSL vhost configuration
 	rm -f $HOMEDIR/$user/conf/mail/$domain/*.*ssl.conf
-	rm -f /etc/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
-	rm -f /etc/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+	rm -f $path/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+	rm -f $path/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
 
 	# Remove SSL certificates
 	rm -f $HOMEDIR/$user/conf/mail/$domain/ssl/*
@@ -876,9 +888,9 @@ del_mail_ssl_certificates() {
 add_webmail_config() {
 	mkdir -p "$HOMEDIR/$user/conf/mail/$domain"
 	conf="$HOMEDIR/$user/conf/mail/$domain/$1.conf"
-	if [[ "$2" =~ stpl$ ]]; then
-		conf="$HOMEDIR/$user/conf/mail/$domain/$1.ssl.conf"
-	fi
+	case "$2" in
+		*stpl*) conf="$HOMEDIR/$user/conf/mail/$domain/$1.ssl.conf" ;;
+	esac
 
 	domain_idn=$domain
 	format_domain_idn
@@ -933,52 +945,55 @@ add_webmail_config() {
 	chown root:$user $conf
 	chmod 640 $conf
 
-	if [[ "$2" =~ stpl$ ]]; then
-		if [ -n "$WEB_SYSTEM" ]; then
-			forcessl="$HOMEDIR/$user/conf/mail/$domain/$WEB_SYSTEM.forcessl.conf"
-			rm -f /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
-			ln -s $conf /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
-		fi
-		if [ -n "$PROXY_SYSTEM" ]; then
-			forcessl="$HOMEDIR/$user/conf/mail/$domain/$PROXY_SYSTEM.forcessl.conf"
-			rm -f /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
-			ln -s $conf /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
-		fi
+	case "$2" in
+		*stpl*)
+			if [ -n "$WEB_SYSTEM" ]; then
+				forcessl="$HOMEDIR/$user/conf/mail/$domain/$WEB_SYSTEM.forcessl.conf"
+				rm -f $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+				ln -s $conf $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+			fi
+			if [ -n "$PROXY_SYSTEM" ]; then
+				forcessl="$HOMEDIR/$user/conf/mail/$domain/$PROXY_SYSTEM.forcessl.conf"
+				rm -f $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+				ln -s $conf $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+			fi
 
-		# Add rewrite rules to force HTTPS/SSL connections
-		if [ -n "$PROXY_SYSTEM" ] || [ "$WEB_SYSTEM" = 'nginx' ]; then
-			echo 'return 301 https://$server_name$request_uri;' > $forcessl
-		else
-			echo 'RewriteEngine On' > $forcessl
-			echo 'RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]' >> $forcessl
-		fi
+			# Add rewrite rules to force HTTPS/SSL connections
+			if [ -n "$PROXY_SYSTEM" ] || [ "$WEB_SYSTEM" = 'nginx' ]; then
+				echo 'return 301 https://$server_name$request_uri;' > $forcessl
+			else
+				echo 'RewriteEngine On' > $forcessl
+				echo 'RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]' >> $forcessl
+			fi
 
-		# Remove old configurations
-		find $HOMEDIR/$user/conf/mail/ -maxdepth 1 -type f \( -name "$domain.*" -o -name "ssl.$domain.*" -o -name "*nginx.$domain.*" \) -exec rm {} \;
-	else
-		if [ -n "$WEB_SYSTEM" ]; then
-			rm -f /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
-			ln -s $conf /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
-		fi
-		if [ -n "$PROXY_SYSTEM" ]; then
-			rm -f /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
-			ln -s $conf /etc/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
-		fi
-		# Clear old configurations
-		find $HOMEDIR/$user/conf/mail/ -maxdepth 1 -type f \( -name "$domain.*" \) -exec rm {} \;
-	fi
+			# Remove old configurations
+			find $HOMEDIR/$user/conf/mail/ -maxdepth 1 -type f \( -name "$domain.*" -o -name "ssl.$domain.*" -o -name "*nginx.$domain.*" \) -exec rm {} \;
+			;;
+		*)
+			if [ -n "$WEB_SYSTEM" ]; then
+				rm -f $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+				ln -s $conf $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+			fi
+			if [ -n "$PROXY_SYSTEM" ]; then
+				rm -f $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+				ln -s $conf $path/$1/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+			fi
+			# Clear old configurations
+			find $HOMEDIR/$user/conf/mail/ -maxdepth 1 -type f \( -name "$domain.*" \) -exec rm {} \;
+			;;
+	esac
 }
 
 # Delete webmail support
 del_webmail_config() {
 	if [ -n "$WEB_SYSTEM" ]; then
 		rm -f $HOMEDIR/$user/conf/mail/$domain/$WEB_SYSTEM.conf
-		rm -f /etc/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+		rm -f $path/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
 	fi
 
 	if [ -n "$PROXY_SYSTEM" ]; then
 		rm -f $HOMEDIR/$user/conf/mail/$domain/$PROXY_SYSTEM.*conf
-		rm -f /etc/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
+		rm -f $path/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.conf
 	fi
 }
 
@@ -986,12 +1001,12 @@ del_webmail_config() {
 del_webmail_ssl_config() {
 	if [ -n "$WEB_SYSTEM" ]; then
 		rm -f $HOMEDIR/$user/conf/mail/$domain/$WEB_SYSTEM.*ssl.conf
-		rm -f /etc/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+		rm -f $path/$WEB_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
 	fi
 
 	if [ -n "$PROXY_SYSTEM" ]; then
 		rm -f $HOMEDIR/$user/conf/mail/$domain/$PROXY_SYSTEM.*ssl.conf
-		rm -f /etc/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
+		rm -f $path/$PROXY_SYSTEM/conf.d/domains/$WEBMAIL_ALIAS.$domain.ssl.conf
 	fi
 }
 
@@ -1027,23 +1042,23 @@ get_domain_values() {
 
 is_valid_extension() {
 	if [ ! -e "$HESTIA/data/extensions/public_suffix_list.dat" ]; then
-		mkdir $HESTIA/data/extensions/
+		mkdir -p $HESTIA/data/extensions/
 		chmod 750 $HESTIA/data/extensions/
-		/usr/bin/wget --tries=3 --timeout=15 --read-timeout=15 --waitretry=3 --no-dns-cache --quiet -O $HESTIA/data/extensions/public_suffix_list.dat https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat
+		/usr/bin/fetch --timeout=15 -o $HESTIA/data/extensions/public_suffix_list.dat https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat
 	fi
 	test_domain=$(idn2 -d "$1")
-	extension=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 1 | /usr/bin/rev)
+	extension=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 1 | rev)
 	exten=$(grep "^$extension\$" $HESTIA/data/extensions/public_suffix_list.dat)
 }
 
 is_valid_2_part_extension() {
 	if [ ! -e "$HESTIA/data/extensions/public_suffix_list.dat" ]; then
-		mkdir $HESTIA/data/extensions/
+		mkdir -p $HESTIA/data/extensions/
 		chmod 750 $HESTIA/data/extensions/
-		/usr/bin/wget --tries=3 --timeout=15 --read-timeout=15 --waitretry=3 --no-dns-cache --quiet -O $HESTIA/data/extensions/public_suffix_list.dat https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat
+		/usr/bin/fetch --timeout=15 -o $HESTIA/data/extensions/public_suffix_list.dat https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat
 	fi
 	test_domain=$(idn2 -d "$1")
-	extension=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 1-2 | /usr/bin/rev)
+	extension=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 1-2 | rev)
 	exten=$(grep "^$extension\$" $HESTIA/data/extensions/public_suffix_list.dat)
 }
 
@@ -1051,14 +1066,14 @@ get_base_domain() {
 	test_domain=$1
 	is_valid_extension "$test_domain"
 	if [ $? -ne 0 ]; then
-		basedomain=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 1-2 | /usr/bin/rev)
+		basedomain=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 1-2 | rev)
 	else
 		is_valid_2_part_extension "$test_domain"
 		if [ $? -ne 0 ]; then
-			basedomain=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 1-2 | /usr/bin/rev)
+			basedomain=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 1-2 | rev)
 		else
-			extension=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 1-2 | /usr/bin/rev)
-			partdomain=$(/bin/echo "${test_domain}" | /usr/bin/rev | /usr/bin/cut -d "." --output-delimiter="." -f 3 | /usr/bin/rev)
+			extension=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 1-2 | rev)
+			partdomain=$(echo "${test_domain}" | rev | cut -d "." --output-delimiter="." -f 3 | rev)
 			basedomain="$partdomain.$extension"
 		fi
 	fi
@@ -1097,18 +1112,18 @@ is_base_domain_owner() {
 #----------------------------------------------------------#
 
 process_http2_directive() {
-	if [ -e /etc/nginx/conf.d/http2-directive.conf ]; then
+	if [ -e $path/nginx/conf.d/http2-directive.conf ]; then
 		while IFS= read -r old_param; do
 			new_param="$(echo "$old_param" | sed 's/\shttp2//')"
-			sed -i "s/$old_param/$new_param/" "$1"
+			sed -i "" "s/$old_param/$new_param/" "$1"
 		done < <(grep -E "listen.*(\bssl\b(\s|.+){1,}\bhttp2\b|\bhttp2\b(\s|.+){1,}\bssl\b).*;" "$1")
 	else
 		if version_ge "$(nginx -v 2>&1 | cut -d'/' -f2)" "1.25.1"; then
-			echo "http2 on;" > /etc/nginx/conf.d/http2-directive.conf
+			echo "http2 on;" > $path/nginx/conf.d/http2-directive.conf
 
 			while IFS= read -r old_param; do
 				new_param="$(echo "$old_param" | sed 's/\shttp2//')"
-				sed -i "s/$old_param/$new_param/" "$1"
+				sed -i "" "s/$old_param/$new_param/" "$1"
 			done < <(grep -E "listen.*(\bssl\b(\s|.+){1,}\bhttp2\b|\bhttp2\b(\s|.+){1,}\bssl\b).*;" "$1")
 		else
 			listen_ssl="$(grep -E "listen.*\s\bssl\b(?:\s)*.*;" "$1")"
@@ -1117,7 +1132,7 @@ process_http2_directive() {
 			if [ -n "$listen_ssl" ] && [ -z "$listen_http2" ]; then
 				while IFS= read -r old_param; do
 					new_param="$(echo "$old_param" | sed 's/\sssl/ ssl http2/')"
-					sed -i "s/$old_param/$new_param/" "$1"
+					sed -i "" "s/$old_param/$new_param/" "$1"
 				done < <(grep -E "listen.*\s\bssl\b(?:\s)*.*;" "$1")
 			fi
 		fi

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns template
 # options: TEMPLATE [FORMAT]
 #
@@ -12,74 +12,78 @@
 
 # Argument definition
 template=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep ID $DNSTPL/$template.tpl | wc -l)
+	objects=$(grep -c "ID" "$DNSTPL/$template.tpl" 2>/dev/null || echo 0)
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
 		VALUE=$(echo "$VALUE" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g")
-		echo -n '    "'$ID'": {
-        "RECORD": "'$RECORD'",
-        "TYPE": "'$TYPE'",
-        "PRIORITY": "'$PRIORITY'",
-        "VALUE": "'$VALUE'",
-        "ID": "'$ID'"
-    }'
+		echo -n "    \"$ID\": {"
+		echo -n "\"RECORD\": \"$RECORD\", "
+		echo -n "\"TYPE\": \"$TYPE\", "
+		echo -n "\"PRIORITY\": \"$PRIORITY\", "
+		echo "\"VALUE\": \"$VALUE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $DNSTPL/$template.tpl)
-	echo '}'
+		i=$((i + 1))
+	done < "$DNSTPL/$template.tpl"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "ID^RECORD^TYPE^VALUE"
-	echo "--^------^----^-----"
-	while read str; do
+	printf "%-6s %-20s %-8s %-50s\n" "ID" "RECORD" "TYPE" "VALUE"
+	printf "%-6s %-20s %-8s %-50s\n" "--" "------" "----" "-----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo "$ID^$RECORD^$TYPE^$VALUE"
-	done < <(cat $DNSTPL/$template.tpl)
+		printf "%-6s %-20s %-8s %-50s\n" "$ID" "$RECORD" "$TYPE" "$VALUE"
+	done < "$DNSTPL/$template.tpl"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/\\'/g")
-		echo -e "$ID\t$RECORD\t$TYPE\t$PRIORITY\t$VALUE"
-	done < <(cat $DNSTPL/$template.tpl)
+		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/'/g")
+		printf "%s\t%s\t%s\t%s\t%s\n" "$ID" "$RECORD" "$TYPE" "$PRIORITY" "$VALUE"
+	done < "$DNSTPL/$template.tpl"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
 	echo "ID,RECORD,TYPE,PRIORITY,VALUE"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/\\'/g")
+		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/'/g")
 		echo "$ID,$RECORD,$TYPE,$PRIORITY,\"$VALUE\""
-	done < <(cat $DNSTPL/$template.tpl)
+	done < "$DNSTPL/$template.tpl"
 }
 
 #----------------------------------------------------------#
@@ -94,12 +98,22 @@ is_dns_template_valid "$template"
 #                       Action                             #
 #----------------------------------------------------------#
 
+if [ ! -f "$DNSTPL/$template.tpl" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No DNS template found: $template" ;;
+		plain) ;;
+		csv) echo "ID,RECORD,TYPE,PRIORITY,VALUE" ;;
+	esac
+	exit 0
+fi
+
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t -s '^' ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

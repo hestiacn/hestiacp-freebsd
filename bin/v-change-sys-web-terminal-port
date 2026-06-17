@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change system web terminal backend port
 # options: PORT
 #
@@ -14,9 +14,15 @@
 PORT=$1
 NGINX_CONFIG="$HESTIA/nginx/conf/nginx.conf"
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -24,8 +30,8 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # Functions
 is_port_valid() {
-	# Check if PORT is numeric
-	if [[ ! "$PORT" =~ ^[0-9]+$ ]]; then
+    # Check if PORT is numeric
+    if ! echo "$PORT" | grep -qE '^[0-9]+$'; then
 		echo "Port should contains a numeric value only!"
 		log_event "$E_INVALID" "$ARGUMENTS"
 		exit "$E_INVALID"
@@ -55,27 +61,27 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Get original port
-ORIGINAL_PORT=$(cat ${NGINX_CONFIG} | grep -m1 "proxy_pass http://localhost:" | sed 's/[^0-9]*//g')
+ORIGINAL_PORT=$(grep -m1 "proxy_pass http://localhost:" "$NGINX_CONFIG" | sed 's/[^0-9]*//g')
 
 # Check if port is different to nginx.conf
 if [ "$ORIGINAL_PORT" = "$PORT" ]; then
-	# Nothing to do, exit
-	exit
+    # Nothing to do, exit
+    exit 0
 else
-	# Set new port in config via v-change-sys-config-value
-	$BIN/v-change-sys-config-value "WEB_TERMINAL_PORT" "$PORT"
-	# Replace port in config files.
-	sed -i "s/\(proxy_pass http:\/\/localhost:\)[0-9][0-9]*\([^0-9]*\;$\)/\1$PORT\2/" ${NGINX_CONFIG}
+    # Set new port in config via v-change-sys-config-value
+    $BIN/v-change-sys-config-value "WEB_TERMINAL_PORT" "$PORT"
+    # Replace port in config files.
+    sed -i "" "s/\(proxy_pass http:\/\/localhost:\)[0-9][0-9]*\([^0-9]*\;$\)/\1$PORT\2/" "$NGINX_CONFIG"
 
-	# Check if the web terminal backend is running
-	if [[ $(ps -eaf | grep -i hestia/web-terminal | sed '/^$/d' | wc -l) -gt 1 ]]; then
-		$BIN/v-restart-service hestia-web-terminal
-	fi
+    # Check if the web terminal backend is running
+    if [ "$(ps -ax | grep -i "hestia/web-terminal" | grep -v grep | wc -l)" -gt 0 ]; then
+        $BIN/v-restart-service hestia-web-terminal
+    fi
 
-	# Check if Hestia is running
-	if [[ $(ps -eaf | grep -i hestia | sed '/^$/d' | wc -l) -gt 1 ]]; then
-		$BIN/v-restart-service hestia
-	fi
+    # Check if Hestia is running
+    if [ "$(ps -ax | grep -i hestia | grep -v grep | wc -l)" -gt 1 ]; then
+        $BIN/v-restart-service hestia
+    fi
 fi
 
 #----------------------------------------------------------#
@@ -86,4 +92,4 @@ fi
 $BIN/v-log-action "system" "Warning" "System" "Hestia Control Panel web terminal port changed (New Value: $PORT, Old Value: $ORIGINAL_PORT)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -28,13 +34,13 @@ json_list() {
 	echo '['
 	for shell in $shells; do
 		if [ "$i" -lt "$sh_counter" ]; then
-			echo -e "\t\"$shell\","
+			printf '    "%s",\n' "$shell"
 		else
-			echo -e "\t\"$shell\""
+			printf '    "%s"\n' "$shell"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function

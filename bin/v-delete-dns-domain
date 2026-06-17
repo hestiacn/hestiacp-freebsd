@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete dns domain
 # options: USER DOMAIN
 #
@@ -16,9 +16,15 @@ user=$1
 domain=$2
 restart="$3"
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -50,31 +56,28 @@ suspended=$(grep "DOMAIN='$domain'" $USER_DATA/dns.conf | grep "SUSPENDED='yes'"
 
 dnssec=$(grep "DOMAIN='$domain'" $USER_DATA/dns.conf | grep "DNSSEC='yes'")
 
-records=$(wc -l $USER_DATA/dns/$domain.conf | cut -f 1 -d ' ')
+records=$(wc -l "$USER_DATA/dns/$domain.conf" | cut -f 1 -d ' ')
 
 # Deleting system configs
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
-	if [ -e '/etc/named.conf' ]; then
-		dns_conf='/etc/named.conf'
-	else
-		dns_conf='/etc/bind/named.conf'
-	fi
-
-	sed -i "/\/$user\/conf\/dns\/$domain.db\"/d" $dns_conf
-	rm -f $HOMEDIR/$user/conf/dns/$domain.db
-fi
+case "$DNS_SYSTEM" in
+    named|bind)
+        dns_conf="/usr/local/etc/namedb/named.conf"
+        sed -i "" "/\/$user\/conf\/dns\/$domain.db\"/d" "$dns_conf"
+        rm -f "$HOMEDIR/$user/conf/dns/$domain.db"
+        ;;
+esac
 
 if [ -n "$dnssec" ]; then
-	# Delete existing keys
-	rm -fr $HOMEDIR/$user/conf/dns/$domain.db.*
-	rm -fr /var/cache/bind/K$domain_idn.*
-	rm -fr $USER_DATA/keys/K$domain_idn.*
+    # Delete existing keys
+    rm -f "$HOMEDIR/$user/conf/dns/$domain.db".*
+    rm -f "/usr/local/etc/namedb/working/K$domain_idn".*
+    rm -f "$USER_DATA/keys/K$domain_idn".*
 fi
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
-	cmd="$BIN/v-delete-remote-dns-domain $user $domain"
-	echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
+    cmd="$BIN/v-delete-remote-dns-domain $user $domain"
+    echo "$cmd" >> "$HESTIA/data/queue/dns-cluster.pipe"
 fi
 
 #----------------------------------------------------------#
@@ -82,8 +85,8 @@ fi
 #----------------------------------------------------------#
 
 # Deleting domain
-sed -i "/DOMAIN='$domain'/ d" $USER_DATA/dns.conf
-rm -f $USER_DATA/dns/$domain.conf
+sed -i "" "/DOMAIN='$domain'/ d" "$USER_DATA/dns.conf"
+rm -f "$USER_DATA/dns/$domain.conf"
 
 # Decreasing domain value
 decrease_user_value "$user" '$U_DNS_DOMAINS'
@@ -95,11 +98,11 @@ check_result $? "Bind restart failed" > /dev/null
 
 # Check if is suspended to decrease the suspended value
 if [ -n "$suspended" ]; then
-	decrease_user_value "$user" '$SUSPENDED_DNS'
+    decrease_user_value "$user" '$SUSPENDED_DNS'
 fi
 
 # Logging
 $BIN/v-log-action "$user" "Info" "DNS" "Deleted DNS zone (Name: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

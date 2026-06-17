@@ -14,11 +14,19 @@
 # Argument definition
 package=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -37,13 +45,18 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Update repo
-apt-get update -o Dir::Etc::sourcelist="sources.list.d/hestia.list" \
-	-o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" -qq
-
-# Update hestia package
-apt-get install $package -qq > /dev/null 2>&1
-check_result $? "$package update failed" "$E_UPDATE"
+if [ "$OS" = "linux" ]; then
+	apt-get update -o Dir::Etc::sourcelist="sources.list.d/hestia.list" \
+		-o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" -qq
+	
+	apt-get install "$package" -qq > /dev/null 2>&1
+	check_result $? "$package update failed" "$E_UPDATE"
+else
+	# FreeBSD: 使用 pkg
+	pkg update -f
+	pkg install -y "$package"
+	check_result $? "$package update failed" "$E_UPDATE"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

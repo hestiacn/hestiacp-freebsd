@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change user language
 # options: USER LANGUAGE
 #
@@ -14,28 +14,34 @@
 user=$1
 language=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 is_language_valid() {
-	# English is always allowed
-	if [ "$1" != "en" ]; then
-		if ! [[ "$1" =~ ^[[:alnum:]_-]+$ ]]; then
-			echo "Error: language $1 is not valid"
-			log_event "$E_INVALID" "$ARGUMENTS"
-			exit $E_INVALID
-		fi
-		if [ ! -d "$HESTIA/web/locale/$1" ]; then
-			echo "Error: language $1 doesn't exist"
-			log_event "$E_NOTEXIST" "$ARGUMENTS"
-			exit $E_NOTEXIST
-		fi
-	fi
+    # English is always allowed
+    if [ "$1" != "en" ]; then
+        if ! echo "$1" | grep -qE '^[[:alnum:]_-]+$'; then
+            echo "Error: language $1 is not valid"
+            log_event "$E_INVALID" "$ARGUMENTS"
+            exit $E_INVALID
+        fi
+        if [ ! -d "$HESTIA/web/locale/$1" ]; then
+            echo "Error: language $1 doesn't exist"
+            log_event "$E_NOTEXIST" "$ARGUMENTS"
+            exit $E_NOTEXIST
+        fi
+    fi
 }
 
 #----------------------------------------------------------#
@@ -57,9 +63,9 @@ check_hestia_demo_mode
 
 # Change language
 if [ -z "$(grep LANGUAGE $USER_DATA/user.conf)" ]; then
-	sed -i "s/^TIME/LANGUAGE='$language'\nTIME/g" $USER_DATA/user.conf
+    sed -i "" "s/^TIME/LANGUAGE='$language'\nTIME/g" $USER_DATA/user.conf
 else
-	update_user_value "$user" '$LANGUAGE' "$language"
+    update_user_value "$user" '$LANGUAGE' "$language"
 fi
 
 #----------------------------------------------------------#
@@ -70,4 +76,4 @@ fi
 $BIN/v-log-action "$user" "Info" "System" "Display language changed (Value: $language)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

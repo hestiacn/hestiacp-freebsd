@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete system sftp jail
 # options: NONE
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -29,46 +35,66 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Checking sshd directives
+# FreeBSD: sshd config path
 config='/etc/ssh/sshd_config'
-sftp_n=$(grep -n "Subsystem.*sftp" $config | grep -v internal | grep ":#")
-sftp_i=$(grep -n "^# Hestia SFTP Chroot" $config)
+backup_config="${config}.bak"
 
-# Backing up config
-cp $config $config.bak
-
-# Enabling normal sftp
-if [ -n "$sftp_n" ]; then
-	fline=$(echo "$sftp_n" | cut -f 1 -d :)
-	sed -i "${fline}s/#Subsystem/Subsystem sftp/" $config
-	restart='yes'
+# Check if backup exists before creating new one
+if [ ! -f "$backup_config" ]; then
+    cp "$config" "$backup_config"
 fi
 
-# Disabling jailed sftp
-if [ -n "$sftp_i" ]; then
-	fline=$(echo "$sftp_i" | cut -f 1 -d :)
-	lline=$((fline + 5))
-	sed -i "${fline},${lline}d" $config
-	restart='yes'
+# Find lines to modify
+sftp_line=$(grep -n "^Subsystem.*sftp" "$config" | head -1)
+sftp_chroot_block=$(grep -n "^# Hestia SFTP Chroot" "$config")
+
+restart=''
+
+# Enable standard sftp
+if [ -n "$sftp_line" ]; then
+    if echo "$sftp_line" | grep -q "^[0-9]*:#"; then
+        line_num=$(echo "$sftp_line" | cut -d: -f1)
+        sed -i "" "${line_num}s/^#//" "$config"
+        restart='yes'
+    fi
 fi
 
-# Validating opensshd config
+# Remove Hestia SFTP Chroot block if exists
+if [ -n "$sftp_chroot_block" ]; then
+    start_line=$(echo "$sftp_chroot_block" | cut -d: -f1)
+    end_line=$((start_line + 8))
+    sed -i "" "${start_line},${end_line}d" "$config" 2>/dev/null || \
+    sed -i "" "/^# Hestia SFTP Chroot/,/^Match/d" "$config"
+    restart='yes'
+fi
+
+# Also remove any Match Group sftp-chroot blocks
+if grep -q "^Match Group sftp-chroot" "$config" 2>/dev/null; then
+    sed -i "" "/^Match Group sftp-chroot/,/^[^[:space:]]/d" "$config"
+    restart='yes'
+fi
+
+# Validate sshd config and restart if needed
 if [ "$restart" = 'yes' ]; then
-	subj="OpenSSH restart failed"
-	email=$(grep CONTACT "$HESTIA/data/users/$ROOT_USER/user.conf" | cut -f 2 -d \')
-	/usr/sbin/sshd -t > /dev/null 2>&1
-	if [ "$?" -ne 0 ]; then
-		mail_text="OpenSSH can not be restarted. Please check config:
-            \n\n$(/usr/sbin/sshd -t)"
-		echo -e "$mail_text" | $SENDMAIL -s "$subj" $email
-	else
-		service ssh restart > /dev/null 2>&1
-	fi
+    # Test configuration
+    if /usr/sbin/sshd -t 2>/dev/null; then
+        service sshd restart > /dev/null 2>&1
+        check_result $? "SSH restart failed" > /dev/null
+    else
+        # Restore backup on error
+        cp "$backup_config" "$config"
+        echo "Error: SSH configuration invalid, changes reverted"
+        log_event "$E_INVALID" "Invalid SSH config, restored backup"
+    fi
 fi
 
-# Remove v-add-sys-sftp-jail to startup
-if [ -e "/etc/cron.d/hestia-sftp" ]; then
-	rm -f /etc/cron.d/hestia-sftp
+# Remove
+if [ -f "/etc/cron.d/hestia-sftp" ]; then
+    rm -f "/etc/cron.d/hestia-sftp"
+fi
+
+if [ -f "/etc/periodic/daily/hestia-sftp" ]; then
+    rm -f "/etc/periodic/daily/hestia-sftp"
 fi
 
 #----------------------------------------------------------#
@@ -79,4 +105,4 @@ fi
 $BIN/v-log-action "system" "Warning" "Plugins" "SFTP Chroot Jail disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

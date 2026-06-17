@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change domain ssl certificate
 # options: USER DOMAIN SSL_DIR [RESTART]
 #
@@ -18,9 +18,15 @@ domain_idn=$2
 ssl_dir=$3
 restart=$4
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -46,7 +52,7 @@ is_object_valid 'web' 'DOMAIN' "$domain"
 is_object_unsuspended 'web' 'DOMAIN' "$domain"
 is_object_value_exist 'web' 'DOMAIN' "$domain" '$SSL'
 if [ -n "$restart" ]; then
-	is_restart_format_valid "$restart" 'restart'
+    is_restart_format_valid "$restart" 'restart'
 fi
 is_web_domain_cert_valid
 
@@ -60,24 +66,24 @@ check_hestia_demo_mode
 # Deleting old certificate
 tmpdir=$(mktemp -p $HOMEDIR/$user/web/$domain/private -d)
 rm -f $HOMEDIR/$user/conf/web/$domain/ssl/$domain.*
-mv $USER_DATA/ssl/$domain.* $tmpdir
-chown -R $user:$user $tmpdir
+mv $USER_DATA/ssl/$domain.* "$tmpdir" 2>/dev/null
+chown -R "$user":"$user" "$tmpdir"
 
 # Adding new certificate to user data directory
-cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/$domain.crt
-cp -f $ssl_dir/$domain.key $USER_DATA/ssl/$domain.key
-cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/$domain.pem
+cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/$domain.crt"
+cp -f "$ssl_dir/$domain.key" "$USER_DATA/ssl/$domain.key"
+cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/$domain.pem"
 if [ -e "$ssl_dir/$domain.ca" ]; then
-	cp -f $ssl_dir/$domain.ca $USER_DATA/ssl/$domain.ca
-	cat $USER_DATA/ssl/$domain.ca >> $USER_DATA/ssl/$domain.pem
+    cp -f "$ssl_dir/$domain.ca" "$USER_DATA/ssl/$domain.ca"
+    cat "$USER_DATA/ssl/$domain.ca" >> "$USER_DATA/ssl/$domain.pem"
 fi
 
 # Adding new certificate to user dir
-cp -f $USER_DATA/ssl/$domain.crt $HOMEDIR/$user/conf/web/$domain/ssl/$domain.crt
-cp -f $USER_DATA/ssl/$domain.key $HOMEDIR/$user/conf/web/$domain/ssl/$domain.key
-cp -f $USER_DATA/ssl/$domain.pem $HOMEDIR/$user/conf/web/$domain/ssl/$domain.pem
+cp -f "$USER_DATA/ssl/$domain.crt" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.crt"
+cp -f "$USER_DATA/ssl/$domain.key" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.key"
+cp -f "$USER_DATA/ssl/$domain.pem" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.pem"
 if [ -e "$USER_DATA/ssl/$domain.ca" ]; then
-	cp -f $USER_DATA/ssl/$domain.ca $HOMEDIR/$user/conf/web/$domain/ssl/$domain.ca
+    cp -f "$USER_DATA/ssl/$domain.ca" "$HOMEDIR/$user/conf/web/$domain/ssl/$domain.ca"
 fi
 
 #----------------------------------------------------------#
@@ -95,4 +101,4 @@ check_result $? "Proxy restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "Web" "SSL certificate changed (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

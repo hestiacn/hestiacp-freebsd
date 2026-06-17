@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns domains
 # options: USER [FORMAT]
 #
@@ -12,78 +12,83 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep DOMAIN $USER_DATA/dns.conf | wc -l)
+	objects=$(grep -c "DOMAIN" "$USER_DATA/dns.conf" 2>/dev/null || echo 0)
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n '    "'$DOMAIN'": {
-        "IP": "'$IP'",
-        "TPL": "'$TPL'",
-        "TTL": "'$TTL'",
-        "EXP": "'$EXP'",
-        "SOA": "'$SOA'",
-        "SERIAL": "'$SERIAL'",
-        "DNSSEC": "'$DNSSEC'",
-        "SRC": "'$SRC'",
-        "RECORDS": "'$RECORDS'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$DOMAIN\": {"
+		echo -n "\"IP\": \"$IP\", "
+		echo -n "\"TPL\": \"$TPL\", "
+		echo -n "\"TTL\": \"$TTL\", "
+		echo -n "\"EXP\": \"$EXP\", "
+		echo -n "\"SOA\": \"$SOA\", "
+		echo -n "\"SERIAL\": \"$SERIAL\", "
+		echo -n "\"DNSSEC\": \"$DNSSEC\", "
+		echo -n "\"SRC\": \"$SRC\", "
+		echo -n "\"RECORDS\": \"$RECORDS\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $USER_DATA/dns.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$USER_DATA/dns.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "DOMAIN   IP   TPL   TTL   DNSSEC   REC   SPND   DATE"
-	echo "------   --   ---   ---   ------   ---   ----   ----"
-	while read str; do
+	printf "%-20s %-15s %-8s %-6s %-10s %-10s %-6s %-12s\n" "DOMAIN" "IP" "TPL" "TTL" "DNSSEC" "REC" "SPND" "DATE"
+	printf "%-20s %-15s %-8s %-6s %-10s %-10s %-6s %-12s\n" "------" "--" "---" "---" "------" "---" "----" "----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo "$DOMAIN $IP $TPL $TTL $DNSSEC $RECORDS $SUSPENDED $DATE"
-	done < <(cat $USER_DATA/dns.conf)
+		printf "%-20s %-15s %-8s %-6s %-10s %-10s %-6s %-12s\n" \
+			"$DOMAIN" "$IP" "$TPL" "$TTL" "$DNSSEC" "$RECORDS" "$SUSPENDED" "$DATE"
+	done < "$USER_DATA/dns.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -ne "$DOMAIN\t$IP\t$TPL\t$TTL\t$EXP\t$SOA\t$DNSSEC\t$SERIAL\t"
-		echo -e "$SRC\t$RECORDS\t$SUSPENDED\t$TIME\t$DATE"
-	done < <(cat $USER_DATA/dns.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$DOMAIN" "$IP" "$TPL" "$TTL" "$EXP" "$SOA" "$DNSSEC" "$SERIAL" "$SRC" "$RECORDS" "$SUSPENDED" "$TIME" "$DATE"
+	done < "$USER_DATA/dns.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
 	echo "DOMAIN,IP,TPL,TTL,EXP,SOA,SERIAL,SRC,DNSSEC,RECORDS,SUSPENDED,TIME,DATE"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n "$DOMAIN,$IP,$TPL,$TTL,$EXP,$SOA,$SERIAL,"
-		echo "$SRC,$DNSSEC,$RECORDS,$SUSPENDED,$TIME,$DATE"
-	done < <(cat $USER_DATA/dns.conf)
+		echo "$DOMAIN,$IP,$TPL,$TTL,$EXP,$SOA,$SERIAL,$SRC,$DNSSEC,$RECORDS,$SUSPENDED,$TIME,$DATE"
+	done < "$USER_DATA/dns.conf"
 }
 
 #----------------------------------------------------------#
@@ -98,12 +103,22 @@ is_object_valid 'user' 'USER' "$user"
 #                       Action                             #
 #----------------------------------------------------------#
 
+if [ ! -f "$USER_DATA/dns.conf" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No DNS domains found for user $user" ;;
+		plain) ;;
+		csv) echo "DOMAIN,IP,TPL,TTL,EXP,SOA,SERIAL,SRC,DNSSEC,RECORDS,SUSPENDED,TIME,DATE" ;;
+	esac
+	exit 0
+fi
+
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

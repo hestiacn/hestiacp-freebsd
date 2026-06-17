@@ -1,37 +1,43 @@
-#!/bin/bash
-# info: list backup host
-# options: TYPE [FORMAT]
+#!/bin/sh
+# info: list backup host (restic)
+# options: [FORMAT]
 #
-# example: v-list-backup-host local
+# example: v-list-backup-host-restic json
 #
-# This function for obtaining the list of backup host parameters.
+# This function for obtaining the list of restic backup parameters.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "restic": {
-	"REPO": "'$REPO'",
-	"SNAPSHOTS": "'$SNAPSHOTS'",
-	"KEEP_DAILY": "'$KEEP_DAILY'",
-	"KEEP_WEEKLY": "'$KEEP_WEEKLY'",
-	"KEEP_MONTHLY": "'$KEEP_MONTHLY'",
-	"KEEP_YEARLY": "'$KEEP_YEARLY'"
-	}'
+	echo "    \"restic\": {"
+	echo "        \"REPO\": \"$REPO\","
+	echo "        \"SNAPSHOTS\": \"$SNAPSHOTS\","
+	echo "        \"KEEP_DAILY\": \"$KEEP_DAILY\","
+	echo "        \"KEEP_WEEKLY\": \"$KEEP_WEEKLY\","
+	echo "        \"KEEP_MONTHLY\": \"$KEEP_MONTHLY\","
+	echo "        \"KEEP_YEARLY\": \"$KEEP_YEARLY\""
+	echo "    }"
 	echo '}'
 }
 
@@ -39,15 +45,15 @@ json_list() {
 shell_list() {
 	echo "REPO:           $REPO"
 	echo "SNAPSHOTS:      $SNAPSHOTS"
-	echo "KEEP_DAILY:      $KEEP_DAILY"
-	echo "KEEP_WEEKLY:     $KEEP_WEEKLY"
-	echo "KEEP_MONTHLY:    $KEEP_MONTHLY"
-	echo "KEEP_YEARLY:     $KEEP_YEARLY"
+	echo "KEEP_DAILY:     $KEEP_DAILY"
+	echo "KEEP_WEEKLY:    $KEEP_WEEKLY"
+	echo "KEEP_MONTHLY:   $KEEP_MONTHLY"
+	echo "KEEP_YEARLY:    $KEEP_YEARLY"
 }
 
 # PLAIN list function
 plain_list() {
-	echo -e "$REPO\t$SNAPSHOTS\t$KEEP_DAILY\t$KEEP_WEEKLY\t$KEEP_MONTHLY\t$KEEP_YEARLY"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\n" "$REPO" "$SNAPSHOTS" "$KEEP_DAILY" "$KEEP_WEEKLY" "$KEEP_MONTHLY" "$KEEP_YEARLY"
 }
 
 #----------------------------------------------------------#
@@ -60,7 +66,7 @@ plain_list() {
 
 # Checking backup config
 if [ ! -e "$HESTIA/conf/restic.conf" ]; then
-	exit
+	exit 0
 fi
 
 # Parsing backup config

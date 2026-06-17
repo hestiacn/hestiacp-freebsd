@@ -10,8 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
+
 src_file=$1
 
 # Checking arguments
@@ -38,12 +45,12 @@ if [ -n "$src_file" ]; then
 	services="nginx|apache|httpd|php|ftp|bind|named|exim|dovecot|spamassassin"
 	services="$services|clam|mysql|postgresql|pgsql|cron|ssh|fail2ban|iptables"
 	services="$services|my.cnf|hestiaweb"
-	spath=$(echo "$rpath" | egrep "$services")
+	spath=$(echo "$rpath" | grep -E "$services")
 	if [ -z "$spath" ]; then
 		echo "Error: invalid source path $src_file"
 		exit 2
 	fi
-	spath=$(echo "$rpath" | egrep "/etc|/var/lib|/var/spool/cron/")
+	spath=$(echo "$rpath" | grep -E "etc|usr/local/etc|var/(lib|spool/cron|cron/tabs")
 	if [ -z "$spath" ]; then
 		echo "Error: invalid source path $src_file"
 		exit 2
@@ -51,7 +58,7 @@ if [ -n "$src_file" ]; then
 fi
 
 # Reading conf
-cat "$src_file" 2> /dev/null
+cat "$src_file" 2>/dev/null
 if [ $? -ne 0 ]; then
 	echo "Error: file $src_file was not opened"
 	exit 3

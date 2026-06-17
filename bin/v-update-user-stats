@@ -10,17 +10,27 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Importing system environment  as we run this script
-#       mostly by cron wich not read it by itself
-source /etc/profile.d/hestia.sh
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	SED_OPTS="-i"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	SED_OPTS="-i ''"
+fi
+
+# Importing system environment as we run this script
+# mostly by cron which not read it by itself
+if [ -f /etc/profile.d/hestia.sh ]; then
+	source /etc/profile.d/hestia.sh
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -32,7 +42,7 @@ user=$1
 #----------------------------------------------------------#
 
 check_args '0' "$#" '[USER]'
-if [ ! -z "$user" ]; then
+if [ -n "$user" ]; then
 	is_format_valid 'user'
 	is_object_valid 'user' 'USER' "$user"
 fi
@@ -72,14 +82,17 @@ TOTAL_USERS=0
 
 # Updating user stats
 for user in $user_list; do
-	USER_DATA=$HESTIA/data/users/$user
+	USER_DATA="$HESTIA/data/users/$user"
 	if [ ! -f "$HESTIA/data/users/$user/user.conf" ]; then
 		continue
 	fi
-	USER_DATA=$HESTIA/data/users/$user
-	source $USER_DATA/user.conf
-	next_month=$(date +'%m/01/%y' -d "$(date +%Y-%m-15) 1 month")
+	USER_DATA="$HESTIA/data/users/$user"
+	source "$USER_DATA/user.conf"
+	next_month=$(date -d "$(date +%Y-%m-15) 1 month" +'%m/01/%y')
 	DATE=$(date -d "$next_month -1day" +%F)
+	if [ -z "$DATE" ]; then
+		DATE=$(date -j -v+1m -v-1d +%Y-%m-%d)
+	fi
 
 	# Compiling report string
 	s="DATE='$DATE' TIME='$TIME' PACKAGE='$PACKAGE' IP_OWNED='$IP_OWNED'"
@@ -98,15 +111,15 @@ for user in $user_list; do
 	stats="$USER_DATA/stats.log"
 
 	# Checking duplicates
-	check_month=$(grep --no-messages -n "DATE='$DATE'" $stats | cut -f 1 -d :)
+	check_month=$(grep --no-messages -n "DATE='$DATE'" "$stats" | cut -f 1 -d :)
 	if [ -z "$check_month" ]; then
 		# Updating as there no duplicates
-		echo "$s" >> $stats
+		echo "$s" >> "$stats"
 	else
 		# Replacing string with new data
-		sed -i "$check_month s/.*/$s/" $stats
+		eval "sed $SED_OPTS \"$check_month s/.*/$s/\" \"$stats\""
 	fi
-	chmod 660 $stats
+	chmod 660 "$stats"
 
 	# Increase overall counters
 	TOTAL_IP_OWNED=$((TOTAL_IP_OWNED + IP_OWNED))
@@ -128,7 +141,6 @@ for user in $user_list; do
 	TOTAL_U_CRON_JOBS=$((TOTAL_U_CRON_JOBS + U_CRON_JOBS))
 	TOTAL_U_BACKUPS=$((TOTAL_U_BACKUPS + U_BACKUPS))
 	TOTAL_USERS=$((TOTAL_USERS + 1))
-
 done
 
 if [ "$update_overall_stats" = 'yes' ]; then
@@ -151,15 +163,15 @@ if [ "$update_overall_stats" = 'yes' ]; then
 	s="$s U_USERS='$TOTAL_USERS'"
 
 	# Checking duplicates
-	check_month=$(grep --no-messages -n "DATE='$DATE'" $stats | cut -f 1 -d :)
+	check_month=$(grep --no-messages -n "DATE='$DATE'" "$stats" | cut -f 1 -d :)
 	if [ -z "$check_month" ]; then
 		# Updating as there no duplicates
-		echo "$s" >> $stats
+		echo "$s" >> "$stats"
 	else
 		# Replacing string with new data
-		sed -i "$check_month s/.*/$s/" $stats
+		eval "sed $SED_OPTS \"$check_month s/.*/$s/\" \"$stats\""
 	fi
-	chmod 660 $stats
+	chmod 660 "$stats"
 fi
 
 #----------------------------------------------------------#

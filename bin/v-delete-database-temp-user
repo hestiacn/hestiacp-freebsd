@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: deletes temp database user
 # options: USER DBUSER [TYPE] [HOST]
 #
@@ -18,9 +18,15 @@ dbuser=$3
 type=${4-mysql}
 host=$5
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/db.sh
@@ -41,10 +47,14 @@ is_object_valid 'db' 'DB' "$database"
 is_object_unsuspended 'db' 'DB' "$database"
 get_next_dbhost
 
-if [[ $dbuser != *"hestia_sso"* ]]; then
-	echo "DBUSER is invalid SSO user"
-	exit "$E_INVALID"
-fi
+case "$dbuser" in
+    *hestia_sso*)
+        ;;
+    *)
+        echo "DBUSER is invalid SSO user"
+        exit "$E_INVALID"
+        ;;
+esac
 
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
@@ -66,4 +76,4 @@ delete_mysql_database_temp_user
 $BIN/v-log-action "$user" "Info" "Database" "Revoked user access (Database: $database, User: $dbuser)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

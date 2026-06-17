@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,18 +53,20 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit $E_RRD ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/web" ]; then
-	mkdir $RRD/web
+	mkdir -p "$RRD/web"
 fi
 
 # Checking database
 if [ ! -e "$RRD/web/apache2.rrd" ]; then
 	# Adding database
-	rrdtool create $RRD/web/apache2.rrd --step $RRD_STEP \
+	rrdtool create "$RRD/web/apache2.rrd" --step "$RRD_STEP" \
 		DS:A:GAUGE:600:U:U \
 		RRA:AVERAGE:0.5:1:600 \
 		RRA:AVERAGE:0.5:6:700 \
@@ -72,21 +80,30 @@ fi
 
 # Parsing data
 if [ "$period" = 'daily' ]; then
-	server_status=$(wget -qO- http://localhost:8081/server-status \
-		| grep 'currently being processed' \
-		| cut -f 2 -d '>' \
-		| sed 's/requests currently being processed, //' \
-		| cut -f 1,2 -d ' ')
-	active=$(echo "$server_status" | cut -f 1 -d ' ')
-	idle=$(echo "$server_status" | cut -f 1 -d ' ')
-	a=$((active + idle))
-
-	# Updating rrd database
-	rrdtool update $RRD/web/apache2.rrd N:$a
+	if command -v wget >/dev/null 2>&1; then
+		server_status=$(wget -qO- http://localhost:8081/server-status)
+	elif command -v fetch >/dev/null 2>&1; then
+		server_status=$(fetch -q -o - http://localhost:8081/server-status)
+	else
+		server_status=""
+	fi
+	
+	if [ -n "$server_status" ]; then
+		server_status=$(echo "$server_status" | grep 'currently being processed' | cut -f 2 -d '>' | sed 's/requests currently being processed, //' | cut -f 1,2 -d ' ')
+		active=$(echo "$server_status" | cut -f 1 -d ' ')
+		idle=$(echo "$server_status" | cut -f 2 -d ' ')
+		if [ -z "$idle" ]; then
+			active=$(echo "$server_status" | awk '{print $1}')
+			idle=0
+		fi
+		a=$((active + idle))
+		# Updating rrd database
+		rrdtool update "$RRD/web/apache2.rrd" "N:$a"
+	fi
 fi
 
 # Updating rrd graph
-rrdtool graph $RRD/web/$period-apache2.png \
+rrdtool graph "$RRD/web/$period-apache2.png" \
 	--imgformat PNG \
 	--height="150" \
 	--width="670" \
@@ -103,7 +120,7 @@ rrdtool graph $RRD/web/$period-apache2.png \
 	-c "MGRID#AAAAAA" \
 	-c "FRAME#302c2d" \
 	-c "ARROW#FFFFFF" \
-	DEF:a=$RRD/web/apache2.rrd:A:AVERAGE \
+	DEF:"a=$RRD/web/apache2.rrd:A:AVERAGE" \
 	COMMENT:'\r' \
 	LINE1:a#fefda0:"Connections " \
 	GPRINT:a:'LAST:Current\:''%8.0lf' \
@@ -116,7 +133,7 @@ result=$?
 #----------------------------------------------------------#
 
 if [ "$result" -ne 0 ]; then
-	exit $E_RRD
+	exit "$E_RRD"
 fi
 
 exit

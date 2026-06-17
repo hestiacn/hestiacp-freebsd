@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change dns domain ip address
 # options: USER DOMAIN IP [RESTART]
 #
@@ -18,8 +18,8 @@ ip=$3
 restart=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -61,23 +61,29 @@ old=$IP
 update_object_value 'dns' 'DOMAIN' "$domain" '$IP' "$ip"
 
 # Changing records
-sed -i "s/$old/$ip/g" $USER_DATA/dns/$domain.conf
+sed -i "" "s/$old/$ip/g" "$USER_DATA/dns/$domain.conf"
 
 # Update serial
 update_domain_serial
 # Updating zone
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
-	rebuild_dns_domain_conf
-fi
+case "$DNS_SYSTEM" in
+    named|bind)
+        rebuild_dns_domain_conf
+        ;;
+esac
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
-	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
-	if [ -z "$dlock" ]; then
-		cmd="$BIN/v-add-remote-dns-domain $user $domain yes"
-		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
-	fi
+    # Check for first sync
+    if [ -f "$HESTIA/data/queue/dns-cluster.pipe" ]; then
+        dlock=$(grep "domain $user $domain" "$HESTIA/data/queue/dns-cluster.pipe")
+    else
+        dlock=""
+    fi
+    if [ -z "$dlock" ]; then
+        cmd="$BIN/v-add-remote-dns-domain $user $domain yes"
+        printf "%b\n" "$cmd" >> "$HESTIA/data/queue/dns-cluster.pipe"
+    fi
 fi
 
 #----------------------------------------------------------#

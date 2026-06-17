@@ -10,8 +10,7 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-whoami=$(whoami)
-if [ "$whoami" != "root" ]; then
+if [ "$(id -u)" != "0" ]; then
 	echo "Error: this script must be run as root."
 	exit 1
 fi
@@ -20,13 +19,19 @@ fi
 user=$1
 hostname=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/ip.sh
-source $HESTIA/func/ip.sh
+source "$HESTIA/func/ip.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -34,7 +39,7 @@ source_conf "$HESTIA/conf/hestia.conf"
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-check_args '1' "$#" '[USER] [HOSTNAME]'
+check_args '2' "$#" 'USER HOSTNAME'
 is_format_valid 'user'
 is_domain_format_valid "$hostname" "hostname"
 is_system_enabled "$WEB_SYSTEM" 'WEB_SYSTEM'
@@ -57,21 +62,28 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Copy hostnames certificates from user dir
-cp /home/$user/conf/web/$hostname/ssl/$hostname.pem $HESTIA/ssl/certificate.crt
-cp /home/$user/conf/web/$hostname/ssl/$hostname.key $HESTIA/ssl/certificate.key
+cp "/home/$user/conf/web/$hostname/ssl/$hostname.pem" "$HESTIA/ssl/certificate.crt"
+cp "/home/$user/conf/web/$hostname/ssl/$hostname.key" "$HESTIA/ssl/certificate.key"
 
 # Enable fallback support for mail domains that do not support SSL
 if [[ "$MAIL_SYSTEM" =~ exim ]]; then
 	# Checking exim username for later chowning
 	exim_user="exim"
-	check_exim_username=$(grep -c '^Debian-exim:' /etc/passwd)
-	if [ "$check_exim_username" -eq 1 ]; then
-		exim_user="Debian-exim"
+	if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+		check_exim_username=$(grep -c '^Debian-exim:' /etc/passwd)
+		if [ "$check_exim_username" -eq 1 ]; then
+			exim_user="Debian-exim"
+		fi
+	else
+		check_exim_username=$(grep -c '^mailnull:' /etc/passwd)
+		if [ "$check_exim_username" -eq 1 ]; then
+			exim_user="mailnull"
+		fi
 	fi
 
 	# Assign exim permissions to certificate
-	chown $exim_user:mail $HESTIA/ssl/certificate.crt
-	chown $exim_user:mail $HESTIA/ssl/certificate.key
+	chown "$exim_user:mail" "$HESTIA/ssl/certificate.crt"
+	chown "$exim_user:mail" "$HESTIA/ssl/certificate.key"
 fi
 
 # Add UPDATE_HOSTNAME_SSL if not exist

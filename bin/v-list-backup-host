@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list backup host
 # options: TYPE [FORMAT]
 #
@@ -12,41 +12,47 @@
 
 # Argument definition
 type=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	case $type in
-		'sftp' | 'ftp' | 'rclone')
+	case "$type" in
+		sftp|ftp|rclone)
 			echo '{'
-			echo '    "'$type'": {
-        "HOST": "'$HOST'",
-        "USERNAME": "'$USERNAME'",
-        "PORT": "'$PORT'",
-        "TYPE": "'$type'",
-        "BPATH": "'$BPATH'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+			echo "    \"$type\": {"
+			echo "        \"HOST\": \"$HOST\","
+			echo "        \"USERNAME\": \"$USERNAME\","
+			echo "        \"PORT\": \"$PORT\","
+			echo "        \"TYPE\": \"$type\","
+			echo "        \"BPATH\": \"$BPATH\","
+			echo "        \"TIME\": \"$TIME\","
+			echo "        \"DATE\": \"$DATE\""
+			echo "    }"
 			echo '}'
 			;;
-		'b2')
+		b2)
 			echo '{'
-			echo '    "'$type'": {
-         "BUCKET": "'$BUCKET'",
-         "TYPE": "'$type'",
-         "B2_KEY_ID": "'$B2_KEYID'",
-         "TIME": "'$TIME'",
-         "DATE": "'$DATE'"
-     }'
+			echo "    \"$type\": {"
+			echo "        \"BUCKET\": \"$BUCKET\","
+			echo "        \"TYPE\": \"$type\","
+			echo "        \"B2_KEY_ID\": \"$B2_KEYID\","
+			echo "        \"TIME\": \"$TIME\","
+			echo "        \"DATE\": \"$DATE\""
+			echo "    }"
 			echo '}'
 			;;
 	esac
@@ -54,8 +60,8 @@ json_list() {
 
 # SHELL list function
 shell_list() {
-	case $type in
-		'sftp' | 'ftp' | 'rclone')
+	case "$type" in
+		sftp|ftp|rclone)
 			echo "HOST:           $HOST"
 			echo "USERNAME:       $USERNAME"
 			echo "PORT:           $PORT"
@@ -64,10 +70,10 @@ shell_list() {
 			echo "TIME:           $TIME"
 			echo "DATE:           $DATE"
 			;;
-		'b2')
-			echo "BUCKET          $BUCKET"
-			echo "TYPE            $type"
-			echo "B2_KEY_ID       $B2_KEYID"
+		b2)
+			echo "BUCKET:         $BUCKET"
+			echo "TYPE:           $type"
+			echo "B2_KEY_ID:      $B2_KEYID"
 			echo "TIME:           $TIME"
 			echo "DATE:           $DATE"
 			;;
@@ -76,24 +82,24 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	case $type in
-		'sftp' | 'ftp' | 'rclone')
-			echo -e "$HOST\t$USERNAME\t$PORT\t$type\t$BPATH\t$TIME\t$DATE"
+	case "$type" in
+		sftp|ftp|rclone)
+			printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$HOST" "$USERNAME" "$PORT" "$type" "$BPATH" "$TIME" "$DATE"
 			;;
-		'b2')
-			echo -e "$BUCKET\t$type\t$B2_KEYID\t$TIME\t$DATE"
+		b2)
+			printf "%s\t%s\t%s\t%s\t%s\n" "$BUCKET" "$type" "$B2_KEYID" "$TIME" "$DATE"
 			;;
 	esac
 }
 
 # CSV list function
 csv_list() {
-	case $type in
-		'sftp' | 'ftp' | 'rclone')
+	case "$type" in
+		sftp|ftp|rclone)
 			echo "HOST,USERNAME,PORT,TYPE,PATH,TIME,DATE"
 			echo "$HOST,$USERNAME,$PORT,$type,$BPATH,$TIME,$DATE"
 			;;
-		'b2')
+		b2)
 			echo "BUCKET,TYPE,B2_KEYID,TIME,DATE"
 			echo "$BUCKET,$type,$B2_KEYID,$TIME,$DATE"
 			;;
@@ -102,10 +108,11 @@ csv_list() {
 
 # Type format validator
 is_type_format_valid() {
-	exclude="[!|#|$|^|&|(|)|+|=|{|}|:|@|<|>|?|/|\|\"|'|;|%|\`| ]|\."
-	if [[ "$1" =~ $exclude ]]; then
-		check_result "$E_INVALID" "invalid type extention format :: $1"
-	fi
+	case "$1" in
+		*[!a-zA-Z0-9_-]*)
+			check_result "$E_INVALID" "invalid type extension format :: $1"
+			;;
+	esac
 }
 
 #----------------------------------------------------------#
@@ -121,7 +128,7 @@ is_common_format_valid "$type" "type"
 
 # Checking backup config
 if [ ! -e "$HESTIA/conf/$type.backup.conf" ]; then
-	exit
+	exit 0
 fi
 
 # Parsing backup config

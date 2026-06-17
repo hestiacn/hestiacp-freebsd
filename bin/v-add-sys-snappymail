@@ -1,7 +1,7 @@
 #!/bin/bash
-# info: Install SnappyMail webmail client
+# info: Install SnappyMail webmail client for FreeBSD
 # options: [MODE]
-#
+# wget https://github.com/用户名/仓库名/archive/refs/heads/分支名称.tar.gz
 # This function installs the SnappyMail webmail client.
 
 #----------------------------------------------------------#
@@ -10,9 +10,9 @@
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA"/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 # upgrade config file
@@ -27,11 +27,11 @@ SM_FILE="snappymail-latest.tar.gz"
 SM_EXTRACT_MAIN="snappymail"
 
 # Downloading full version
-SM_URL="https://snappymail.eu/repository/latest.tar.gz"
+SM_URL="https://github.com/the-djmaze/snappymail/archive/refs/heads/master.tar.gz"
 
 # Folder paths
 SM_INSTALL_DIR="/var/lib/snappymail"
-SM_CONFIG_DIR="/etc/snappymail"
+SM_CONFIG_DIR="/usr/local/etc/snappymail"
 SM_LOG="/var/log/snappymail"
 
 #----------------------------------------------------------#
@@ -61,7 +61,7 @@ fi
 
 # Get current version
 if [ -f "/var/lib/snappymail/data/VERSION" ]; then
-	version=$(cat $SM_INSTALL_DIR/data/VERSION)
+	version=$(cat "$SM_INSTALL_DIR/data/VERSION")
 	if [ "$version" == "$sm_v" ]; then
 		echo "Error: Installed version ($version) is equal to the available version ($sm_v)"
 		exit 2
@@ -78,14 +78,16 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 if [ "$UPDATE" == "no" ]; then
-	rm -f -r $SM_INSTALL_DIR
-	rm -f -r $SM_CONFIG_DIR
+	# 全量洗净 Linux 专属的长参数，对齐更换为纯正符合 BSD 规范的 -rf 短传参
+	rm -rf "$SM_INSTALL_DIR"
+	rm -rf "$SM_CONFIG_DIR"
 
-	mkdir $SM_INSTALL_DIR
-	mkdir $SM_CONFIG_DIR
+	mkdir -p "$SM_INSTALL_DIR"
+	mkdir -p "$SM_CONFIG_DIR"
 
 	cd "$SM_INSTALL_DIR"
-	[ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ] && wget "$SM_URL" --retry-connrefused --quiet -O "${SM_INSTALL_DIR}/${SM_FILE}"
+	
+	[ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ] && fetch -q -T15 -w2 -o "${SM_INSTALL_DIR}/${SM_FILE}" "$SM_URL"
 
 	if [ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ]; then
 		echo "ERROR: Download failed, installation aborted."
@@ -95,46 +97,50 @@ if [ "$UPDATE" == "no" ]; then
 	key=$(openssl rand -hex 4)
 	suffix=$(openssl rand -hex 4)
 	admin_account="admin_$key"
-	admin_password=$(generate_password)
-
+	admin_password=$(gen_pass)
 	echo "Username: admin_$key" > ~/.snappymail
 	echo "Password: $admin_password" >> ~/.snappymail
 	echo "Admin Panel key: admin_$suffix" >> ~/.snappymail
 
-	tar -xzf ${SM_INSTALL_DIR}/${SM_FILE}
-	# Get current version
+	# 利用 FreeBSD 的原生高级归档管理器执行流式解包
+	tar -xzf "${SM_INSTALL_DIR}/${SM_FILE}"
 	version=$(cat ./data/VERSION)
 
-	mv ./data $SM_CONFIG_DIR/
-	ln -s $SM_CONFIG_DIR/data/ ./data
+	mv ./data "$SM_CONFIG_DIR/"
+	ln -s "$SM_CONFIG_DIR/data/" ./data
 
 	# Create cache folder and set permissions
 	mkdir -p "$SM_CONFIG_DIR/data/_data_/_default_/cache/"
-	chown -R www-data:www-data ./data
 
-	if [ -f '/usr/bin/mariadb' ]; then
-		mariadb -e "CREATE DATABASE snappymail" 2>&1
-		r=$(generate_password)
-		mariadb -e "GRANT ALL ON snappymail.*
-		 TO snappymail@localhost IDENTIFIED BY '$r'"
+	# 选择标准的 /usr/local/bin 物理通道进行初始化建表与授权控制
+	if [ -f '/usr/local/bin/mariadb' ]; then
+		mysql_bin="/usr/local/bin/mariadb"
 	else
-		mysql -e "CREATE DATABASE snappymail" 2>&1
-		r=$(generate_password)
-		mysql -e "GRANT ALL ON snappymail.*
-		 TO snappymail@localhost IDENTIFIED BY '$r'"
+		mysql_bin="/usr/local/bin/mysql"
 	fi
-	# Temporarily set the permissions to www-data
-	chown -R www-data:www-data $SM_CONFIG_DIR/
-	php -f $HESTIA_COMMON_DIR/snappymail/install.php "admin_$key" "admin_$suffix" "$admin_password" "$r" "$BACKEND_PORT"
 
-	# Set the permissions back to hestiamail
-	chown -R hestiamail:www-data $SM_CONFIG_DIR/
+	$mysql_bin -e "CREATE DATABASE snappymail" 2>&1
+	r=$(gen_pass)
+	$mysql_bin -e "GRANT ALL ON snappymail.* TO snappymail@localhost IDENTIFIED BY '$r'"
+
+	# =========================================================================
+	# 🚀 权限临时并轨：将 Linux 特权组全量平替更正为 FreeBSD 官方标准的 www:www
+	# 确保当下的系统级 PHP 命令行进程具备完美的写配置权限
+	# =========================================================================
+	chown -R www:www "$SM_CONFIG_DIR"
+	
+	# 联动拉起官方核心配置注入脚本，将账号密码密码动态泵入资产数据库中
+	php -f "$HESTIA_COMMON_DIR/snappymail/install.php" "admin_$key" "admin_$suffix" "$admin_password" "$r" "$BACKEND_PORT"
+
+	chown -R mailnull:www "$SM_CONFIG_DIR"
+	chown -R mailnull:www "$SM_INSTALL_DIR"
 
 	# Remove the downloaded file
-	rm ${SM_INSTALL_DIR}/${SM_FILE}
+	rm -f "${SM_INSTALL_DIR}/${SM_FILE}"
+	
 	# Add robots.txt
-	echo "User-agent: *" > $SM_INSTALL_DIR/robots.txt
-	echo "Disallow: /" >> $SM_INSTALL_DIR/robots.txt
+	echo "User-agent: *" > "$SM_INSTALL_DIR/robots.txt"
+	echo "Disallow: /" >> "$SM_INSTALL_DIR/robots.txt"
 
 	# Updating hestia.conf
 	if [ -z "$(grep WEBMAIL_SYSTEM $HESTIA/conf/hestia.conf)" ]; then
@@ -148,30 +154,37 @@ if [ "$UPDATE" == "no" ]; then
 			fi
 		fi
 	fi
-
 else
-	[ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ] && wget "$SM_URL" --quiet -O "${SM_INSTALL_DIR}/${SM_FILE}"
+	cd "$SM_INSTALL_DIR"
+	[ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ] && fetch -q -T15 -w2 -o "${SM_INSTALL_DIR}/${SM_FILE}" "$SM_URL"
+	
 	if [ ! -f "${SM_INSTALL_DIR}/${SM_FILE}" ]; then
 		echo "ERROR: Download failed, installation aborted."
 		exit 2
 	fi
 
-	version=$(cat $SM_INSTALL_DIR/data/VERSION)
-	cd $SM_INSTALL_DIR
-	mkdir -p /tmp/snappy/
-	tar -xzf snappymail-latest.tar.gz -C /tmp/snappy/
+	version=$(cat "$SM_INSTALL_DIR/data/VERSION")
+	cd "$SM_INSTALL_DIR"
+	mkdir -p /tmp/snappy
+	
+	tar -xzf "${SM_INSTALL_DIR}/${SM_FILE}" -C /tmp/snappy/
 	version_source=$(cat /tmp/snappy/data/VERSION)
+	
 	# Check version inside .tar.gz file in case hestia didn't update yet
 	if [ "$version" != "$version_source" ]; then
-		tar -xzf ${SM_INSTALL_DIR}/${SM_FILE}
-		rm $SM_INSTALL_DIR/$SM_FILE
+		tar -xzf "${SM_INSTALL_DIR}/${SM_FILE}"
+		rm -f "$SM_INSTALL_DIR/$SM_FILE"
 	fi
-	rm -fr /tmp/snappy
+	rm -rf /tmp/snappy
+	
+	# 核心对齐：将升级后的资产运行所有权同步纠偏回灌给 mailnull:www [INDEX, INDEX]
+	chown -R mailnull:www "$SM_INSTALL_DIR"
 fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
+write_config_value "DB_SM_ALIAS" "snappymail"
 
 if [ "$UPDATE" = "yes" ]; then
 	$BIN/v-log-action "system" "Info" "Plugins" "SnappyMail updated (Version: $version)."
@@ -179,3 +192,5 @@ else
 	$BIN/v-log-action "system" "Info" "Plugins" "SnappyMail enabled (Version: $version)."
 fi
 log_event "$OK" "$ARGUMENTS"
+
+exit 0

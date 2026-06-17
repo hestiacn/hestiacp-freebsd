@@ -13,13 +13,19 @@
 # Argument definition
 user=$1
 domain=$2
-restart="${3-yes}"
+restart=${3:-yes}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -38,33 +44,32 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
+domain_found=""
+
 # Working on Web domain
 if [ -n "$WEB_SYSTEM" ]; then
-	str=$(grep "DOMAIN='$domain'" $USER_DATA/web.conf | grep "SUSPENDED='yes")
+	str=$(grep "DOMAIN='$domain'" "$USER_DATA/web.conf" | grep "SUSPENDED='yes")
 	if [ -n "$str" ]; then
 		domain_found='yes'
 		$BIN/v-unsuspend-web-domain "$user" "$domain" 'no'
-		check_result $? "can't suspend web" > /dev/null
 	fi
 fi
 
 # Working on DNS domain
 if [ -n "$DNS_SYSTEM" ]; then
-	str=$(grep "DOMAIN='$domain'" $USER_DATA/dns.conf | grep "SUSPENDED='yes")
+	str=$(grep "DOMAIN='$domain'" "$USER_DATA/dns.conf" | grep "SUSPENDED='yes")
 	if [ -n "$str" ]; then
 		domain_found='yes'
 		$BIN/v-unsuspend-dns-domain "$user" "$domain" 'no'
-		check_result $? "can't suspend dns" > /dev/null
 	fi
 fi
 
 # Working on Mail domain
 if [ -n "$MAIL_SYSTEM" ]; then
-	str=$(grep "DOMAIN='$domain'" $USER_DATA/mail.conf | grep "SUSPENDED='yes")
+	str=$(grep "DOMAIN='$domain'" "$USER_DATA/mail.conf" | grep "SUSPENDED='yes")
 	if [ -n "$str" ]; then
 		domain_found='yes'
 		$BIN/v-unsuspend-mail-domain "$user" "$domain" "no"
-		check_result $? "can't suspend mail" > /dev/null
 	fi
 fi
 
@@ -72,18 +77,15 @@ fi
 if [ -z "$domain_found" ]; then
 	echo "Error: domain $domain doesn't exist"
 	log_event "$E_NOTEXIST" "$ARGUMENTS"
-	exit $E_NOTEXIST
+	exit "$E_NOTEXIST"
 fi
 
 # Restarting services
-$BIN/v-restart-web "$restart"
-check_result $? "can't restart web" > /dev/null
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "can't restart proxy" > /dev/null
-
-$BIN/v-restart-dns "$restart"
-check_result $? "can't restart dns" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-web "$restart"
+	$BIN/v-restart-proxy "$restart"
+	$BIN/v-restart-dns "$restart"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #

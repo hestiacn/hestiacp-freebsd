@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change dns domain ttl
 # options: USER DOMAIN TTL [RESTART]
 #
@@ -18,8 +18,8 @@ ttl=$3
 restart=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -45,8 +45,6 @@ is_object_valid 'user' 'USER' "$user"
 is_object_unsuspended 'user' 'USER' "$user"
 is_object_valid 'dns' 'DOMAIN' "$domain"
 is_object_unsuspended 'dns' 'DOMAIN' "$domain"
-
-# Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
 #----------------------------------------------------------#
@@ -58,19 +56,20 @@ update_object_value 'dns' 'DOMAIN' "$domain" '$TTL' "$ttl"
 
 # Update serial
 update_domain_serial
-# Updating zone
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
-	rebuild_dns_domain_conf
+
+# Update zone for FreeBSD (named only)
+if [ "$DNS_SYSTEM" = "named" ]; then
+    rebuild_dns_domain_conf
 fi
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
-	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
-	if [ -z "$dlock" ]; then
-		cmd="$BIN/v-change-remote-dns-domain-ttl $user $domain $ttl"
-		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
-	fi
+    # Check for first sync
+    dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe 2>/dev/null)
+    if [ -z "$dlock" ]; then
+        cmd="$BIN/v-change-remote-dns-domain-ttl $user $domain $ttl"
+        echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
+    fi
 fi
 
 #----------------------------------------------------------#
@@ -85,4 +84,4 @@ check_result $? "DNS restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "DNS" "TTL for DNS domain changed (TTL: $ttl, Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

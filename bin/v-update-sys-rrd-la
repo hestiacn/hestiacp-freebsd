@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,18 +53,20 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/la" ]; then
-	mkdir $RRD/la
+	mkdir -p "$RRD/la"
 fi
 
 # Checking database
 if [ ! -e "$RRD/la/la.rrd" ]; then
 	# Adding database
-	rrdtool create $RRD/la/la.rrd --step $RRD_STEP \
+	rrdtool create "$RRD/la/la.rrd" --step "$RRD_STEP" \
 		DS:LA:GAUGE:600:U:U \
 		DS:PR:GAUGE:600:U:U \
 		RRA:AVERAGE:0.5:1:600 \
@@ -73,16 +81,30 @@ fi
 
 # Parsing data
 if [ "$period" = 'daily' ]; then
-	loadavg=$(cat /proc/loadavg)
-	la=$(echo "$loadavg" | cut -f 2 -d ' ')
-	pr=$(ps auxh | wc -l)
-
+	if [ -f /proc/loadavg ]; then
+		# Linux
+		loadavg=$(cat /proc/loadavg 2>/dev/null)
+		la=$(echo "$loadavg" | cut -f 2 -d ' ')
+		pr=$(ps auxh | wc -l | tr -d ' ')
+	elif command -v sysctl; then
+		loadavg=$(sysctl -n vm.loadavg | tr -d '{}')
+		la=$(echo "$loadavg" | awk '{print $2}')
+		pr=$(ps aux 2>/dev/null | wc -l | tr -d ' ')
+	else
+		la=0
+		pr=0
+	fi
+	[ -z "$la" ] && la=0
+	[ -z "$pr" ] && pr=0
+	la_int=$(echo "$la" | cut -d. -f1)
+	[ -z "$la_int" ] && la_int=0
+	
 	# Updating rrd database
-	rrdtool update $RRD/la/la.rrd N:${la//./}:$pr
+	rrdtool update "$RRD/la/la.rrd" "N:${la_int}:$pr"
 fi
 
 # Updating graph
-rrdtool graph $RRD/la/$period-la.png \
+rrdtool graph "$RRD/la/$period-la.png" \
 	--imgformat PNG \
 	--height="150" \
 	--width="670" \
@@ -99,8 +121,8 @@ rrdtool graph $RRD/la/$period-la.png \
 	-c "MGRID#AAAAAA" \
 	-c "FRAME#777777" \
 	-c "ARROW#555555" \
-	DEF:la=$RRD/la/la.rrd:LA:AVERAGE \
-	DEF:pr=$RRD/la/la.rrd:PR:AVERAGE \
+	DEF:"la=$RRD/la/la.rrd:LA:AVERAGE" \
+	DEF:"pr=$RRD/la/la.rrd:PR:AVERAGE" \
 	COMMENT:'\r' \
 	AREA:la#C8EA2E:"LA * 100" \
 	GPRINT:la:'LAST: Current\:''%8.0lf' \

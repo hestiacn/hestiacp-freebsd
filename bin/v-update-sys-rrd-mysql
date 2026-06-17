@@ -11,15 +11,21 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/db.sh
-source $HESTIA/func/db.sh
+source "$HESTIA/func/db.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -49,32 +55,36 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/db" ]; then
-	mkdir $RRD/db
+	mkdir -p "$RRD/db"
 fi
 
 # Parsing db hosts
 conf="$HESTIA/conf/mysql.conf"
 hosts=$(grep HOST "$conf" | awk '{print $1}' | cut -f 2 -d \')
-check_row=$(echo "$hosts" | wc -l)
+check_row=$(echo "$hosts" | wc -l | tr -d ' ')
 if [ 0 -eq "$check_row" ]; then
 	exit
 fi
 
 # Parsing excludes
-for exclude in $(echo ${RRD_MYSQL_EXCLUDE//,/ }); do
-	hosts=$(echo "$hosts" | grep -vw "$exclude")
-done
+if [ -n "$RRD_MYSQL_EXCLUDE" ]; then
+	for exclude in $(echo "${RRD_MYSQL_EXCLUDE//,/ }"); do
+		hosts=$(echo "$hosts" | grep -vw "$exclude")
+	done
+fi
 
 for host in $hosts; do
 	# Checking database
 	if [ ! -e "$RRD/db/mysql_$host.rrd" ]; then
 		# Adding database
-		rrdtool create $RRD/db/mysql_$host.rrd --step $RRD_STEP \
+		rrdtool create "$RRD/db/mysql_$host.rrd" --step "$RRD_STEP" \
 			DS:A:COUNTER:600:U:U \
 			DS:S:COUNTER:600:U:U \
 			RRA:AVERAGE:0.5:1:600 \
@@ -98,13 +108,15 @@ for host in $hosts; do
 			active=$(echo "$status" | grep 'Queries' | cut -f 2)
 			slow=$(echo "$status" | grep 'Slow_queries' | cut -f 2)
 		fi
+		[ -z "$active" ] && active=0
+		[ -z "$slow" ] && slow=0
 
 		# Updating rrd
-		rrdtool update $RRD/db/mysql_$host.rrd N:$active:$slow
+		rrdtool update "$RRD/db/mysql_$host.rrd" "N:$active:$slow"
 	fi
 
 	# Updating daily graph
-	rrdtool graph $RRD/db/$period-mysql_$host.png \
+	rrdtool graph "$RRD/db/$period-mysql_$host.png" \
 		--imgformat PNG \
 		--height="150" \
 		--width="670" \
@@ -121,8 +133,8 @@ for host in $hosts; do
 		-c "MGRID#AAAAAA" \
 		-c "FRAME#302c2d" \
 		-c "ARROW#FFFFFF" \
-		DEF:a=$RRD/db/mysql_$host.rrd:A:AVERAGE \
-		DEF:s=$RRD/db/mysql_$host.rrd:S:AVERAGE \
+		DEF:"a=$RRD/db/mysql_$host.rrd:A:AVERAGE" \
+		DEF:"s=$RRD/db/mysql_$host.rrd:S:AVERAGE" \
 		COMMENT:'\r' \
 		LINE1:a#fefda0:"Queries" \
 		GPRINT:a:'LAST: Current\:''%8.0lf' \

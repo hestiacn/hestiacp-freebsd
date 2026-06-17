@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list clamd config parameters
 # options: [FORMAT]
 #
@@ -11,22 +11,28 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{
-    "CONFIG": {
-        "config_path": "'$config_path'"
-        }
+	"CONFIG": {
+		"config_path": "'"$config_path"'"
+	}
 }'
 }
 
@@ -53,13 +59,10 @@ csv_list() {
 # Defining config path
 if [ -e '/etc/clamav/clamd.conf' ]; then
 	config_path='/etc/clamav/clamd.conf'
-else
-	if [ -e '/etc/clamd.conf' ]; then
-		config_path='/etc/clamd.conf'
-	fi
-	if [ -e '/etc/clamd.d/clamd.conf' ]; then
-		config_path='/etc/clamav/clamd.conf'
-	fi
+elif [ -e '/etc/clamd.conf' ]; then
+	config_path='/etc/clamd.conf'
+elif [ -e '/etc/clamd.d/clamd.conf' ]; then
+	config_path='/etc/clamav/clamd.conf'
 fi
 
 # Listing data

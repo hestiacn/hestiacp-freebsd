@@ -11,50 +11,58 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	php_fpm_dir="/etc/php/*/fpm/pool.d"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	php_fpm_dir="/usr/local/etc/php*/php-fpm.d/"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	parse_object_kv_list $(echo "$config" | egrep "$keys" \
+	parse_object_kv_list $(echo "$config" | grep -E "$keys" \
 		| sed -e "s/[ ]*=/=/" -e "s/=[ ]*/=\'/" -e "s/$/'/")
-	echo '{
-    "CONFIG": {
-        "memory_limit": "'$memory_limit'",
-        "max_execution_time": "'$max_execution_time'",
-        "max_input_time": "'$max_input_time'",
-        "upload_max_filesize": "'$upload_max_filesize'",
-        "post_max_size": "'$post_max_size'",
-        "display_errors": "'$display_errors'",
-        "error_reporting": "'$error_reporting'",
-        "config_path": "'$config_path'"
-        }
-}'
+	echo '{'
+	echo '    "CONFIG": {'
+	echo "        \"memory_limit\": \"$memory_limit\","
+	echo "        \"max_execution_time\": \"$max_execution_time\","
+	echo "        \"max_input_time\": \"$max_input_time\","
+	echo "        \"upload_max_filesize\": \"$upload_max_filesize\","
+	echo "        \"post_max_size\": \"$post_max_size\","
+	echo "        \"display_errors\": \"$display_errors\","
+	echo "        \"error_reporting\": \"$error_reporting\","
+	echo "        \"config_path\": \"$config_path\""
+	echo '    }'
+	echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "$config" | egrep "$keys" | tr -d '='
+	echo "$config" | grep -E "$keys" | tr -d '='
 	echo "config_path $config_path"
 }
 
 # PLAIN list function
 plain_list() {
-	echo "$config" | egrep "$keys" | tr -d '='
+	echo "$config" | grep -E "$keys" | tr -d '='
 	echo "config_path $config_path"
 }
 
 # CSV list function
 csv_list() {
 	echo "$keys" | sed "s/ |/,/g"
-	echo "$config" | egrep "$keys" | tr -d '=' | awk '{print $2}' | tr '\n' ','
+	echo "$config" | grep -E "$keys" | tr -d '=' | awk '{print $2}' | tr '\n' ','
 	echo
 }
 
@@ -63,14 +71,21 @@ csv_list() {
 #----------------------------------------------------------#
 
 # Defining config path
-config_path=$(find /etc/php* -name php.ini)
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	# Linux
+	config_path=$(find /etc/php* -name php.ini 2>/dev/null)
+else
+	# FreeBSD
+	config_path=$(find /usr/local/etc/php* -name php.ini 2>/dev/null)
+fi
+
 config_count=$(echo "$config_path" | wc -l)
 if [ "$config_count" -gt 1 ]; then
-	multiphp_versions=$(ls -d /etc/php/*/fpm/pool.d 2> /dev/null | wc -l)
+	multiphp_versions=$(ls -d "$php_fpm_dir" 2>/dev/null | wc -l)
 	if [ "$WEB_BACKEND" = 'php-fpm' ] || [ "$multiphp_versions" -gt 0 ]; then
-		config_path=$(echo "$config_path" | grep fpm)
+		config_path=$(echo "$config_path" | grep -E '(fpm|php-fpm)')
 	else
-		config_path=$(echo "$config_path" | grep apache)
+		config_path=$(echo "$config_path" | grep -E '(apache|apache24|cli)')
 	fi
 fi
 
@@ -80,7 +95,7 @@ keys="$keys |upload_max_filesize |post_max_size"
 keys="$keys |display_errors |error_reporting "
 
 # Reading config
-config=$(cat $config_path | grep -v "^;")
+config=$(grep -v "^;" "$config_path")
 
 # Listing data
 case $format in

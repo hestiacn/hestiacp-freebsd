@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: add firewall chain
 # options: CHAIN [PORT] [PROTOCOL]
 #
@@ -18,12 +18,16 @@ protocol="$3"
 [ -z "$protocol" ] && protocol='TCP'
 protocol=$(echo "$protocol" | tr '[:lower:]' '[:upper:]')
 
-# Defining absolute path to iptables
-iptables="/sbin/iptables"
+# FreeBSD: firewall commands
+if [ "$FIREWALL_SYSTEM" = "pf" ]; then
+    pfctl="/sbin/pfctl"
+elif [ "$FIREWALL_SYSTEM" = "ipfw" ]; then
+    ipfw="/sbin/ipfw"
+fi
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source /usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/firewall.sh
@@ -32,9 +36,9 @@ source "$HESTIA/func/firewall.sh"
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Get hestia port by reading nginx.conf
-hestiaport=$(sed -ne "/listen/{s/.*listen[^0-9]*\([0-9][0-9]*\)[ \t]*ssl\;/\1/p;q}" "$HESTIA/nginx/conf/nginx.conf")
+hestiaport=$(sed -n "/listen/{s/.*listen[^0-9]*\([0-9][0-9]*\)[ \t]*ssl\;/\1/p;q}" "$HESTIA/nginx/conf/nginx.conf")
 if [ -z "$hestiaport" ]; then
-	hestiaport=8083
+    hestiaport=8083
 fi
 
 #----------------------------------------------------------#
@@ -52,70 +56,61 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Self heal iptables links
-heal_iptables_links
-
 # Checking known chains
 case $chain in
-	SSH) # Get ssh port (or ports) using v-list-sys-sshd-port.
-		sshport="$($BIN/v-list-sys-sshd-port plain | sed ':a;N;$!ba;s/\n/,/g')"
-		if [ -z "$sshport" ]; then
-			sshport=22
-		fi
-		port=$sshport
-		protocol=TCP
-		;;
-	FTP)
-		port=21
-		protocol=TCP
-		;;
-	MAIL)
-		port='25,465,587,110,995,143,993'
-		protocol=TCP
-		;;
-	DNS)
-		port=53
-		protocol=UDP
-		;;
-	WEB)
-		port='80,443'
-		protocol=TCP
-		;;
-	DB)
-		port='3306,5432'
-		protocol=TCP
-		;;
-	HESTIA)
-		port=$hestiaport
-		protocol=TCP
-		;;
-	RECIDIVE)
-		port='1:65535'
-		protocol=TCP
-		;;
-	*) check_args '2' "$#" 'CHAIN PORT' ;;
+    SSH)
+        sshport="$($BIN/v-list-sys-sshd-port plain | sed ':a;N;$!ba;s/\n/,/g')"
+        if [ -z "$sshport" ]; then
+            sshport=22
+        fi
+        port=$sshport
+        protocol=TCP
+        ;;
+    FTP)
+        port=21
+        protocol=TCP
+        ;;
+    MAIL)
+        port='25,465,587,110,995,143,993'
+        protocol=TCP
+        ;;
+    DNS)
+        port=53
+        protocol=UDP
+        ;;
+    WEB)
+        port='80,443'
+        protocol=TCP
+        ;;
+    DB)
+        port='3306,5432'
+        protocol=TCP
+        ;;
+    HESTIA)
+        port=$hestiaport
+        protocol=TCP
+        ;;
+    RECIDIVE)
+        port='1:65535'
+        protocol=TCP
+        ;;
+    *) check_args '2' "$#" 'CHAIN PORT' ;;
 esac
 
-# Adding chain
-$iptables -N fail2ban-$chain 2> /dev/null
-if [ $? -eq 0 ]; then
-	$iptables -A fail2ban-$chain -j RETURN
-
-	# Adding multiport module
-	if [[ "$port" =~ ,|-|: ]]; then
-		port_str="-m multiport --dports $port"
-	else
-		port_str="--dport $port"
-	fi
-	$iptables -I INPUT -p $protocol $port_str -j fail2ban-$chain
+pf_table_name="fail2ban-$(echo "$chain" | tr '[:upper:]' '[:lower:]')"
+if [ "$FIREWALL_SYSTEM" = "pf" ]; then
+    $pfctl -t "$pf_table_name" -T init > /dev/null 2>&1
+elif [ "$FIREWALL_SYSTEM" = "ipfw" ]; then
+    if ! $ipfw table "$pf_table_name" info > /dev/null 2>&1; then
+        $ipfw table "$pf_table_name" create > /dev/null 2>&1
+    fi
 fi
 
-# Preserving chain
 chains="$HESTIA/data/firewall/chains.conf"
 check_chain=""
 [ -f "$chains" ] && check_chain=$(grep "CHAIN='$chain'" "$chains")
 if [ -z "$check_chain" ]; then
-	echo "CHAIN='$chain' PORT='$port' PROTOCOL='$protocol'" >> "$chains"
+    echo "CHAIN='$chain' PORT='$port' PROTOCOL='$protocol'" >> "$chains"
 fi
 
 # Changing permissions
@@ -129,4 +124,4 @@ fi
 $BIN/v-log-action "system" "Info" "Firewall" "Added service to firewall (Service: $chain, Port: $port, Protocol: $protocol)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

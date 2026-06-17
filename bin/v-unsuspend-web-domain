@@ -14,24 +14,29 @@
 user=$1
 domain=$2
 domain_idn=$2
-restart=$3
+restart=${3:-no}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # shellcheck source=/usr/local/hestia/func/ip.sh
-source $HESTIA/func/ip.sh
+source "$HESTIA/func/ip.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Additional argument formatting
 format_domain
 format_domain_idn
-# TODO: $domain_idn not used in this script - maybe $domain should be converted to $doman_idn ?
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -54,7 +59,7 @@ check_hestia_demo_mode
 # Parsing domain values
 get_domain_values 'web'
 SUSPENDED='no'
-local_ip=$(get_real_ip $IP)
+local_ip=$(get_real_ip "$IP")
 
 # Preparing domain values for the template substitution
 prepare_web_domain_values
@@ -82,7 +87,7 @@ if [ -n "$WEB_BACKEND" ]; then
 	prepare_web_backend "$BACKEND"
 	delete_web_backend
 	template=$(get_object_value 'web' 'DOMAIN' "$domain" '$BACKEND')
-	$BIN/v-add-web-domain-backend $user $domain $template $restart
+	$BIN/v-add-web-domain-backend "$user" "$domain" "$template" "$restart"
 fi
 
 #----------------------------------------------------------#
@@ -97,11 +102,10 @@ decrease_user_value "$user" '$SUSPENDED_WEB'
 $BIN/v-rebuild-web-domain "$user" "$domain" 'no'
 
 # Restarting web server
-$BIN/v-restart-web "$restart"
-check_result $? "Web restart failed" > /dev/null
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "Proxy restart failed" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-web "$restart"
+	$BIN/v-restart-proxy "$restart"
+fi
 
 # Logging
 $BIN/v-log-action "system" "Info" "Web" "Unsuspended web domain (User: $user, Domain: $domain)."

@@ -13,9 +13,10 @@
 # Argument definition
 user=$1
 notify=${2-no}
+
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -52,7 +53,7 @@ email=$(grep CONTACT "$HESTIA/data/users/$ROOT_USER/user.conf" | cut -f 2 -d \')
 source_conf $HESTIA/conf/restic.conf
 
 if [ ! -f "$USER_DATA/restic.conf" ]; then
-	password=$(generate_password '' '32')
+	password=$(gen_pass)
 	echo "$password" > $USER_DATA/restic.conf
 
 	restic --repo "$REPO$user" --password-file $USER_DATA/restic.conf init
@@ -64,7 +65,7 @@ else
 	restic --repo "$REPO$user" --password-file $USER_DATA/restic.conf --json snapshots > /dev/null
 	if [ $? -ne 0 ]; then
 		# Send an email
-		echo "Unable to open restic backup. It might not exists or key is incorrect" | $SENDMAIL -s "$subj" "$email" "yes"
+		printf "%b\n" "Unable to open restic backup. It might not exists or key is incorrect" | $SENDMAIL -s "$subj" "$email" "yes"
 		check_result $E_CONNECT "Unable to access restic repo"
 	fi
 fi
@@ -73,10 +74,10 @@ fi
 $BIN/v-backup-user-config $user
 export GOMAXPROCS=2
 export RESTIC_READ_CONCURRENCY=2
-ionice -c2 -n7 nice -n 19 restic --repo "$REPO$user" --limit-upload 10240 --read-concurrency 2 --password-file $USER_DATA/restic.conf backup /home/$user
+/usr/sbin/idprio 29 /usr/bin/nice -n 19 restic --repo "$REPO$user" --limit-upload 10240 --read-concurrency 2 --password-file $USER_DATA/restic.conf backup /home/$user
 
 if [ $? -ne 0 ]; then
-	echo "Unable to create the backup" | $SENDMAIL -s "$subj" "$email" "yes"
+	printf "%b\n" "Unable to create the backup" | $SENDMAIL -s "$subj" "$email" "yes"
 	check_result $E_BACKUP "Unable to backup user"
 fi
 
@@ -107,11 +108,11 @@ if [ -e "$BACKUP/$user.log" ] && [ "$notify" = "yes" ]; then
 fi
 
 # Deleting task from queue
-sed -i "/v-backup-user-restic $user /d" $HESTIA/data/queue/backup.pipe
+sed -i "" "/v-backup-user-restic $user /d" $HESTIA/data/queue/backup.pipe
 
 # Logging
 $BIN/v-log-action "$user" "Info" "Backup" "Backup created."
 $BIN/v-log-action "system" "Info" "Backup" "Backup created (User: $user)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

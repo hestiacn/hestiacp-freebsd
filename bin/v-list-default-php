@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list default PHP version used by default.tpl
 # options: [FORMAT]
 #
@@ -11,44 +11,50 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	i=1
-	objects=$(echo "${versions[@]}" | wc -w)
+	objects=$(echo "$versions" | wc -w | tr -d ' ')
 	echo '['
-	for version in "${versions[@]}"; do
+	for version in $versions; do
 		if [ "$i" -lt "$objects" ]; then
-			echo -e "\t\"$version\","
+			echo "    \"$version\","
 		else
-			echo -e "\t\"$version\""
+			echo "    \"$version\""
 		fi
-		((++i))
+		i=$((i + 1))
 	done
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
 shell_list() {
 	echo "VERSION"
 	echo "--------"
-	for version in "${versions[@]}"; do
+	for version in $versions; do
 		echo "$version"
 	done
 }
 
 # PLAIN list function
 plain_list() {
-	for version in "${versions[@]}"; do
+	for version in $versions; do
 		echo "$version"
 	done
 }
@@ -56,7 +62,7 @@ plain_list() {
 # CSV list function
 csv_list() {
 	echo "VERSION"
-	for version in "${versions[@]}"; do
+	for version in $versions; do
 		echo "$version"
 	done
 }
@@ -65,12 +71,37 @@ csv_list() {
 #                       Action                             #
 #----------------------------------------------------------#
 
-declare -a versions
-# List through /etc/php
-for version in /etc/php/*/fpm/pool.d/www.conf; do
-	ver=$(echo "$version" | awk -F"/" '{ print $4 }')
-	versions+=("$ver")
-done
+versions=""
+
+if [ "$(uname)" = "FreeBSD" ]; then
+	for conf_file in /usr/local/etc/php*/php-fpm.d/www.conf; do
+		if [ -f "$conf_file" ]; then
+			ver=$(echo "$conf_file" | sed 's|/usr/local/etc/php||' | sed 's|/php-fpm.d/www.conf||')
+			if [ -n "$ver" ]; then
+				if [ -n "$versions" ]; then
+					versions="$versions $ver"
+				else
+					versions="$ver"
+				fi
+			fi
+		fi
+	done
+else
+	for version_dir in /etc/php/*/fpm/pool.d/www.conf; do
+		if [ -f "$version_dir" ]; then
+			ver=$(echo "$version_dir" | cut -d'/' -f4)
+			if [ -n "$versions" ]; then
+				versions="$versions $ver"
+			else
+				versions="$ver"
+			fi
+		fi
+	done
+fi
+
+if [ -z "$versions" ]; then
+	versions="$fpm_v"
+fi
 
 # Listing data
 case $format in

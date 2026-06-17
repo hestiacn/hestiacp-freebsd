@@ -13,11 +13,19 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -38,12 +46,25 @@ fi
 #----------------------------------------------------------#
 
 # Starting loop
-for domain in $($BIN/v-list-mail-domains $user plain | cut -f 1); do
+for domain in $($BIN/v-list-mail-domains "$user" plain | cut -f 1); do
 	dom_disk=0
-	for account in $($BIN/v-list-mail-accounts $user $domain plain | cut -f 1); do
-		home_dir=$HOMEDIR/$user/mail/$domain/$account
+	if [ "$OS" = "freebsd" ]; then
+		domain_idn="$domain"
+		format_domain_idn
+	else
+		domain_idn="$domain"
+	fi
+	
+	for account in $($BIN/v-list-mail-accounts "$user" "$domain" plain | cut -f 1); do
+		if [ "$OS" = "linux" ]; then
+			home_dir="$HOMEDIR/$user/mail/$domain/$account"
+		else
+			home_dir="$HOMEDIR/$user/mail/$domain_idn/$account"
+		fi
+		
 		if [ -e "$home_dir" ]; then
-			udisk=$(nice -n 19 du -shm $home_dir | cut -f 1)
+			udisk=$(nice -n 19 du -sm "$home_dir" | cut -f 1)
+			[ -z "$udisk" ] && udisk=0
 		else
 			udisk=0
 		fi

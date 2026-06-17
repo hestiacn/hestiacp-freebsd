@@ -12,14 +12,17 @@
 
 # Argument definition
 #format=${1-shell}
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
-# shellcheck source=/usr/local/hestia/conf/hestia.conf
-source $HESTIA/conf/hestia.conf
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -29,20 +32,34 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # Checking mail system
 if [ -z "$MAIL_SYSTEM" ]; then
-	exit
+	exit 0
 fi
 
 # Displaying exim queue status
 echo "Exim queue status"
-exim -bp
-echo -en "\n---------------------------------------------"
-echo -en "---------------------------------------------\n\n"
+if command -v exim >/dev/null 2>&1; then
+	exim -bp 2>/dev/null
+else
+	echo "exim command not found"
+fi
+printf "\n---------------------------------------------"
+printf "---------------------------------------------\n\n"
 
 # Displaying exim stats
 if [ -e "/var/log/exim4/mainlog" ]; then
-	eximstats /var/log/exim4/mainlog 2> /dev/null
+	if command -v eximstats >/dev/null 2>&1; then
+		eximstats /var/log/exim4/mainlog 2>/dev/null
+	else
+		echo "eximstats command not found"
+	fi
+elif [ -e "/var/log/exim/main.log" ]; then
+	if command -v eximstats >/dev/null 2>&1; then
+		eximstats /var/log/exim/main.log 2>/dev/null
+	else
+		echo "eximstats command not found"
+	fi
 else
-	eximstats /var/log/exim/main.log 2> /dev/null
+	echo "No exim log file found"
 fi
 
 if [ $? -ne 0 ]; then

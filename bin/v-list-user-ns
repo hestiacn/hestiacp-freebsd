@@ -12,28 +12,34 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	i=1
-	objects=$(echo -e "${ns//,/\\n}" | wc -l)
+	objects=$(echo "${ns//,/ }" | wc -w)
 	echo '['
 	for nameserver in ${ns//,/ }; do
 		if [ "$i" -ne "$objects" ]; then
-			echo -e "\t\"$nameserver\","
+			printf '    "%s",\n' "$nameserver"
 		else
-			echo -e "\t\"$nameserver\""
+			printf '    "%s"\n' "$nameserver"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
 	echo ']'
 }
@@ -75,7 +81,7 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 # Parsing name servers
-ns=$(grep "^NS='" "$USER_DATA/user.conf" | cut -f 2 -d \')
+ns=$(grep "^NS='" "$USER_DATA/user.conf" | cut -f 2 -d "'")
 
 # Listing data
 case $format in

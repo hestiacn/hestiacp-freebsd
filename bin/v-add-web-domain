@@ -1,10 +1,10 @@
 #!/bin/bash
-# info: add web domain
+# info: add web domain for FreeBSD
 # options: USER DOMAIN [IP] [RESTART] [ALIASES] [PROXY_EXTENSIONS]
 #
 # example: v-add-web-domain admin wonderland.com 192.18.22.43 yes www.wonderland.com
 #
-# This function adds virtual host to a server. In cases when ip is
+# This function adds virtual host to a server in a fully native FreeBSD environment.
 # undefined in the script, "default" template will be used. The alias of
 # `www.domain.tld` type will be automatically assigned to the domain unless
 # "none" is transmited as argument. If ip have associated dns name, this
@@ -26,7 +26,7 @@ proxy_ext=$6
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -43,6 +43,14 @@ format_domain
 format_domain_idn
 format_aliases
 domain_utf=$(idn2 --quiet -d "$domain_idn")
+get_domain_elements_count() {
+	local target_domain="$1"
+	local old_ifs="$IFS"
+	IFS='.'
+	set -- $target_domain
+	IFS="$old_ifs"
+	echo "$#"
+}
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -97,7 +105,7 @@ source_conf "$USER_DATA/user.conf"
 [[ -e "$HOMEDIR/$user/web/$domain" ]] && check_result "$E_EXISTS" "Web domain folder for $domain should not exist"
 
 # Creating domain directories
-mkdir $HOMEDIR/$user/web/$domain
+mkdir -p $HOMEDIR/$user/web/$domain
 chown $user:$user $HOMEDIR/$user/web/$domain
 $BIN/v-add-fs-directory "$user" "$HOMEDIR/$user/web/$domain/public_html"
 $BIN/v-add-fs-directory "$user" "$HOMEDIR/$user/web/$domain/document_errors"
@@ -107,6 +115,7 @@ $BIN/v-add-fs-directory "$user" "$HOMEDIR/$user/web/$domain/stats"
 $BIN/v-add-fs-directory "$user" "$HOMEDIR/$user/web/$domain/logs"
 
 # Creating domain logs
+mkdir -p /var/log/$WEB_SYSTEM/domains
 touch /var/log/$WEB_SYSTEM/domains/$domain.bytes \
 	/var/log/$WEB_SYSTEM/domains/$domain.log \
 	/var/log/$WEB_SYSTEM/domains/$domain.error.log
@@ -116,7 +125,7 @@ ln -f -s /var/log/$WEB_SYSTEM/domains/$domain.*log \
 # Adding domain skeleton
 user_exec cp -r $WEBTPL/skel/* "$HOMEDIR/$user/web/$domain/" > /dev/null 2>&1
 for file in $(find "$HOMEDIR/$user/web/$domain/" -type f); do
-	sed -i "s/%domain%/$domain/g" $file
+	sed -i "" "s/%domain%/$domain/g" $file
 done
 
 # Changing file owner & permission
@@ -134,15 +143,15 @@ DOMAINDIR_MODE=551
 if [ "$DOMAINDIR_WRITABLE" = 'yes' ]; then DOMAINDIR_MODE=751; fi
 
 user_exec chmod $DOMAINDIR_MODE $HOMEDIR/$user/web/$domain
-chown --no-dereference $user:www-data $HOMEDIR/$user/web/$domain/public_*html
+chown -h $user:www $HOMEDIR/$user/web/$domain/public_*html
 
 # Adding PHP-FPM backend
 if [ -n "$WEB_BACKEND" ]; then
 	if [ -z "$BACKEND_TEMPLATE" ]; then
 		BACKEND_TEMPLATE='default'
 		if [ -z "$(grep BACKEND_TEMPLATE $USER_DATA/user.conf)" ]; then
-			sed -i "s/^DNS_TEMPL/BACKEND_TEMPLATE='default'\nDNS_TEMPL/g" \
-				$USER_DATA/user.conf
+            sed -i '' "s|^DNS_TEMPL|BACKEND_TEMPLATE='default'\\
+DNS_TEMPL|g" $USER_DATA/user.conf
 		else
 			update_user_value "$user" '$BACKEND_TEMPLATE' "default"
 		fi
@@ -158,9 +167,8 @@ if [ "$aliases" = 'none' ]; then
 else
 	ALIAS="www.$domain"
 	if [ -z "$aliases" ]; then
-		# Check and skip www alias for subdomains.
-		IFS='.' read -r -a domain_elements <<< "$domain"
-		if [ "${#domain_elements[@]}" -gt 2 ]; then
+        elements_count=$(get_domain_elements_count "$domain")
+		if [ "$elements_count" -gt 2 ]; then
 			is_valid_2_part_extension $domain
 			if [ $? -ne 0 ]; then
 				ALIAS=""
@@ -213,8 +221,8 @@ if [ -n "$PROXY_SYSTEM" ]; then
 		PROXY_EXT="$PROXY_EXT,apk,appx,bin,dmg,exe,img,iso,jar,msi"
 		# Other
 		PROXY_EXT="$PROXY_EXT,webmanifest"
-
 	fi
+	
 	if [ -z "$PROXY_TEMPLATE" ]; then
 		PROXY_TEMPLATE='default'
 		update_user_value "$user" '$PROXY_TEMPLATE' "default"
@@ -233,7 +241,7 @@ increase_user_value "$user" '$U_WEB_DOMAINS'
 increase_user_value "$user" '$U_WEB_ALIASES' "$alias_number"
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -258,4 +266,4 @@ check_result $? "Proxy restart failed" > /dev/null
 $BIN/v-log-action "$user" "Info" "Web" "Added new web domain (Name: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

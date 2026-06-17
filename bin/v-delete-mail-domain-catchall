@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete mail domain catchall email
 # options: USER DOMAIN
 #
@@ -15,9 +15,15 @@ user=$1
 domain=$2
 domain_idn=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -47,10 +53,12 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Delete cathcall alias
-if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	sed -i "/*@$domain_idn:/d" $HOMEDIR/$user/conf/mail/$domain/aliases
-fi
+# Delete catchall alias
+case "$MAIL_SYSTEM" in
+    *exim*)
+        sed -i "" "/*@$domain_idn:/d" "$HOMEDIR/$user/conf/mail/$domain/aliases"
+        ;;
+esac
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -63,4 +71,4 @@ update_object_value 'mail' 'DOMAIN' "$domain" '$CATCHALL' ''
 $BIN/v-log-action "$user" "Info" "Mail" "Catch-all forwarding disabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

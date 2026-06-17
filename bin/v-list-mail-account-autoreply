@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list mail account autoreply
 # options: USER DOMAIN ACCOUNT [FORMAT]
 #
@@ -14,13 +14,19 @@
 user=$1
 domain=$2
 account=$3
-format=${4-shell}
+format=${4:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -29,9 +35,10 @@ json_list() {
 	TO_ESCAPE='\\'
 	msg=$(echo "$msg" | sed -e "s|${TO_ESCAPE}|${TO_ESCAPE}${TO_ESCAPE}|g" -e 's/"/\\"/g' -e "s/%quote%/'/g")
 	echo '{'
-	echo -e "\t\"$account\": {"
-	echo "            \"MSG\": \"$msg\""
-	echo -e "\t}\n}"
+	echo "    \"$account\": {"
+	echo "        \"MSG\": \"$msg\""
+	echo "    }"
+	echo '}'
 }
 
 # SHELL list function
@@ -67,8 +74,7 @@ is_object_unsuspended "mail/$domain" 'ACCOUNT' "$account"
 #----------------------------------------------------------#
 
 if [ -e "$USER_DATA/mail/$account@$domain.msg" ]; then
-	msg=$(cat $USER_DATA/mail/$account@$domain.msg \
-		| sed ':a;N;$!ba;s/\n/\\n/g')
+	msg=$(cat "$USER_DATA/mail/$account@$domain.msg" | sed ':a;N;$!ba;s/\n/\\n/g')
 fi
 
 # Listing data

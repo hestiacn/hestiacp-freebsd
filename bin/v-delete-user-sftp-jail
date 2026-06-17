@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete user sftp jail
 # options: USER
 #
@@ -13,9 +13,15 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -29,17 +35,35 @@ check_args '1' "$#" 'USER'
 is_format_valid 'user'
 user_str=$(grep "^$user:" /etc/passwd)
 if [ -z "$user_str" ]; then
-	exit
+    exit 0
 fi
 
-# Get current users and split into array
-ssh_users=$(grep -A1 "^# Hestia SFTP Chroot" /etc/ssh/sshd_config | sed -n 2p | sed 's/Match User //')
-IFS=',' read -r -a users <<< "$ssh_users"
+# Get current users
+config='/etc/ssh/sshd_config'
+match_line=$(grep -n "^# Hestia SFTP Chroot" "$config")
+if [ -z "$match_line" ]; then
+    exit 0
+fi
 
-match_string="$ssh_users,"
-# Check if jail exist
-if [[ ! "$match_string" =~ ,$user, ]]; then
-	exit 2
+# Get the Match User line
+match_line_num=$(echo "$match_line" | cut -d: -f1)
+match_user_line=$((match_line_num + 1))
+ssh_users=$(sed -n "${match_user_line}p" "$config" | sed 's/Match User //' | tr -d ' ')
+
+# Check if user is in the list
+found=0
+OLD_IFS="$IFS"
+IFS=','
+for u in $ssh_users; do
+    if [ "$u" = "$user" ]; then
+        found=1
+        break
+    fi
+done
+IFS="$OLD_IFS"
+
+if [ "$found" -eq 0 ]; then
+    exit 0
 fi
 
 # Perform verification if read-only mode is enabled
@@ -49,36 +73,43 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Remove user from array
-for sftp_user in "${users[@]}"; do
-	if [ "$sftp_user" != "$user" ]; then
-		new_users+=($sftp_user)
-	fi
+# Remove user from list
+new_users=""
+OLD_IFS="$IFS"
+IFS=','
+for u in $ssh_users; do
+    if [ "$u" != "$user" ]; then
+        if [ -z "$new_users" ]; then
+            new_users="$u"
+        else
+            new_users="$new_users,$u"
+        fi
+    fi
 done
-
-# Write new user list to config
-users=$(
-	IFS=','
-	echo "${new_users[*]// /|}"
-	IFS=$' \t\n'
-)
-sed -i "s/$ssh_users/$users/g" /etc/ssh/sshd_config
+IFS="$OLD_IFS"
+if [ -z "$new_users" ]; then
+    end_line=$((match_line_num + 3))
+    sed -i "" "${match_line_num},${end_line}d" "$config"
+else
+    sed -i "" "${match_user_line}s/.*/Match User ${new_users}/" "$config"
+fi
 
 # chown permissions back to user:user
 if [ -d "/home/$user" ]; then
-	chown $user:$user /home/$user
+    chown -h "$user":"$user" "/home/$user"
 fi
 
 # Deleting chroot jail for SFTP and FTP
-delete_chroot_jail $user
+delete_chroot_jail "$user"
+
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
 # Restart ssh service
-service ssh restart > /dev/null 2>&1
+service sshd restart > /dev/null 2>&1
 
 # Logging
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

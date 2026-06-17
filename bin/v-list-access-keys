@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list all API access keys
 # options: [USER] [FORMAT]
 #
@@ -8,9 +8,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -22,58 +28,94 @@ format="${2:-shell}"
 
 # JSON list function
 json_list() {
+	first=1
 	echo -n '{'
-	local quote=''
-	local PERMISSIONS_ARR ACCESS_KEY_ID
-	for key_file in $HESTIA/data/access-keys/*; do
-		key_file="$(basename -- "$key_file")"
-		if [[ "$key_file" =~ ^[[:alnum:]]{20}$ ]]; then
-			USER="$ROOT_USER" SECRET_ACCESS_KEY="" PERMISSIONS="" DATE="" TIME="" COMMENT=""
-			source_conf "$HESTIA/data/access-keys/$key_file"
-			if [ "$user" = "$USER" ] || [ -z "$user" ]; then
-				PERMISSIONS_ARR='[]'
-				if [[ -n "$PERMISSIONS" ]]; then
-					PERMISSIONS_ARR="[\"$(echo "$PERMISSIONS" | sed -E 's|,|", "|g')\"]"
-				fi
-
-				ACCESS_KEY_ID="$(basename "$key_file")"
-
-				echo -en "${quote:-\n}"
-				echo -n '    "'$ACCESS_KEY_ID'": {'
-				echo -n '"ACCESS_KEY_ID": "'${ACCESS_KEY_ID}'", '
-				echo -n '"USER": "'${USER}'", '
-				echo -n '"PERMISSIONS": '${PERMISSIONS_ARR}', '
-				echo -n '"COMMENT": "'${COMMENT}'", '
-				echo -n '"TIME": "'${TIME}'", '
-				echo -n '"DATE": "'${DATE}'"'
-				echo -n '}'
-				quote=",\n"
-			fi
+	
+	for key_file in "$HESTIA/data/access-keys"/*; do
+		[ -f "$key_file" ] || continue
+		key_file_name=$(basename -- "$key_file")
+		
+		# 检查是否是有效的密钥 ID（20位字母数字）
+		case "$key_file_name" in
+			''|*[!A-Za-z0-9]*) continue ;;
+		esac
+		[ ${#key_file_name} -eq 20 ] || continue
+		
+		USER="$ROOT_USER"
+		SECRET_ACCESS_KEY=""
+		PERMISSIONS=""
+		DATE=""
+		TIME=""
+		COMMENT=""
+		source_conf "$HESTIA/data/access-keys/$key_file_name"
+		
+		# 过滤用户
+		if [ -n "$user" ] && [ "$user" != "$USER" ]; then
+			continue
 		fi
+		
+		PERMISSIONS_ARR='[]'
+		if [ -n "$PERMISSIONS" ]; then
+			PERMISSIONS_ARR="[\"$(echo "$PERMISSIONS" | sed 's|,|", "|g')\"]"
+		fi
+		
+		ACCESS_KEY_ID="$key_file_name"
+		
+		if [ "$first" -eq 0 ]; then
+			echo -n ','
+		fi
+		first=0
+		echo ""
+		echo "    \"$ACCESS_KEY_ID\": {"
+		echo "        \"ACCESS_KEY_ID\": \"$ACCESS_KEY_ID\","
+		echo "        \"USER\": \"$USER\","
+		echo "        \"PERMISSIONS\": $PERMISSIONS_ARR,"
+		echo "        \"COMMENT\": \"$COMMENT\","
+		echo "        \"TIME\": \"$TIME\","
+		echo "        \"DATE\": \"$DATE\""
+		echo -n "    }"
 	done
-
-	[[ -n "$quote" ]] && echo
-	echo -e '}'
+	
+	echo ""
+	echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	list="ID\tUSER\tPERMISSIONS\tCOMMENT\tTIME\tDATE\n"
-	list+="--\t------\t----\t-----------\t-------\t----\t----\n"
-
-	for key_file in $HESTIA/data/access-keys/*; do
-		key_file="$(basename -- "$key_file")"
-		if [[ "$key_file" =~ ^[[:alnum:]]{20}$ ]]; then
-			USER="$ROOT_USER" SECRET_ACCESS_KEY="" PERMISSIONS="" DATE="" TIME="" COMMENT=""
-			source_conf "$HESTIA/data/access-keys/$key_file"
-			if [ "$user" = "$USER" ] || [ -z "$user" ]; then
-				ACCESS_KEY_ID="$(basename "$key_file")"
-				list+="${ACCESS_KEY_ID}\t${USER}\t${PERMISSIONS:--}\t${COMMENT:--}\t${TIME}\t${DATE}\n"
-			fi
+	printf "%-20s %-10s %-30s %-20s %-8s %-10s\n" "ID" "USER" "PERMISSIONS" "COMMENT" "TIME" "DATE"
+	printf "%-20s %-10s %-30s %-20s %-8s %-10s\n" "--" "------" "----" "-----------" "----" "----"
+	
+	for key_file in "$HESTIA/data/access-keys"/*; do
+		[ -f "$key_file" ] || continue
+		key_file_name=$(basename -- "$key_file")
+		
+		case "$key_file_name" in
+			''|*[!A-Za-z0-9]*) continue ;;
+		esac
+		[ ${#key_file_name} -eq 20 ] || continue
+		
+		USER="$ROOT_USER"
+		SECRET_ACCESS_KEY=""
+		PERMISSIONS=""
+		DATE=""
+		TIME=""
+		COMMENT=""
+		source_conf "$HESTIA/data/access-keys/$key_file_name"
+		
+		if [ -n "$user" ] && [ "$user" != "$USER" ]; then
+			continue
 		fi
+		
+		ACCESS_KEY_ID="$key_file_name"
+		
+		printf "%-20s %-10s %-30s %-20s %-8s %-10s\n" \
+			"$ACCESS_KEY_ID" \
+			"$USER" \
+			"${PERMISSIONS:--}" \
+			"${COMMENT:--}" \
+			"$TIME" \
+			"$DATE"
 	done
-
-	echo -e "$list" | column -t -s "	"
 }
 
 #----------------------------------------------------------#

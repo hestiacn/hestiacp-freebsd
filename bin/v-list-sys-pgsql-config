@@ -11,24 +11,30 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	echo '{
-    "CONFIG": {
-        "pg_hba_path": "'$pg_hba_path'",
-        "config_path": "'$config_path'"
-        }
-}'
+	echo '{'
+	echo '    "CONFIG": {'
+	echo "        \"pg_hba_path\": \"$pg_hba_path\","
+	echo "        \"config_path\": \"$config_path\""
+	echo '    }'
+	echo '}'
 }
 
 # SHELL list function
@@ -39,7 +45,7 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -e "$config_path\t$pg_hba_path"
+	printf "%s\t%s\n" "$config_path" "$pg_hba_path"
 }
 
 # CSV list function
@@ -54,9 +60,9 @@ csv_list() {
 
 # Defining config path
 config_path=$(find /etc/postgresql /var/lib/pgsql/data -name \
-	postgresql.conf 2> /dev/null)
+	postgresql.conf 2>/dev/null)
 pg_hba_path=$(find /etc/postgresql /var/lib/pgsql/data -name \
-	pg_hba.conf 2> /dev/null)
+	pg_hba.conf 2>/dev/null)
 
 # Listing data
 case $format in

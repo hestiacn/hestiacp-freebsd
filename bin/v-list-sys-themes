@@ -12,13 +12,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -30,8 +36,10 @@ get_themes() {
 	# Retrieve list of system themes
 	if [ -d "$HESTIA_THEMES" ]; then
 		for file in "$HESTIA_THEMES"/*.min.css; do
-			filename=$(basename "$file" .min.css)
-			available_themes+=("${filename%.*}")
+			if [ -f "$file" ]; then
+				filename=$(basename "$file" .min.css)
+				available_themes+=("${filename%.*}")
+			fi
 		done
 	fi
 
@@ -48,7 +56,7 @@ get_themes() {
 	unset IFS
 
 	# Get count of themes (for proper JSON formatting)
-	theme_count="${#available_themes[@]}"
+	theme_count=${#available_themes[@]}
 }
 
 # JSON list function
@@ -57,11 +65,11 @@ json_list() {
 	echo '['
 	for theme in "${available_themes[@]}"; do
 		if [ "$i" -lt "$theme_count" ]; then
-			echo -e "\t\"$theme\","
+			printf '    "%s",\n' "$theme"
 		else
-			echo -e "\t\"$theme\""
+			printf '    "%s"\n' "$theme"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
 	echo ']'
 }

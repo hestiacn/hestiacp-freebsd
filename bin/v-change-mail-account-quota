@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change mail account quota
 # options: USER DOMAIN ACCOUNT QUOTA
 #
@@ -18,8 +18,8 @@ account=$3
 quota=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -39,7 +39,7 @@ format_domain_idn
 check_args '4' "$#" 'USER DOMAIN ACCOUNT QUOTA'
 is_format_valid 'user' 'domain' 'account'
 if [ "$quota" != 'unlimited' ]; then
-	is_format_valid 'quota'
+    is_format_valid 'quota'
 fi
 is_system_enabled "$MAIL_SYSTEM" 'MAIL_SYSTEM'
 is_object_valid 'user' 'USER' "$user"
@@ -57,21 +57,25 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 md5=$(get_object_value "mail/$domain" 'ACCOUNT' "$account" '$MD5')
-if [[ "$MAIL_SYSTEM" =~ exim ]]; then
-	if [ "$quota" = 'unlimited' ]; then
-		quota=0
-	fi
-	sed -i "/^$account:/d" "$HOMEDIR/$user/conf/mail/$domain/passwd"
-	str="$account:$md5:$user:mail::$HOMEDIR/$user:${quota}:userdb_quota_rule=*:storage=${quota}M"
-	echo "$str" >> "$HOMEDIR/$user/conf/mail/$domain/passwd"
-fi
+case "$MAIL_SYSTEM" in
+    *exim*)
+        if [ "$quota" = 'unlimited' ]; then
+            quota_val=0
+        else
+            quota_val="$quota"
+        fi
+        sed -i "" "/^$account:/d" "$HOMEDIR/$user/conf/mail/$domain/passwd"
+        str="$account:$md5:$user:mail::$HOMEDIR/$user:${quota_val}:userdb_quota_rule=*:storage=${quota_val}M"
+        echo "$str" >> "$HOMEDIR/$user/conf/mail/$domain/passwd"
+        ;;
+esac
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-if [[ "$quota" -eq 0 ]]; then
-	quota='unlimited'
+if [ "$quota" = "0" ] || [ "$quota_val" = "0" ]; then
+    quota='unlimited'
 fi
 
 # Update quota
@@ -81,4 +85,4 @@ update_object_value "mail/$domain" 'ACCOUNT' "$account" '$QUOTA' "$quota"
 $BIN/v-log-action "$user" "Info" "Mail" "Mail account quota changed (Quota: $quota, Account: $account@$domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change mail domain rate limit
 # options: USER DOMAIN RATE
 #
@@ -17,8 +17,8 @@ domain_idn=$2
 rate=$3
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -38,7 +38,7 @@ format_domain_idn
 check_args '3' "$#" 'USER DOMAIN  RATE'
 is_format_valid 'user' 'domain'
 if [ "$rate" != 'system' ]; then
-	is_format_valid 'rate'
+    is_format_valid 'rate'
 fi
 is_system_enabled "$MAIL_SYSTEM" 'MAIL_SYSTEM'
 is_object_valid 'user' 'USER' "$user"
@@ -50,15 +50,11 @@ is_object_unsuspended 'mail' 'DOMAIN' "$domain"
 check_hestia_demo_mode
 
 #----------------------------------------------------------#
-#                       Action                             #
-#----------------------------------------------------------#
-
-#----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-if [[ "$rate" = "system" ]]; then
-	rate=''
+if [ "$rate" = "system" ]; then
+    rate=''
 fi
 
 # Update quota
@@ -69,4 +65,4 @@ $BIN/v-rebuild-mail-domain "$user" "$domain"
 $BIN/v-log-action "$user" "Info" "Mail" "Mail domain rate limit has changed ($rate)"
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

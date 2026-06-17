@@ -21,18 +21,13 @@ restart="$4"
 if [[ "$domain" =~ [[:upper:]] ]]; then
 	domain=$(echo "$domain" | tr '[:upper:]' '[:lower:]')
 fi
-if [[ "$domain" =~ ^www\..* ]]; then
-	domain=$(echo "$domain" | sed -e "s/^www.//")
-fi
-if [[ "$domain" =~ .*\.$ ]]; then
-	domain=$(echo "$domain" | sed -e "s/\.$//")
-fi
+if [[ "$domain" =~ ^www\..* ]]; then domain=$(echo "$domain" | sed "s/^www.//"); fi
+if [[ "$domain" =~ .*\.$ ]]; then domain=$(echo "$domain" | sed "s/\.$//"); fi
 
 domain_idn=$(idn2 --quiet "$domain")
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -87,7 +82,7 @@ fi
 # Call routine to add SSL configuration to mail domain
 add_mail_ssl_config
 
-if [ "$WEBMAIL" == "roundcube" ]; then
+if [ "$WORKSPACE_MAILMAIL" == "roundcube" ] || [ "$WEBMAIL" == "roundcube" ]; then
 	WEBMAIL_TEMPLATE="default"
 	if [ -n "$PROXY_SYSTEM" ]; then
 		PROXY_TEMPLATE="default"

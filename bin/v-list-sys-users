@@ -12,13 +12,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -27,29 +33,29 @@ json_list() {
 	objects=$("$BIN/v-list-users" 'list' | wc -w)
 	i=1
 	echo '['
-	while read user; do
+	while read -r user; do
 		if [ "$i" -lt "$objects" ]; then
-			echo -e "\t\"$user\","
+			printf '    "%s",\n' "$user"
 		else
-			echo -e "\t\"$user\""
+			printf '    "%s"\n' "$user"
 		fi
-		((++i))
+		i=$((i + 1))
 	done < <("$BIN/v-list-users" 'list')
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
 shell_list() {
 	echo "USER"
 	echo "----"
-	while read user; do
+	while read -r user; do
 		echo "$user"
 	done < <("$BIN/v-list-users" 'list')
 }
 
 # PLAIN list function
 plain_list() {
-	while read user; do
+	while read -r user; do
 		echo "$user"
 	done < <("$BIN/v-list-users" 'list')
 }
@@ -57,7 +63,7 @@ plain_list() {
 # CSV list function
 csv_list() {
 	echo "USER"
-	while read user; do
+	while read -r user; do
 		echo "$user"
 	done < <("$BIN/v-list-users" 'list')
 }

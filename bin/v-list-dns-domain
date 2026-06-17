@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns domain
 # options: USER DOMAIN [FORMAT]
 #
@@ -13,33 +13,39 @@
 # Argument definition
 user=$1
 domain=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$DOMAIN'": {
-        "IP": "'$IP'",
-        "TPL": "'$TPL'",
-        "TTL": "'$TTL'",
-        "EXP": "'$EXP'",
-        "SOA": "'$SOA'",
-        "SERIAL": "'$SERIAL'",
-        "DNSSEC": "'$DNSSEC'",
-        "SRC": "'$SRC'",
-        "RECORDS": "'$RECORDS'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+	echo "    \"$DOMAIN\": {"
+	echo "        \"IP\": \"$IP\","
+	echo "        \"TPL\": \"$TPL\","
+	echo "        \"TTL\": \"$TTL\","
+	echo "        \"EXP\": \"$EXP\","
+	echo "        \"SOA\": \"$SOA\","
+	echo "        \"SERIAL\": \"$SERIAL\","
+	echo "        \"DNSSEC\": \"$DNSSEC\","
+	echo "        \"SRC\": \"$SRC\","
+	echo "        \"RECORDS\": \"$RECORDS\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -61,15 +67,14 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$DOMAIN\t$IP\t$TPL\t$TTL\t$EXP\t$SOA\t$SERIAL\t$DNSSEC\t$RECORDS\t"
-	echo -e "$SUSPENDED\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$DOMAIN" "$IP" "$TPL" "$TTL" "$EXP" "$SOA" "$SERIAL" "$DNSSEC" "$RECORDS" "$SUSPENDED" "$TIME" "$DATE"
 }
 
 # CSV list function
 csv_list() {
 	echo "DOMAIN,IP,TPL,TTL,EXP,SOA,SERIAL,DNSSEC,RECORDS,SUSPENDED,TIME,DATE"
-	echo -n "$DOMAIN,$IP,$TPL,$TTL,$EXP,$SOA,$SERIAL,$DNSSEC,$RECORDS,$SUSPENDED,"
-	echo "$TIME,$DATE"
+	echo "$DOMAIN,$IP,$TPL,$TTL,$EXP,$SOA,$SERIAL,$DNSSEC,$RECORDS,$SUSPENDED,$TIME,$DATE"
 }
 
 #----------------------------------------------------------#
@@ -86,7 +91,12 @@ is_object_valid 'dns' 'DOMAIN' "$domain"
 #----------------------------------------------------------#
 
 # Parsing domain
-parse_object_kv_list $(grep "DOMAIN='$domain'" $USER_DATA/dns.conf)
+domain_line=$(grep "DOMAIN='$domain'" "$USER_DATA/dns.conf")
+if [ -z "$domain_line" ]; then
+	echo "Error: DNS domain $domain not found for user $user"
+	exit 3
+fi
+parse_object_kv_list "$domain_line"
 
 # Listing data
 case $format in

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change dns domain expiration date
 # options: USER DOMAIN EXP
 #
@@ -18,8 +18,8 @@ domain_idn=$2
 exp=$3
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -54,12 +54,16 @@ update_object_value 'dns' 'DOMAIN' "$domain" '$EXP' "$exp"
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
-	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
-	if [ -z "$dlock" ]; then
-		cmd="$BIN/v-change-remote-dns-domain-exp $user $domain $exp"
-		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
-	fi
+    # Check for first sync
+    if [ -f "$HESTIA/data/queue/dns-cluster.pipe" ]; then
+        dlock=$(grep "domain $user $domain" "$HESTIA/data/queue/dns-cluster.pipe")
+    else
+        dlock=""
+    fi
+    if [ -z "$dlock" ]; then
+        cmd="$BIN/v-change-remote-dns-domain-exp $user $domain $exp"
+        printf "%b\n" "$cmd" >> "$HESTIA/data/queue/dns-cluster.pipe"
+    fi
 fi
 
 #----------------------------------------------------------#

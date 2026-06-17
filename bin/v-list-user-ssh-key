@@ -1,8 +1,8 @@
 #!/bin/bash
-# info: add ssh key
+# info: list ssh keys
 # options: USER [FORMAT]
 #
-# Lists $user/.ssh/authorized_keys
+# Lists user's SSH keys from $user/.ssh/authorized_keys
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -10,66 +10,73 @@
 
 # Argument definition
 user=$1
+format=${2:-shell}
 
-format=${2-shell}
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
 	objects=$(echo "$keys" | wc -l)
 	echo "{"
-	for str in $keys; do
-		KEY=$(echo $str | awk '{print $(NF-2)}')
-		ID=$(echo $str | awk '{print $(NF-1)}')
-		echo -n '    "'$ID'": {
-        "ID": "'$ID'",
-        "KEY": "'$KEY'"
-        }'
+	echo "$keys" | while read -r line; do
+		[ -z "$line" ] && continue
+		KEY=$(echo "$line" | awk '{print $(NF-2)}')
+		ID=$(echo "$line" | awk '{print $(NF-1)}')
+		echo -n "    \"$ID\": {"
+		echo -n "\"ID\": \"$ID\", "
+		echo "\"KEY\": \"$KEY\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
+		else
+			echo ""
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo "}"
 }
 
+# SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "ID~KEY"
-	echo "----~----~---"
-	for str in $keys; do
-		KEY=$(echo $str | awk '{print $(NF-2)}')
-		ID=$(echo $str | awk '{print $(NF-1)}')
-		echo "$ID~$KEY"
+	printf "%-20s %-50s\n" "ID" "KEY"
+	printf "%-20s %-50s\n" "--" "---"
+	echo "$keys" | while read -r line; do
+		[ -z "$line" ] && continue
+		KEY=$(echo "$line" | awk '{print $(NF-2)}')
+		ID=$(echo "$line" | awk '{print $(NF-1)}')
+		printf "%-20s %-50s\n" "$ID" "$KEY"
 	done
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	for str in $keys; do
-		KEY=$(echo $str | awk '{print $(NF-2)}')
-		ID=$(echo $str | awk '{print $(NF-1)}')
-		echo -e "$ID\t$KEY"
+	echo "$keys" | while read -r line; do
+		[ -z "$line" ] && continue
+		KEY=$(echo "$line" | awk '{print $(NF-2)}')
+		ID=$(echo "$line" | awk '{print $(NF-1)}')
+		printf "%s\t%s\n" "$ID" "$KEY"
 	done
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
 	echo "ID,KEY"
-	for str in $keys; do
-		KEY=$(echo $str | awk '{print $(NF-2)}')
-		ID=$(echo $str | awk '{print $(NF-1)}')
+	echo "$keys" | while read -r line; do
+		[ -z "$line" ] && continue
+		KEY=$(echo "$line" | awk '{print $(NF-2)}')
+		ID=$(echo "$line" | awk '{print $(NF-1)}')
 		echo "\"$ID\",\"$KEY\""
 	done
 }
@@ -88,34 +95,58 @@ is_object_unsuspended 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 AUTHKEY_FILE="$HOMEDIR/$user/.ssh/authorized_keys"
-[ -z "$(readlink -f "$AUTHKEY_FILE" | egrep "^$HOMEDIR/$user/.ssh/")" ] && check_result $E_FORBIDEN "Invalid authorized keys path"
-
-#check if file exsists
-if [ ! -f "$AUTHKEY_FILE" ]; then
-	exit
+if [ -z "$(readlink -f "$AUTHKEY_FILE" | grep -E "^$HOMEDIR/$user/.ssh/")" ]; then
+	check_result "$E_FORBIDDEN" "Invalid authorized keys path"
 fi
 
+# Check if file exists
+if [ ! -f "$AUTHKEY_FILE" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No SSH keys found" ;;
+		plain) ;;
+		csv) echo "ID,KEY" ;;
+	esac
+	exit 0
+fi
+
+keys=""
 first_loop=1
-while read l; do
-	sshkey=$([[ -n $l && ${l###} = $l ]] && ssh-keygen -l -f <(echo $l))
-	if [ -n "$sshkey" ]; then
-		(($first_loop)) && keys="$sshkey" || keys="$keys"$'\n'"$sshkey"
-		unset first_loop
+while read -r line; do
+	# Skip comments and empty lines
+	if [ -n "$line" ] && [ "${line###}" = "$line" ]; then
+		sshkey=$(ssh-keygen -l -f <(echo "$line") 2>/dev/null)
+		if [ -n "$sshkey" ]; then
+			if [ "$first_loop" -eq 1 ]; then
+				keys="$sshkey"
+				first_loop=0
+			else
+				keys="$keys"$'\n'"$sshkey"
+			fi
+		fi
 	fi
 done < "$AUTHKEY_FILE"
+
+if [ -z "$keys" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No valid SSH keys found" ;;
+		plain) ;;
+		csv) echo "ID,KEY" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
-
-# Logging
 
 exit

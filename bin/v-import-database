@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: import database
 # options: USER DB PATH
 #
@@ -15,9 +15,15 @@ user=$1
 database=$2
 dump=$3
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/db.sh
@@ -31,28 +37,28 @@ source_conf "$HESTIA/conf/hestia.conf"
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-check_args '3' "$#" 'DATABASE USER'
-is_format_valid 'database' 'user'
+check_args '3' "$#" 'USER DB PATH'
+is_format_valid 'user' 'database'
 is_system_enabled "$DB_SYSTEM" 'DB_SYSTEM'
 is_object_valid 'user' 'USER' "$user"
 is_object_unsuspended 'user' 'USER' "$user"
 is_object_valid 'db' 'DB' "$database"
 
 if [ ! -f "$dump" ]; then
-	echo "Error: dump file doesn't exist"
-	log_event "$E_NOTEXIST" "$ARGUMENTS"
-	exit "$E_NOTEXIST"
+    echo "Error: dump file doesn't exist"
+    log_event "$E_NOTEXIST" "$ARGUMENTS"
+    exit "$E_NOTEXIST"
 fi
 
 # Check db existence
-db_data=$(grep "DB='$database'" $HESTIA/data/users/$user/db.conf)
+db_data=$(grep "DB='$database'" "$HESTIA/data/users/$user/db.conf")
 
 parse_object_kv_list "$db_data"
-#Fix issue #1084 with "Upper case not allowed with PGSQL"
-if [ "$TYPE" == "pgsql" ]; then
-	usersmall=$(echo "$user" | tr '[:upper:]' '[:lower:]')
+# Fix issue #1084 with "Upper case not allowed with PGSQL"
+if [ "$TYPE" = "pgsql" ]; then
+    usersmall=$(echo "$user" | tr '[:upper:]' '[:lower:]')
 else
-	usersmall=$user
+    usersmall="$user"
 fi
 
 # Perform verification if read-only mode is enabled
@@ -64,8 +70,8 @@ check_hestia_demo_mode
 
 # Import dump
 case $TYPE in
-	mysql) import_mysql_database "$dump" ;;
-	pgsql) import_pgsql_database "$dump" ;;
+    mysql) import_mysql_database "$dump" ;;
+    pgsql) import_pgsql_database "$dump" ;;
 esac
 
 #----------------------------------------------------------#

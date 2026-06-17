@@ -13,11 +13,17 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -34,15 +40,16 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 # Saving old IFS
-OLDIFS=$IFS
+OLDIFS="$IFS"
 IFS=$(echo -en "\n\b")
 
-#Starting update disk space excluding web, mail, conf directory
+# Starting update disk space excluding web, mail, conf directory
 disk_usage='0'
-disk_usage=$(du -shm $HOMEDIR/$user --exclude $HOMEDIR/$user/web --exclude $HOMEDIR/$user/mail --exclude $HOMEDIR/$user/conf | cut -f 1)
+disk_usage=$(du -shm "$HOMEDIR/$user" --exclude "$HOMEDIR/$user/web" --exclude "$HOMEDIR/$user/mail" --exclude "$HOMEDIR/$user/conf" 2>/dev/null | cut -f 1)
+[ -z "$disk_usage" ] && disk_usage=0
 
 # Restoring old IFS
-IFS=$OLDIFS
+IFS="$OLDIFS"
 
 # Updating disk value in config
 update_user_value "$user" '$U_DISK_DIRS' "$disk_usage"

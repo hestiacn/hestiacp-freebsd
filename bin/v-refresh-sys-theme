@@ -10,11 +10,17 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -23,8 +29,14 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 
 # Store current theme name
-CURRENT_THEME=$THEME
+CURRENT_THEME="$THEME"
 
 # Cycle theme to regenerate (helps if cache is stuck)
 $BIN/v-change-sys-theme "default"
 $BIN/v-change-sys-theme "$CURRENT_THEME"
+
+#----------------------------------------------------------#
+#                       Hestia                             #
+#----------------------------------------------------------#
+
+exit

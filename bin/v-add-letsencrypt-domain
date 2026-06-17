@@ -22,8 +22,7 @@ deleted_redirect=0
 deleted_force_ssl=0
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -61,9 +60,8 @@ query_le_v2() {
 	post_data=$post_data'"signature":"'"$signature_"'"}'
 
 	# Save http response to file passed as "$4" arg or print to stdout if not provided
-	# http response headers are always sent to stdout
 	local save_to_file=${4:-"/dev/stdout"}
-	curl --location --user-agent "HestiaCP" --insecure --retry 5 --retry-connrefused --silent --dump-header /dev/stdout --data "$post_data" "$1" --header "$content" --output "$save_to_file"
+	curl --location --user-agent "HestiaCP" --insecure --retry 5 --connect-timeout 10 --silent --dump-header /dev/stdout --data "$post_data" "$1" --header "$content" --output "$save_to_file"
 	debug_log "API call" "exit status: $?"
 }
 
@@ -111,7 +109,6 @@ if [ -z "$mail" ] || [ "$mail" = 'no' ]; then
 	is_object_valid 'web' 'DOMAIN' "$domain"
 	is_object_unsuspended 'web' 'DOMAIN' "$domain"
 	get_domain_values 'web'
-	# check if alias is the letsencrypt wildcard domain, if not, make the normal checks
 	if [[ "$aliases" != "*.$domain" ]]; then
 		for alias in $(echo "$aliases" | tr ',' '\n' | sort -u); do
 			check_alias="$(echo $ALIAS | tr ',' '\n' | grep ^$alias$)"
@@ -128,7 +125,7 @@ fi
 
 # Dump debug info
 debug_log() {
-	echo -e "\n==[${1}]==\n${2}\n" >> "$log_file"
+	printf "\n==[%s]==\n%s\n\n" "${1}" "${2}" >> "$log_file"
 }
 
 # Perform verification if read-only mode is enabled
@@ -167,19 +164,13 @@ log_file="/var/log/hestia/LE-${user}-${domain}.log"
 touch "$log_file"
 chmod 600 "$log_file"
 
-echo -e "\n\n=============================
-Date Time: $(date +%Y-%m-%d) $(date +%H:%M:%S)
-WEB_SYSTEM: ${WEB_SYSTEM}
-PROXY_SYSTEM: ${PROXY_SYSTEM}
-user: ${user}
-domain: ${domain}
-" >> "$log_file"
+printf "\n\n=============================\nDate Time: %s\nWEB_SYSTEM: %s\nPROXY_SYSTEM: %s\nuser: %s\ndomain: %s\n\n" "$(date +'%Y-%m-%d %H:%M:%S')" "${WEB_SYSTEM}" "${PROXY_SYSTEM}" "${user}" "${domain}" >> "$log_file"
 
 # Registering LetsEncrypt user account
 $BIN/v-add-letsencrypt-user $user
 if [ "$?" -ne 0 ]; then
 	touch $HESTIA/data/queue/letsencrypt.pipe
-	sed -i "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
+	sed -i "" "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
 	send_notice "LETSENCRYPT" "Account registration failed ($user)"
 	check_result "$E_CONNECT" "LE account registration ($user)" > /dev/null
 fi
@@ -198,11 +189,7 @@ else
 	proto="http-01"
 fi
 
-echo -e "
-- aliases: ${aliases}
-- proto: ${proto}
-- wildcard: ${wildcard}
-" >> "$log_file"
+printf "\n- aliases: %s\n- proto: %s\n- wildcard: %s\n\n" "${aliases}" "${proto}" "${wildcard}" >> "$log_file"
 
 # Check if dns records exist for requested domain/aliases
 if [ "$proto" = "http-01" ]; then
@@ -234,7 +221,7 @@ if [ -n "$DNS_SYSTEM" ]; then
 fi
 
 # Requesting nonce / STEP 1
-answer=$(curl --user-agent "HestiaCP" -s -I "$LE_API/directory")
+answer=$(curl --user-agent "HestiaCP" --retry 5 --connect-timeout 10 -s -I "$LE_API/directory")
 nonce=$(echo "$answer" | grep -i nonce | cut -f2 -d \  | tr -d '\r\n')
 status=$(echo "$answer" | grep HTTP/ | tail -n1 | cut -f 2 -d ' ')
 
@@ -269,7 +256,7 @@ nonce=$(echo "$answer" | grep -i nonce | cut -f2 -d \  | tr -d '\r\n')
 authz=$(echo "$answer" | grep "acme/authz" | cut -f2 -d '"')
 finalize=$(echo "$answer" | grep 'finalize":' | cut -f4 -d '"')
 status=$(echo "$answer" | grep HTTP/ | tail -n1 | cut -f2 -d ' ')
-order=$(echo -e "$answer" | grep -i location | cut -f2 -d \  | tr -d '\r\n')
+order=$(printf "%b\n" "$answer" | grep -i location | cut -f2 -d \  | tr -d '\r\n')
 debug_log "Step 2" "- status: ${status}\n- nonce: ${nonce}\n- authz: ${authz}\n- finalize: ${finalize}\n- payload: ${payload}\n- answer: ${answer}\n order: ${order}"
 
 if [[ "$status" -ne 201 ]]; then
@@ -310,10 +297,9 @@ for auth in $authz; do
 		check_result "$E_CONNECT" "Let's Encrypt acme/authz bad status $status ($domain)"
 	fi
 
-	# Accepting challenge / STEP 4
+# Accepting challenge / STEP 4
 	if [ "$wildcard" = 'yes' ]; then
-		record=$(printf "%s" "$token.$THUMB" \
-			| openssl dgst -sha256 -binary | encode_base64)
+		record=$(printf "%s" "$token.$THUMB" | openssl dgst -sha256 -binary | encode_base64)
 		old_records=$($BIN/v-list-dns-records "$user" "$domain" plain | grep 'TXT')
 		old_records=$(echo "$old_records" | grep _acme-challenge | cut -f 1)
 		for old_record in $old_records; do
@@ -353,14 +339,13 @@ for auth in $authz; do
 				acme_challenge="$well_known/acme-challenge"
 				mkdir -p $acme_challenge
 				echo "$token.$THUMB" > $acme_challenge/$token
-				chown -R $user:$user $well_known
+				chown -R $user: "$well_known"
 			fi
 		else
 			if [ "$WEB_SYSTEM" = 'nginx' ] || [ "$PROXY_SYSTEM" = 'nginx' ]; then
 				conf="$HOMEDIR/$user/conf/mail/$root_domain/nginx.conf_letsencrypt"
 				sconf="$HOMEDIR/$user/conf/mail/$root_domain/nginx.ssl.conf_letsencrypt"
-				echo 'location ~ "^/\.well-known/acme-challenge/([-_A-Za-z0-9]+)$" {' \
-					> $conf
+				echo 'location ~ "^/\.well-known/acme-challenge/([-_A-Za-z0-9]+)$" {' >> $conf
 				echo '    default_type text/plain;' >> $conf
 				echo '    return 200 "$1.'$THUMB'";' >> $conf
 				echo '}' >> $conf
@@ -378,7 +363,7 @@ for auth in $authz; do
 					acme_challenge="$well_known/acme-challenge"
 					mkdir -p $acme_challenge
 					echo "$token.$THUMB" > $acme_challenge/$token
-					chown -R $user:$user $well_known
+					chown -R $user: "$well_known"
 				fi
 			fi
 		fi
@@ -437,7 +422,11 @@ for auth in $authz; do
 				fi
 			fi
 			# Download debug info from LE server
-			result=$(wget -qO- $url)
+			if command -v fetch > /dev/null 2>&1; then
+				result=$(fetch -q -T5 -w2 -o - "$url" 2>/dev/null)
+			else
+				result=$(curl --insecure --retry 5 --connect-timeout 10 --silent "$url" 2>/dev/null)
+			fi
 			debug_log "Debug information Step 5" "$result"
 			details=$(echo $result | jq '.error.detail')
 			error_code=$(echo $result | jq '.error.status')
@@ -448,7 +437,6 @@ for auth in $authz; do
 
 		i=$((i + 1))
 		if [ "$i" -gt 10 ]; then
-			# Delete DNS CAA record
 			if [ -n "$DNS_SYSTEM" ]; then
 				dns_domain=$($BIN/v-list-dns-domains "$user" | grep "$domain" | cut -d' ' -f1)
 				caa_record=$($BIN/v-list-dns-records "$user" "$domain" | grep -i "letsencrypt" | cut -d' ' -f1)
@@ -465,7 +453,6 @@ for auth in $authz; do
 		sleep $((i * 2))
 	done
 	if [ "$validation" = 'invalid' ]; then
-		# Delete DNS CAA record
 		if [ -n "$DNS_SYSTEM" ]; then
 			dns_domain=$($BIN/v-list-dns-domains "$user" | grep "$domain" | cut -d' ' -f1)
 			caa_record=$($BIN/v-list-dns-records "$user" "$domain" | grep -i "letsencrypt" | cut -d' ' -f1)
@@ -510,7 +497,7 @@ if [ -z "$certificate" ]; then
 		status=$(echo "$answer" | grep HTTP/ | tail -n1 | cut -f 2 -d ' ')
 		validation=$(echo "$answer" | grep 'status":' | cut -f4 -d '"')
 		certificate=$(echo "$answer" | grep 'certificate":' | cut -f4 -d '"')
-		sleep $((i * 2)) # Sleep for 2s, 4s, 6s, 8s
+		sleep $((i * 2))
 		if [ $i -gt 10 ]; then
 			check_result "$E_CONNECT" "Certificate processing timeout ($domain)"
 		fi
@@ -523,7 +510,6 @@ status=0
 retry=0
 
 while [[ $status != 200 && $retry -lt 3 ]]; do
-
 	answer=$(query_le_v2 "$certificate" "" "$nonce" "$ssl_dir/$domain.pem")
 	status=$(echo "$answer" | grep HTTP/ | tail -n1 | cut -f 2 -d ' ')
 
@@ -531,14 +517,13 @@ while [[ $status != 200 && $retry -lt 3 ]]; do
 
 	if [[ $status != 200 ]]; then
 		retry=$((retry + 1))
-		sleep $((retry * 2)) # Sleep for 2s, 4s, 6s, 8s
+		sleep $((retry * 2))
 	fi
-
 done
 
 # Fallback on depreciated download method for certs (unauthenticated GET)
 if [[ $status != 200 ]]; then
-	answer=$(curl --insecure --user-agent "HestiaCP" --retry 5 --retry-connrefused --silent --dump-header /dev/stdout "$certificate" --output "$ssl_dir/$domain.pem")
+	answer=$(curl --insecure --user-agent "HestiaCP" --retry 5 --connect-timeout 10 --silent --dump-header /dev/stdout "$certificate" --output "$ssl_dir/$domain.pem")
 	status=$(echo "$answer" | grep HTTP/ | tail -n1 | cut -f 2 -d ' ')
 
 	debug_log "Step 8 - Fallback" "- status: ${status}\n- answer: ${answer}"
@@ -563,9 +548,10 @@ tail -n $ca_end $ssl_dir/$domain.pem > $ssl_dir/$domain.ca
 
 debug_log "CERT CRT" "$(cat "$ssl_dir/$domain.crt")"
 debug_log "CERT CA-1" "$(cat "$ssl_dir/$domain.ca")"
+
 # Temporary fix for double "END CERTIFICATE"
 if [[ $(head -n 1 $ssl_dir/$domain.ca) = "-----END CERTIFICATE-----" ]]; then
-	sed -i '1,2d' $ssl_dir/$domain.ca
+	sed -i "" '1,2d' $ssl_dir/$domain.ca
 fi
 debug_log "CERT CA-2" "$(cat "$ssl_dir/$domain.ca")"
 
@@ -588,7 +574,7 @@ if [ -z "$mail" ]; then
 		$BIN/v-add-web-domain-ssl "$user" "$domain" "$ssl_dir" "$ssl_home" "updatessl"
 	fi
 else
-	# TODO replace with v-update-mail-domain-ssl if ssl is enabled
+    # TODO replace with v-update-mail-domain-ssl if ssl is enabled
 	ssl_enabled="$(get_object_value 'mail' 'DOMAIN' "$root_domain" '$SSL')"
 	if [ "$ssl_enabled" = "yes" ]; then
 		$BIN/v-update-mail-domain-ssl "$user" "$root_domain" "$ssl_dir" "updatessl"
@@ -600,16 +586,16 @@ fi
 if [ "$?" -ne '0' ]; then
 	[ -d "$ssl_dir" ] && rm -rf "$ssl_dir"
 	touch $HESTIA/data/queue/letsencrypt.pipe
-	sed -i "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
+	sed -i "" "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
 	send_notice 'LETSENCRYPT' "$domain certificate installation failed ($domain)"
 	check_result $? "SSL install" > /dev/null
 fi
 
 # Adding LE autorenew cronjob
-if [ -z "$(grep $BIN/v-update-letsencrypt "/var/spool/cron/crontabs/hestiaweb")" ]; then
-	min=$(generate_password '012345' '2')
-	hour=$(generate_password '1234567' '1')
-	sed -i -e "\$a*/5 * * * * sudo $BIN/v-update-letsencrypt" "/var/spool/cron/crontabs/hestiaweb"
+if [ -f "/var/cron/tabs/hestiaweb" ] && [ -z "$(grep "$BIN/v-update-letsencrypt" "/var/cron/tabs/hestiaweb")" ]; then
+	min=$(gen_pass '012345' '2')
+	hour=$(gen_pass '1234567' '1')
+	echo "$min $hour * * * $BIN/v-update-letsencrypt" >> "/var/cron/tabs/hestiaweb"
 fi
 
 # Updating letsencrypt key
@@ -629,7 +615,6 @@ if [ -z "$mail" ]; then
 		$BIN/v-add-web-domain-redirect $user $domain $domain_redirect $domain_redirect_code
 		deleted_redirect=0
 	fi
-
 else
 	if [ -z "$LETSENCRYPT" ]; then
 		add_object_key "mail" 'DOMAIN' "$root_domain" 'LETSENCRYPT'
@@ -653,7 +638,7 @@ fi
 
 # Deleting task from queue
 touch $HESTIA/data/queue/letsencrypt.pipe
-sed -i "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
+sed -i "" "/ $domain /d" $HESTIA/data/queue/letsencrypt.pipe
 
 # Notifying user
 send_notice 'LETSENCRYPT' "$domain SSL has been installed successfully"

@@ -12,23 +12,29 @@
 
 # Argument definition
 user=$1
-format=${2-shell}
+format=${2:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep DOMAIN $USER_DATA/web.conf | wc -l)
+	objects=$(grep -c "DOMAIN" "$USER_DATA/web.conf")
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
 		# Set correct document root path
 		if [ -n "$CUSTOM_DOCROOT" ]; then
@@ -36,87 +42,85 @@ json_list() {
 		else
 			DOCROOT="$HOMEDIR/$user/web/$DOMAIN/public_html/"
 		fi
-		echo -n '    "'$DOMAIN'": {
-        "IP": "'$IP'",
-        "IP6": "'$IP6'",
-        "DOCUMENT_ROOT": "'$DOCROOT'",
-        "U_DISK": "'$U_DISK'",
-        "U_BANDWIDTH": "'$U_BANDWIDTH'",
-        "TPL": "'$TPL'",
-        "ALIAS": "'$ALIAS'",
-        "STATS": "'$STATS'",
-        "STATS_USER": "'$STATS_USER'",
-        "SSL": "'$SSL'",
-        "SSL_HOME": "'$SSL_HOME'",
-        "LETSENCRYPT": "'$LETSENCRYPT'",
-        "FTP_USER": "'$FTP_USER'",
-        "FTP_PATH": "'$FTP_PATH'",
-        "AUTH_USER": "'$AUTH_USER'",
-        "BACKEND": "'$BACKEND'",
-        "PROXY": "'$PROXY'",
-        "PROXY_EXT": "'$PROXY_EXT'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$DOMAIN\": {"
+		echo -n "\"IP\": \"$IP\", "
+		echo -n "\"IP6\": \"$IP6\", "
+		echo -n "\"DOCUMENT_ROOT\": \"$DOCROOT\", "
+		echo -n "\"U_DISK\": \"$U_DISK\", "
+		echo -n "\"U_BANDWIDTH\": \"$U_BANDWIDTH\", "
+		echo -n "\"TPL\": \"$TPL\", "
+		echo -n "\"ALIAS\": \"$ALIAS\", "
+		echo -n "\"STATS\": \"$STATS\", "
+		echo -n "\"STATS_USER\": \"$STATS_USER\", "
+		echo -n "\"SSL\": \"$SSL\", "
+		echo -n "\"SSL_HOME\": \"$SSL_HOME\", "
+		echo -n "\"LETSENCRYPT\": \"$LETSENCRYPT\", "
+		echo -n "\"FTP_USER\": \"$FTP_USER\", "
+		echo -n "\"FTP_PATH\": \"$FTP_PATH\", "
+		echo -n "\"AUTH_USER\": \"$AUTH_USER\", "
+		echo -n "\"BACKEND\": \"$BACKEND\", "
+		echo -n "\"PROXY\": \"$PROXY\", "
+		echo -n "\"PROXY_EXT\": \"$PROXY_EXT\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $USER_DATA/web.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$USER_DATA/web.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "DOMAIN   IP   TPL   SSL   DISK   BW   SPND   DATE"
-	echo "------   --   ---   ---   ----   --   ----   -----"
-	while read str; do
+	printf "%-20s %-15s %-8s %-6s %-8s %-6s %-6s %-12s\n" \
+		"DOMAIN" "IP" "TPL" "SSL" "DISK" "BW" "SPND" "DATE"
+	printf "%-20s %-15s %-8s %-6s %-8s %-6s %-6s %-12s\n" \
+		"------" "--" "---" "---" "----" "--" "----" "-----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo "$DOMAIN $IP $TPL $SSL $U_DISK $U_BANDWIDTH $SUSPENDED $DATE"
-	done < <(cat $USER_DATA/web.conf)
+		printf "%-20s %-15s %-8s %-6s %-8s %-6s %-6s %-12s\n" \
+			"$DOMAIN" "$IP" "$TPL" "$SSL" "$U_DISK" "$U_BANDWIDTH" "$SUSPENDED" "$DATE"
+	done < "$USER_DATA/web.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
 		# Set correct document root path
-		if [ ! -z "$CUSTOM_DOCROOT" ]; then
+		if [ -n "$CUSTOM_DOCROOT" ]; then
 			DOCROOT="$CUSTOM_DOCROOT"
 		else
 			DOCROOT="$HOMEDIR/$user/web/$DOMAIN/public_html/"
 		fi
-		echo -ne "$DOMAIN\t$IP\t$IP6\t$DOCROOT\t$U_DISK\t$U_BANDWIDTH\t$TPL\t"
-		echo -ne "$ALIAS\t$STATS\t$STATS_USER\t$SSL\t$SSL_HOME\t$LETSENCRYPT\t"
-		echo -ne "$FTP_USER\t$FTP_PATH\t$AUTH_USER\t$BACKEND\t$PROXY\t"
-		echo -e "$PROXY_EXT\t$SUSPENDED\t$TIME\t$DATE"
-	done < <(cat $USER_DATA/web.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$DOMAIN" "$IP" "$IP6" "$DOCROOT" "$U_DISK" "$U_BANDWIDTH" "$TPL" \
+			"$ALIAS" "$STATS" "$STATS_USER" "$SSL" "$SSL_HOME" "$LETSENCRYPT" \
+			"$FTP_USER" "$FTP_PATH" "$AUTH_USER" "$BACKEND" "$PROXY" \
+			"$PROXY_EXT" "$SUSPENDED" "$TIME" "$DATE"
+	done < "$USER_DATA/web.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
-	echo -n "DOMAIN,IP,IP6,DOCROOT,U_DISK,U_BANDWIDTH,TPL,ALIAS,STATS,STATS_USER,"
-	echo -n "SSL,SSL_HOME,LETSENCRYPT,FTP_USER,FTP_PATH,AUTH_USER,BACKEND,PROXY,"
-	echo "PROXY_EXT,SUSPENDED,TIME,DATE"
-	while read str; do
+	echo "DOMAIN,IP,IP6,DOCROOT,U_DISK,U_BANDWIDTH,TPL,ALIAS,STATS,STATS_USER,SSL,SSL_HOME,LETSENCRYPT,FTP_USER,FTP_PATH,AUTH_USER,BACKEND,PROXY,PROXY_EXT,SUSPENDED,TIME,DATE"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
 		# Set correct document root path
-		if [ ! -z "$CUSTOM_DOCROOT" ]; then
+		if [ -n "$CUSTOM_DOCROOT" ]; then
 			DOCROOT="$CUSTOM_DOCROOT"
 		else
 			DOCROOT="$HOMEDIR/$user/web/$DOMAIN/public_html/"
 		fi
-		echo -n "$DOMAIN,$IP,$IP6,$DOCROOT,$U_DISK,$U_BANDWIDTH,$TPL,"
-		echo -n "\"$ALIAS\",$STATS,\"$STATS_USER\",$SSL,$SSL_HOME,$LETSENCRYPT,"
-		echo -n "\"$FTP_USER\",\"$FTP_PATH\",\"$AUTH_USER\",$BACKEND,$PROXY,"
-		echo "\"$PROXY_EXT\",$SUSPENDED,$TIME,$DATE"
-	done < <(cat $USER_DATA/web.conf)
+		echo "$DOMAIN,$IP,$IP6,$DOCROOT,$U_DISK,$U_BANDWIDTH,$TPL,\"$ALIAS\",$STATS,\"$STATS_USER\",$SSL,$SSL_HOME,$LETSENCRYPT,\"$FTP_USER\",\"$FTP_PATH\",\"$AUTH_USER\",$BACKEND,$PROXY,\"$PROXY_EXT\",$SUSPENDED,$TIME,$DATE"
+	done < "$USER_DATA/web.conf"
 }
 
 #----------------------------------------------------------#

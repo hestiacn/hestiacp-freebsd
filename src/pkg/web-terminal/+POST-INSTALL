@@ -1,19 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
-set -e
-
-if [ "$1" != "configure" ]; then
-    exit 0
-fi
-
-# Run triggers below only on updates
-if [ ! -e "/usr/local/hestia/data/users/admin" ]; then
-    exit
-fi
-
-###############################################################
+#-------------------------------------------------------------#
 #                Initialize functions/variables               #
-###############################################################
+#-------------------------------------------------------------#
 
 if [ -z "$HESTIA" ]; then
     export HESTIA='/usr/local/hestia'
@@ -21,17 +10,51 @@ if [ -z "$HESTIA" ]; then
     export PATH
 fi
 
-# Load upgrade functions and variables
-. /usr/local/hestia/func/main.sh
-. /usr/local/hestia/func/upgrade.sh
-. /usr/local/hestia/conf/hestia.conf
-. /usr/local/hestia/install/upgrade/upgrade.conf
 
-# FreeBSD: 检查 RC 脚本是否存在并重启服务
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
+# Includes
+source "$HESTIA_CONF"
+source /usr/local/hestia/func/main.sh
+source /usr/local/hestia/func/upgrade.sh
+source /usr/local/hestia/conf/hestia.conf
+source /usr/local/hestia/install/upgrade/upgrade.conf
+#-------------------------------------------------------------#
+#                    Install dependencies                     #
+#-------------------------------------------------------------#
+
+cd /usr/local/hestia/web-terminal || exit 1
+
+if ! command -v node > /dev/null 2>&1; then
+    echo "Node.js not found, installing..."
+    pkg install -y node
+fi
+
+if command -v npm > /dev/null 2>&1; then
+    if [ ! -d "node_modules" ]; then
+        echo "Installing Node.js dependencies for web-terminal..."
+        npm install --omit=dev --no-package-lock --production
+    fi
+else
+    echo "Error: npm not found after Node.js installation"
+    exit 1
+fi
+
+#-------------------------------------------------------------#
+#                   Restart service                           #
+#-------------------------------------------------------------#
+
 if [ -f "/usr/local/etc/rc.d/hestia-web-terminal" ]; then
-    # 检查服务是否启用
-    if service hestia-web-terminal enabled 2>/dev/null; then
-        service hestia-web-terminal restart
+    if ! sysrc -q hestia_web_terminal_enable 2>/dev/null; then
+        sysrc hestia_web_terminal_enable="YES"
+    fi
+    
+    if ! service hestia-web-terminal restart; then
+        service hestia-web-terminal start
     fi
 fi
 

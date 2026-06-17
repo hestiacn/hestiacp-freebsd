@@ -10,13 +10,19 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -29,7 +35,7 @@ json_list() {
 	new_timestamp
 
 	for type in $rrd_types; do
-		for rrd in $(ls $RRD/$type | grep rrd$ | sed "s/\.rrd$//g"); do
+		for rrd in $(ls "$RRD/$type" | grep "rrd$" | sed "s/\.rrd$//g"); do
 			if [ "$i" -ne 1 ]; then
 				echo -e "\t},"
 			fi
@@ -42,26 +48,24 @@ json_list() {
 			if [ "$type" = 'net' ]; then
 				title="Bandwidth Usage $rrd"
 			fi
-			if [ "$type" = 'web' ] || [ "$type" = 'ftp' ] \
-				|| [ "$type" = 'ssh' ]; then
-				title="$(echo $rrd | tr '[:lower:]' '[:upper:]') Usage"
+			if [ "$type" = 'web' ] || [ "$type" = 'ftp' ] || [ "$type" = 'ssh' ]; then
+				title="$(echo "$rrd" | tr '[:lower:]' '[:upper:]') Usage"
 			fi
 			if [ "$type" = 'mail' ]; then
 				title="Exim Usage"
 			fi
 			if [ "$type" = 'db' ]; then
-				db_type=$(echo $rrd | cut -f 1 -d _ | sed -e 's/mysql/MySQL/g' \
-					-e 's/pgsql/PostgreSQL/g')
-				db_host=$(echo $rrd | cut -f 2 -d _)
+				db_type=$(echo "$rrd" | cut -f 1 -d _ | sed -e 's/mysql/MySQL/g' -e 's/pgsql/PostgreSQL/g')
+				db_host=$(echo "$rrd" | cut -f 2 -d _)
 				title="$db_type Usage on $db_host"
 			fi
 			echo -e "\t\"$i\": {"
-			echo -e "\t\t\"TYPE\": \"$type\"",
-			echo -e "\t\t\"RRD\": \"$rrd\"",
-			echo -e "\t\t\"TITLE\": \"$title\","
-			echo -e "\t\t\"TIME\": \"$TIME\","
+			echo -e "\t\t\"TYPE\": \"$type\""
+			echo -e "\t\t\"RRD\": \"$rrd\""
+			echo -e "\t\t\"TITLE\": \"$title\""
+			echo -e "\t\t\"TIME\": \"$TIME\""
 			echo -e "\t\t\"DATE\": \"$DATE\""
-			((++i))
+			i=$((i + 1))
 		done
 	done
 	if [ "$i" -gt 1 ]; then
@@ -72,29 +76,40 @@ json_list() {
 
 # SHELL list function
 shell_list() {
-	echo "TYPE   VAL_1   VAL_2   VAL_3   TIME   DATE"
-	echo "----   -----   -----   -----   ----   ----"
+	printf "%-10s %-10s %-10s %-10s %-12s %-12s\n" "TYPE" "VAL_1" "VAL_2" "VAL_3" "TIME" "DATE"
+	printf "%-10s %-10s %-10s %-10s %-12s %-12s\n" "----" "-----" "-----" "-----" "----" "----"
 	for type in $rrd_types; do
-		for rrd in $(ls $RRD/$type | grep rrd$ | sed "s/\.rrd$//g"); do
+		for rrd in $(ls "$RRD/$type" | grep "rrd$" | sed "s/\.rrd$//g"); do
 			rrd_type=$(echo "$rrd" | tr '[:lower:]' '[:upper:]')
 			rrd_data=$(rrdtool fetch "$RRD/$type/$rrd.rrd" AVERAGE -e 0 -s 0)
 			rrd_data=$(echo "$rrd_data" | tail -n 1)
-			rrd_timestamp=$(echo "$rrd_data" | cut -f 1 -d :)
-			rrd_time=$(date -d "@$rrd_timestamp" +%F)
-			rrd_date=$(date -d "@$rrd_timestamp" +%T)
+			rrd_timestamp=$(echo "$rrd_data" | cut -f 1 -d ':')
+			if [ -n "$rrd_timestamp" ]; then
+				if date --version | grep -q "GNU"; then
+					# Linux
+					rrd_time=$(date -d "@$rrd_timestamp" +%F)
+					rrd_date=$(date -d "@$rrd_timestamp" +%T)
+				else
+					# FreeBSD
+					rrd_time=$(date -r "$rrd_timestamp" +%F)
+					rrd_date=$(date -r "$rrd_timestamp" +%T)
+				fi
+			else
+				rrd_time=""
+				rrd_date=""
+			fi
 			rrd_val1=$(echo "$rrd_data" | awk '{print $2}' | cut -d. -f1)
 			rrd_val2=$(echo "$rrd_data" | awk '{print $3}' | cut -d. -f1)
 			rrd_val3=$(echo "$rrd_data" | awk '{print $4}' | cut -d. -f1)
-			if [ -z "$rrd_val1" ]; then
-				rrd_val1="-nan"
-			fi
-			if [ -z "$rrd_val2" ]; then
-				rrd_val2="-nan"
-			fi
-			if [ -z "$rrd_val3" ]; then
-				rrd_val3="-nan"
-			fi
-			echo "$rrd_type $rrd_val1 $rrd_val2 $rrd_val3 $rrd_time $rrd_date"
+			
+			[ -z "$rrd_val1" ] && rrd_val1="-nan"
+			[ -z "$rrd_val2" ] && rrd_val2="-nan"
+			[ -z "$rrd_val3" ] && rrd_val3="-nan"
+			[ -z "$rrd_time" ] && rrd_time="-"
+			[ -z "$rrd_date" ] && rrd_date="-"
+			
+			printf "%-10s %-10s %-10s %-10s %-12s %-12s\n" \
+				"$rrd_type" "$rrd_val1" "$rrd_val2" "$rrd_val3" "$rrd_time" "$rrd_date"
 		done
 	done
 }
@@ -102,7 +117,7 @@ shell_list() {
 # PLAIN list function
 plain_list() {
 	for type in $rrd_types; do
-		for rrd in $(ls $RRD/$type | grep rrd$ | sed "s/\.rrd$//g"); do
+		for rrd in $(ls "$RRD/$type" | grep "rrd$" | sed "s/\.rrd$//g"); do
 			echo "$RRD/$type/$rrd.rrd"
 		done
 	done
@@ -110,9 +125,9 @@ plain_list() {
 
 # CSV list function
 csv_list() {
+	echo "RRD"
 	for type in $rrd_types; do
-		echo "RRD"
-		for rrd in $(ls $RRD/$type | grep rrd$ | sed "s/\.rrd$//g"); do
+		for rrd in $(ls "$RRD/$type" | grep "rrd$" | sed "s/\.rrd$//g"); do
 			echo "$RRD/$type/$rrd.rrd"
 		done
 	done
@@ -122,7 +137,7 @@ csv_list() {
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Definng rrd charts
+# Defining rrd charts
 rrd_types="la mem net"
 
 # Checking web system
@@ -153,7 +168,7 @@ case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

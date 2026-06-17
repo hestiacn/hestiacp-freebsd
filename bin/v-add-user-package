@@ -1,5 +1,5 @@
 #!/bin/bash
-# info: adding user package
+# info: adding user package for FreeBSD
 # options: tmpfile PACKAGE [REWRITE]
 #
 # This function adds new user package to the system.
@@ -15,7 +15,7 @@ rewrite=$3
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -84,14 +84,15 @@ is_package_consistent() {
 	if [ -n "$DNS_TEMPLATE" ]; then
 		is_dns_template_valid "$DNS_TEMPLATE"
 	fi
-	if [ -n "$NS" ]; then
-		IFS=',' read -r -a nameservers <<< "$NS"
-		i=1
-		for ns in "${nameservers[@]}"; do
-			is_domain_format_valid "$ns" "ns$i"
-			i=$((i + 1))
-		done
-	fi
+
+    if [ -n "$NS" ]; then
+        IFS=','; set -- $NS; IFS=' '
+        i=1
+        for ns in "$@"; do
+            is_domain_format_valid "$ns" "ns$i"
+            i=$((i + 1))
+        done
+    fi
 
 	is_format_valid_shell "$SHELL"
 }
@@ -123,7 +124,7 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
@@ -169,4 +170,4 @@ else
 fi
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

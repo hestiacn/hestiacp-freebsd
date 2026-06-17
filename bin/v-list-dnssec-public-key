@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/bin/sh
 # info: list public dnssec key
-# options: USER DOMAIN [FROMAT]
+# options: USER DOMAIN [FORMAT]
 #
 # example: v-list-dns-public-key admin acme.com
 #
@@ -16,13 +16,21 @@ domain=$2
 format=$3
 dnstype=$4
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	BIND_KEY_DIR="/var/cache/bind"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	BIND_KEY_DIR="/usr/local/etc/namedb/dynamic/"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -41,14 +49,14 @@ is_object_valid 'dns' 'DOMAIN' "$domain"
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$DOMAIN'": {
-		"RECORD": "'$record'",
-		"KEYTAG": "'$keytag'",
-		"FLAG": "'$flag'",
-		"ALGORITHM": "'$algorithm'",
-		"KEY": "'$key'",
-		"DS":"'$ds'"
-    }'
+	echo "    \"$DOMAIN\": {"
+	echo "        \"RECORD\": \"$record\","
+	echo "        \"KEYTAG\": \"$keytag\","
+	echo "        \"FLAG\": \"$flag\","
+	echo "        \"ALGORITHM\": \"$algorithm\","
+	echo "        \"KEY\": \"$key\","
+	echo "        \"DS\": \"$ds\""
+	echo "    }"
 	echo '}'
 }
 
@@ -65,9 +73,9 @@ shell_list() {
 # PLAIN list function
 plain_list() {
 	if [ "$dnstype" != "DS" ]; then
-		echo -e "$record"
+		printf "%s\n" "$record"
 	else
-		echo -e "$ds"
+		printf "%s\n" "$ds"
 	fi
 }
 
@@ -75,15 +83,27 @@ plain_list() {
 #                       Action                             #
 #----------------------------------------------------------#
 
-parse_object_kv_list $(grep "DOMAIN='$domain'" $USER_DATA/dns.conf)
+domain_line=$(grep "DOMAIN='$domain'" "$USER_DATA/dns.conf")
+if [ -z "$domain_line" ]; then
+	echo "Error: DNS domain $domain not found for user $user"
+	exit 3
+fi
+parse_object_kv_list "$domain_line"
 
 if [ -n "$KEY" ]; then
-	record=$(cat "/var/cache/bind/K$domain_idn.+013+$KEY.key" | grep DNSKEY)
-	ds=$(dnssec-dsfromkey "/var/cache/bind/K$domain_idn.+013+$KEY.key")
-	keytag=$(echo "$ds" | cut -d' ' -f4)
-	flag=$(echo "$record" | cut -d' ' -f5)
-	algorithm=$(echo "$record" | cut -d' ' -f7)
-	key="$(echo "$record" | cut -d' ' -f8) $(echo "$record" | cut -d' ' -f9)"
+	key_file="${BIND_KEY_DIR}/K${domain_idn}.+013+${KEY}.key"
+	
+	if [ -f "$key_file" ]; then
+		record=$(cat "$key_file" | grep DNSKEY)
+		ds=$(dnssec-dsfromkey "$key_file" 2>/dev/null)
+		keytag=$(echo "$ds" | cut -d' ' -f4)
+		flag=$(echo "$record" | cut -d' ' -f5)
+		algorithm=$(echo "$record" | cut -d' ' -f7)
+		key="$(echo "$record" | cut -d' ' -f8) $(echo "$record" | cut -d' ' -f9)"
+	else
+		echo "Error: DNSSEC key file not found: $key_file"
+		exit 3
+	fi
 fi
 
 case $format in

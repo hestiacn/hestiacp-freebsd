@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change user contact email
 # options: USER EMAIL
 #
@@ -14,9 +14,15 @@
 user=$1
 email=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -43,7 +49,7 @@ old_email=$(get_user_value '$CONTACT')
 update_user_value "$user" '$CONTACT' "$email"
 pw_str=$(grep -n "^$user:" /etc/passwd)
 str=$(echo "$pw_str" | cut -f 1 -d :)
-sed -i "$str s/$old_email/$email/g" /etc/passwd
+sed -i "" "$str s/$old_email/$email/g" /etc/passwd
 
 # Update crontab email
 $BIN/v-rebuild-cron-jobs "$user" > /dev/null 2>&1
@@ -56,4 +62,4 @@ $BIN/v-rebuild-cron-jobs "$user" > /dev/null 2>&1
 $BIN/v-log-action "$user" "Info" "System" "Email address changed (Value: $email)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

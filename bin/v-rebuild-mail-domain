@@ -13,21 +13,27 @@
 # Argument definition
 user=$1
 domain=$2
-restart=${3-yes}
+restart=${3:-yes}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # shellcheck source=/usr/local/hestia/func/ip.sh
-source $HESTIA/func/ip.sh
+source "$HESTIA/func/ip.sh"
 # shellcheck source=/usr/local/hestia/func/rebuild.sh
-source $HESTIA/func/rebuild.sh
+source "$HESTIA/func/rebuild.sh"
 # shellcheck source=/usr/local/hestia/func/syshealth.sh
-source $HESTIA/func/syshealth.sh
+source "$HESTIA/func/syshealth.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -46,8 +52,7 @@ check_args '2' "$#" 'USER DOMAIN [RESTART]'
 is_format_valid 'user' 'domain' 'restart'
 is_system_enabled "$MAIL_SYSTEM" 'MAIL_SYSTEM'
 is_object_valid 'user' 'USER' "$user"
-check_user=$(is_object_unsuspended 'user' 'USER' "$user")
-if [ -n "$check_user" ]; then
+if ! is_object_unsuspended 'user' 'USER' "$user" 2>/dev/null; then
 	exit
 fi
 is_object_valid 'mail' 'DOMAIN' "$domain"

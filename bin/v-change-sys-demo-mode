@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: enable or disable demo mode
 # options: ACTIVE
 #
@@ -14,9 +14,15 @@
 
 active=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -34,15 +40,15 @@ is_format_valid 'active'
 #----------------------------------------------------------#
 
 if [ "$active" = "yes" ]; then
-	#TO-DO: Instructions for disabling vhosts
-	# Disable API for Demo server
-	$BIN/v-change-sys-api 'disable'
-	$BIN/v-change-sys-config-value 'DEMO_MODE' 'yes'
+    #TO-DO: Instructions for disabling vhosts
+    # Disable API for Demo server
+    $BIN/v-change-sys-api 'disable'
+    $BIN/v-change-sys-config-value 'DEMO_MODE' 'yes'
 elif [ "$active" = "no" ]; then
-	# Note even v-change-sys-demo-mode can be called v-change-sys-config-value is protected to disable demo mode call
-	# Use sed -i "s|^DEMO_MODE=.*'|DEMO_MODE='no'|g" $HESTIA/conf/hestia.conf
-	#TODO: Instructions for enabling vhosts
-	$BIN/v-change-sys-config-value 'DEMO_MODE' 'no'
+    # Note even v-change-sys-demo-mode can be called v-change-sys-config-value is protected to disable demo mode call
+    # sed -i "" "s|^DEMO_MODE=.*'|DEMO_MODE='no'|g" $HESTIA/conf/hestia.conf
+    #TODO: Instructions for enabling vhosts
+    $BIN/v-change-sys-config-value 'DEMO_MODE' 'no'
 fi
 
 #----------------------------------------------------------#
@@ -58,11 +64,11 @@ check_result $? "restart" > /dev/null 2>&1
 
 # Logging
 if [ "$active" = "yes" ]; then
-	$BIN/v-log-action "system" "Warning" "System" "Demonstration mode (restricted access) enabled."
+    $BIN/v-log-action "system" "Warning" "System" "Demonstration mode (restricted access) enabled."
 else
-	$BIN/v-log-action "system" "Warning" "Info" "Demonstration mode (restricted access) disabled."
+    $BIN/v-log-action "system" "Warning" "Info" "Demonstration mode (restricted access) disabled."
 fi
 
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

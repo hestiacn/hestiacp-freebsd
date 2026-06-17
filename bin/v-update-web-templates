@@ -11,14 +11,20 @@
 #----------------------------------------------------------#
 
 # Argument definition
-restart=$1
+restart=${1:-no}
 skip=$2
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -29,16 +35,16 @@ source_conf "$HESTIA/conf/hestia.conf"
 is_format_valid 'restart'
 
 # Check if /install/upgrade/manual/install_awstats_geoip.sh has been applied
-awstats_patch=$(cat $HESTIA/data/templates/web/awstats/awstats.tpl | grep "LoadPlugin=\"geoip GEOIP_STANDARD /usr/share/GeoIP/GeoIP.dat\"")
+awstats_patch=$(grep "LoadPlugin=\"geoip GEOIP_STANDARD /usr/share/GeoIP/GeoIP.dat\"" "$HESTIA/data/templates/web/awstats/awstats.tpl" 2>/dev/null)
 
 # Skeleton, Unassinged and Suspended
 if [ "$POLICY_SYNC_SKELETON" != "no" ]; then
-	rm -rf "${WEBTPL}/skel" 2> /dev/null
-	rm -rf "${WEBTPL}/suspend" 2> /dev/null
-	rm -rf "${WEBTPL}/unassigned" 2> /dev/null
+	rm -rf "${WEBTPL}/skel" 2>/dev/null
+	rm -rf "${WEBTPL}/suspend" 2>/dev/null
+	rm -rf "${WEBTPL}/unassigned" 2>/dev/null
 
-	for webtpl_folder in $(ls $HESTIA_COMMON_DIR/templates/web/* -d 2> /dev/null); do
-		cp -rf "${webtpl_folder}" "${WEBTPL}/"
+	for webtpl_folder in $(ls "$HESTIA_COMMON_DIR/templates/web/" 2>/dev/null); do
+		cp -rf "${HESTIA_COMMON_DIR}/templates/web/${webtpl_folder}" "${WEBTPL}/"
 	done
 fi
 
@@ -48,20 +54,31 @@ if [ "$PROXY_SYSTEM" = 'nginx' ] || [ "$WEB_BACKEND" = "php-fpm" ]; then
 	cp -rf "${HESTIA_INSTALL_DIR}/templates/web/nginx" "${WEBTPL}/"
 fi
 
-for webtpl_folder in $(ls $HESTIA_INSTALL_DIR/templates/web/* -d 2> /dev/null | egrep -v '/(nginx)$'); do
-	cp -rf "${webtpl_folder}" "${WEBTPL}/"
+for webtpl_folder in $(ls "$HESTIA_INSTALL_DIR/templates/web/" 2>/dev/null | grep -v 'nginx'); do
+	cp -rf "${HESTIA_INSTALL_DIR}/templates/web/${webtpl_folder}" "${WEBTPL}/"
 done
 
-versions_list=$(ls -d /etc/php/*)
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	php_base="/etc/php"
+else
+	php_base="/usr/local/etc/php"
+fi
+
+versions_list=$(ls -d "$php_base"/* 2>/dev/null)
 for php_ver in $versions_list; do
-	version=$(echo $php_ver | sed 's/.*\///')
-	[ ! -d "/etc/php/$version/fpm/pool.d/" ] && continue
-	cp -f $HESTIA_INSTALL_DIR/php-fpm/multiphp.tpl ${WEBTPL}/php-fpm/PHP-${version/\./_}.tpl
+	version=$(echo "$php_ver" | sed 's/.*\///')
+	if [ "$(uname)" = "FreeBSD" ]; then
+		pool_dir="/usr/local/etc/php${version}/php-fpm.d"
+	else
+		pool_dir="/etc/php/$version/fpm/pool.d"
+	fi
+	[ ! -d "$pool_dir" ] && continue
+	cp -f "$HESTIA_INSTALL_DIR/php-fpm/multiphp.tpl" "${WEBTPL}/php-fpm/PHP-${version//./_}.tpl"
 done
 
 if [ -n "$awstats_patch" ]; then
 	# restore LoadPlugin variable
-	echo "LoadPlugin=\"geoip GEOIP_STANDARD /usr/share/GeoIP/GeoIP.dat\"" >> $HESTIA/data/templates/web/awstats/awstats.tpl
+	echo "LoadPlugin=\"geoip GEOIP_STANDARD /usr/share/GeoIP/GeoIP.dat\"" >> "$HESTIA/data/templates/web/awstats/awstats.tpl"
 fi
 
 # Rebuilding web domains
@@ -76,11 +93,10 @@ fi
 #----------------------------------------------------------#
 
 # Restarting web server
-$BIN/v-restart-web "$restart"
-check_result $? "restart" > /dev/null 2>&1
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "restart" > /dev/null 2>&1
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-web "$restart"
+	$BIN/v-restart-proxy "$restart"
+fi
 
 $BIN/v-log-action "system" "Info" "Updates" "Default web domain templates updated."
 

@@ -15,8 +15,7 @@ user=$1
 id=$2
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -69,7 +68,8 @@ fi
 # Updating notification counter
 if [ "$notice" = 'no' ]; then
 	if [ -z "$(grep NOTIFICATIONS $USER_DATA/user.conf)" ]; then
-		sed -i "s/^TIME/NOTIFICATIONS='no'\nTIME/g" $USER_DATA/user.conf
+		sed -i "" "s/^TIME/NOTIFICATIONS='no'\\
+		TIME/g" $USER_DATA/user.conf
 	else
 		update_user_value "$user" '$NOTIFICATIONS' "no"
 	fi

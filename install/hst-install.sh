@@ -21,12 +21,10 @@ if [ "x$(id -u)" != 'x0' ]; then
 fi
 
 if [ -f /etc/freebsd-version ] || [ "$(uname -s)" = "FreeBSD" ]; then
-	echo "[ * ] FreeBSD detected. Setting up Linux bash compatibility layer..."
 	command -v bash >/dev/null 2>&1 || pkg install -y bash
-	
-	[ ! -f /bin/bash ] && ln -s /usr/local/bin/bash /bin/bash
-	[ ! -d /usr/bin ] && mkdir -p /usr/bin
-	[ ! -f /usr/bin/bash ] && ln -s /usr/local/bin/bash /usr/bin/bash
+    if [ ! -f /bin/bash ] && [ -f /usr/local/bin/bash ]; then
+        ln -s /usr/local/bin/bash /bin/bash
+    fi
 fi
 
 if command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]; then
@@ -181,13 +179,13 @@ check_wget_curl() {
 	fi
 	
 	# FreeBSD: 使用 fetch
-	if [ "$type" = "freebsd" ] || command -v fetch >/dev/null 2>&1; then
+	if [ "$type" = "freebsd" ]; then
 		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install-$type.sh
 		if [ "$?" -eq '0' ]; then
 			bash hst-install-$type.sh "$@"
 			exit
 		else
-			echo "Error: hst-install-freebsd.sh download failed."
+			echo "Error: hst-install-$type.sh download failed."
 			exit 1
 		fi
 	fi

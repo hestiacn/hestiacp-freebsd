@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: check access key
 # options: ACCESS_KEY_ID SECRET_ACCESS_KEY COMMAND [IP] [FORMAT]
 #
@@ -19,9 +19,15 @@ hst_command=$3
 ip46=${4-127.0.0.1}
 format=${5-shell}
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -30,44 +36,44 @@ source_conf "$HESTIA/conf/hestia.conf"
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 
 # JSON list function
 json_list() {
-	echo -n '{"USER": "'$user'"'
-
-	if [[ -n "$user_arg_pos" ]]; then
-		echo -n ', "USER_ARG_POSITION": '$user_arg_pos''
-	fi
-
-	echo '}'
+    echo -n '{"USER": "'$user'"'
+    
+    if [ -n "$user_arg_pos" ]; then
+        echo -n ', "USER_ARG_POSITION": '$user_arg_pos''
+    fi
+    
+    echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "USER:               $user"
-	if [[ -n "$user_arg_pos" ]]; then
-		echo "USER_ARG_POSITION:  $user_arg_pos"
-	fi
+    echo "USER:               $user"
+    if [ -n "$user_arg_pos" ]; then
+        echo "USER_ARG_POSITION:  $user_arg_pos"
+    fi
 }
 
 # Callback to intercept invalid result validation
 abort_missmatch() {
-	echo "Error: $2"
-	echo "$date $time ${access_key_id:-api} $ip46 failed to login" >> $HESTIA/log/auth.log
-
-	# Add a log for user
-	if [[ "$1" == "$E_PASSWORD" && -n "$user" ]]; then
-		log_history "[$ip46] $access_key_id $2" "Error" "$user" "API"
-	fi
-
-	if [[ "$1" == "$E_FORBIDEN" ]]; then
-		exit "$1"
-	fi
-
-	exit "$E_PASSWORD"
+    echo "Error: $2"
+    echo "$date $time ${access_key_id:-api} $ip46 failed to login" >> $HESTIA/log/auth.log
+    
+    # Add a log for user
+    if [ "$1" = "$E_PASSWORD" ] && [ -n "$user" ]; then
+        log_history "[$ip46] $access_key_id $2" "Error" "$user" "API"
+    fi
+    
+    if [ "$1" = "$E_FORBIDEN" ]; then
+        exit "$1"
+    fi
+    
+    exit "$E_PASSWORD"
 }
 
 #----------------------------------------------------------#
@@ -99,8 +105,8 @@ CHECK_RESULT_CALLBACK=""
 
 # Listing data
 case $format in
-	json) json_list ;;
-	shell) shell_list ;;
+    json) json_list ;;
+    shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#
@@ -111,4 +117,4 @@ esac
 log_history "[$ip46] Access key $access_key_id successfully launched with command $hst_command" "Info" "$user" "API"
 echo "$date $time $access_key_id $ip46 $hst_command successfully launched" >> $HESTIA/log/auth.log
 
-exit
+exit 0

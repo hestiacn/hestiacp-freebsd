@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete system firewall
 # options: NONE
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -23,7 +29,7 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 
 if [ -z "$FIREWALL_SYSTEM" ]; then
-	exit
+    exit 0
 fi
 
 # Perform verification if read-only mode is enabled
@@ -36,8 +42,25 @@ check_hestia_demo_mode
 # Updating FIREWALL_SYSTEM value
 $BIN/v-change-sys-config-value "FIREWALL_SYSTEM" ""
 
-# Stopping firewall
-$BIN/v-stop-firewall
+# Stopping firewall (FreeBSD: pf or ipfw)
+if [ "$OS" = "freebsd" ]; then
+    case "$FIREWALL_SYSTEM" in
+        pf)
+            if pfctl -s info > /dev/null 2>&1; then
+                pfctl -d 2>/dev/null
+                sysrc pf_enable="NO" > /dev/null 2>&1
+            fi
+            ;;
+        ipfw)
+            if ipfw list > /dev/null 2>&1; then
+                ipfw -q flush 2>/dev/null
+                sysrc firewall_enable="NO" > /dev/null 2>&1
+            fi
+            ;;
+    esac
+else
+    $BIN/v-stop-firewall
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -47,4 +70,4 @@ $BIN/v-stop-firewall
 $BIN/v-log-action "system" "Warning" "Firewall" "System firewall disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

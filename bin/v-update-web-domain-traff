@@ -15,20 +15,25 @@ user=$1
 domain=$2
 domain_idn=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Additional argument formatting
 format_domain
 format_domain_idn
-# TODO: $domain_idn not used in this script - maybe $domain should be converted to $doman_idn ?
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -53,20 +58,29 @@ log_file="/var/log/$WEB_SYSTEM/domains/$domain.bytes"
 bytes=0
 
 # Parsing log
-while read line; do
-	if [[ "$line" =~ ^[0-9]+$ ]]; then
-		line=${line#0}
-		if [ -n "$line" ]; then
-			bytes=$(($bytes + $line))
+if [ -f "$log_file" ]; then
+	while read -r line; do
+		if echo "$line" | grep -qE '^[0-9]+$'; then
+			line=$(echo "$line" | sed 's/^0*//')
+			if [ -n "$line" ]; then
+				bytes=$((bytes + line))
+			fi
 		fi
-	fi
-done < $log_file
+	done < "$log_file"
+fi
 
 # Converting to Mb
-mb=$(echo "$bytes / 1024 / 1024" | bc)
+if [ "$bytes" -gt 0 ]; then
+	mb=$(echo "$bytes / 1024 / 1024" | bc)
+	[ -z "$mb" ] && mb=0
+else
+	mb=0
+fi
 
 # Nulling log
-echo > $log_file
+if [ -f "$log_file" ]; then
+	echo > "$log_file"
+fi
 
 # Reset counter on the start of the month
 if [ "$(date +%d)" = '01' ]; then

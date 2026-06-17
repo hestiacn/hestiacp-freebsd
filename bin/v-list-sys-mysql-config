@@ -11,49 +11,55 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	str=$(echo "$config" | egrep "$keys" \
+	str=$(echo "$config" | grep -E "$keys" \
 		| sed -e "s/[ ]*=/=/" -e "s/=[ ]*/=\'/" -e "s/$/'/")
 	parse_object_kv_list "$str"
-	echo '{
-    "CONFIG": {
-        "max_user_connections": "'$max_user_connections'",
-        "max_connections": "'$max_connections'",
-        "wait_timeout": "'$wait_timeout'",
-        "interactive_timeout": "'$interactive_timeout'",
-        "max_allowed_packet": "'$max_allowed_packet'",
-        "config_path": "'$config_path'"
-        }
-}'
+	echo '{'
+	echo '    "CONFIG": {'
+	echo "        \"max_user_connections\": \"$max_user_connections\","
+	echo "        \"max_connections\": \"$max_connections\","
+	echo "        \"wait_timeout\": \"$wait_timeout\","
+	echo "        \"interactive_timeout\": \"$interactive_timeout\","
+	echo "        \"max_allowed_packet\": \"$max_allowed_packet\","
+	echo "        \"config_path\": \"$config_path\""
+	echo '    }'
+	echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	echo "$config" | egrep "$keys" | tr '=' ' '
+	echo "$config" | grep -E "$keys" | tr '=' ' '
 	echo "config_path $config_path"
 }
 
 # PLAIN list function
 plain_list() {
-	echo "$config" | egrep "$keys" | tr '=' ' '
+	echo "$config" | grep -E "$keys" | tr '=' ' '
 	echo "config_path $config_path"
 }
 
 # CSV list function
 csv_list() {
 	echo "$keys" | sed "s/|/,/g"
-	echo "$config" | egrep "$keys" | tr '=' ' ' | awk '{print $2}' | tr '\n' ','
+	echo "$config" | grep -E "$keys" | tr '=' ' ' | awk '{print $2}' | tr '\n' ','
 	echo
 }
 
@@ -62,14 +68,18 @@ csv_list() {
 #----------------------------------------------------------#
 
 # Defining config path
-config_path=$(find /etc/my* -name my.cnf)
+config_path=$(find /etc/my* -name my.cnf 2>/dev/null | head -n1)
 
 # Defining keys
 keys="max_user_connections|max_connections|wait_timeout|interactive_timeout"
 keys="${keys}|max_allowed_packet"
 
 # Reading config
-config=$(cat $config_path | grep -v "^;")
+if [ -f "$config_path" ]; then
+	config=$(grep -v "^;" "$config_path")
+else
+	config=""
+fi
 
 # Listing data
 case $format in

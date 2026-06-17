@@ -11,14 +11,20 @@
 #----------------------------------------------------------#
 
 # Argument definition
-restart=$1
+restart=${1:-no}
 skip=$2
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -30,7 +36,7 @@ check_args '1' "$#" '[RESTART]' '[SKIP]'
 is_format_valid 'restart'
 
 # Update templates
-cp -rf $HESTIA_INSTALL_DIR/templates/mail $HESTIA/data/templates/
+cp -rf "$HESTIA_INSTALL_DIR/templates/mail" "$HESTIA/data/templates/"
 
 # Rebuild mail domains if mail services are enabled
 if [ -z "$skip" ]; then
@@ -40,17 +46,16 @@ if [ -z "$skip" ]; then
 		done
 	fi
 fi
+
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-if [ -n "$restart" ] || [ "$restart" == "yes" ]; then
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
 	# Restarting web server
 	$BIN/v-restart-web "$restart"
-	check_result $? "restart" > /dev/null 2>&1
-
 	$BIN/v-restart-proxy "$restart"
-	check_result $? "restart" > /dev/null 2>&1
 fi
+
 $BIN/v-log-action "system" "Info" "Updates" "Default mail domain templates updated."
 exit

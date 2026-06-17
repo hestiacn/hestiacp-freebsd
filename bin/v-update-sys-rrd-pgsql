@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,32 +53,36 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/db" ]; then
-	mkdir $RRD/db
+	mkdir -p "$RRD/db"
 fi
 
 # Parsing db hosts
 conf="$HESTIA/conf/pgsql.conf"
-hosts=$(grep HOST $conf | awk '{print $1}' | cut -f 2 -d \')
-check_row=$(echo "$hosts" | wc -l)
+hosts=$(grep HOST "$conf" | awk '{print $1}' | cut -f 2 -d \')
+check_row=$(echo "$hosts" | wc -l | tr -d ' ')
 if [ 0 -eq "$check_row" ]; then
 	exit
 fi
 
 # Parsing excludes
-for exclude in $(echo ${RRD_PGSQL_EXCLUDE//,/ }); do
-	hosts=$(echo "$hosts" | grep -vw "$exclude")
-done
+if [ -n "$RRD_PGSQL_EXCLUDE" ]; then
+	for exclude in $(echo "${RRD_PGSQL_EXCLUDE//,/ }"); do
+		hosts=$(echo "$hosts" | grep -vw "$exclude")
+	done
+fi
 
 for host in $hosts; do
 	# Checking database
 	if [ ! -e "$RRD/db/pgsql_$host.rrd" ]; then
 		# Adding database
-		rrdtool create $RRD/db/pgsql_$host.rrd --step $RRD_STEP \
+		rrdtool create "$RRD/db/pgsql_$host.rrd" --step "$RRD_STEP" \
 			DS:A:GAUGE:600:U:U \
 			DS:T:COUNTER:600:U:U \
 			RRA:AVERAGE:0.5:1:600 \
@@ -87,16 +97,16 @@ for host in $hosts; do
 
 	if [ "$period" = 'daily' ]; then
 		# Defining host credentials
-		host_str=$(grep "HOST='$host'" $conf)
+		host_str=$(grep "HOST='$host'" "$conf")
 		for key in $host_str; do
-			eval ${key%%=*}=${key#*=}
+			eval "${key%%=*}=${key#*=}"
 		done
 
 		export PGPASSWORD="$PASSWORD"
 		sql="psql -h $HOST -U $USER"
 
 		# Checking empty vars
-		if [ -z $HOST ] || [ -z $USER ] || [ -z $PASSWORD ]; then
+		if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$PASSWORD" ]; then
 			echo "Error: config is broken"
 			log_event "$E_PARSING" "$ARGUMENTS"
 			exit "$E_PARSING"
@@ -104,24 +114,25 @@ for host in $hosts; do
 
 		# Parsing data
 		q='SELECT SUM(xact_commit + xact_rollback), SUM(numbackends)
-                FROM pg_stat_database;'
-		status=$($sql -d postgres -c "$q" 2> /dev/null)
+				FROM pg_stat_database;'
+		status=$($sql -d postgres -c "$q")
 		code="$?"
-		if [ '0' -ne "$code" ]; then
+		if [ 0 -ne "$code" ]; then
 			active=0
-			slow=0
+			trans=0
 		else
 			active=$(echo "$status" | head -n 3 | tail -n 1 | awk '{print $3}')
 			trans=$(echo "$status" | head -n 3 | tail -n 1 | awk '{print $1}')
 		fi
+		[ -z "$active" ] && active=0
+		[ -z "$trans" ] && trans=0
 
 		# Updating rrd
-		export PGPASSWORD='pgsql'
-		rrdtool update $RRD/db/pgsql_$host.rrd N:$active:$trans
+		rrdtool update "$RRD/db/pgsql_$host.rrd" "N:$active:$trans"
 	fi
 
 	# Updating rrd graph
-	rrdtool graph $RRD/db/$period-pgsql_$host.png \
+	rrdtool graph "$RRD/db/$period-pgsql_$host.png" \
 		--imgformat PNG \
 		--height="150" \
 		--width="670" \
@@ -138,8 +149,8 @@ for host in $hosts; do
 		-c "MGRID#AAAAAA" \
 		-c "FRAME#302c2d" \
 		-c "ARROW#FFFFFF" \
-		DEF:a=$RRD/db/pgsql_$host.rrd:A:AVERAGE \
-		DEF:t=$RRD/db/pgsql_$host.rrd:T:AVERAGE \
+		DEF:"a=$RRD/db/pgsql_$host.rrd:A:AVERAGE" \
+		DEF:"t=$RRD/db/pgsql_$host.rrd:T:AVERAGE" \
 		COMMENT:'\r' \
 		LINE1:a#fefda0:"Queries     " \
 		GPRINT:a:'LAST: Current\:''%8.0lf' \

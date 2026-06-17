@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list system timezone
 # options: [FORMAT]
 #
@@ -11,11 +11,17 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -26,32 +32,31 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 
 json_list() {
-	jq -ncR '[inputs]' <<< "$zones"
+    printf '%s\n' $zones | jq -ncR '[inputs]'
 }
 
 shell_list() {
-	IFS=$'\n'
-	echo "Timezone"
-	echo "--------"
-	for zone in $zones; do
-		echo $zone
-	done
+    echo "Timezone"
+    echo "--------"
+    for zone in $zones; do
+        echo "$zone"
+    done
 }
 
 plain_list() {
-	IFS=$'\n'
-	for zone in $zones; do
-		echo $zone
-	done
+    for zone in $zones; do
+        echo "$zone"
+    done
 }
 
-zones=$(cd /usr/share/zoneinfo/ && find -L * -type f -or -type l | sort)
+zones=$(cd /usr/share/zoneinfo && find -L . -type f -o -type l | sed 's|^\./||' | sort)
 
 # Listing data
 case $format in
-	json) json_list ;;
-	plain) plain_list ;;
-	shell) shell_list | column -t ;;
+    json) json_list ;;
+    plain) plain_list ;;
+    shell) shell_list | column -t ;;
+    *) shell_list | column -t ;;
 esac
 
 #----------------------------------------------------------#

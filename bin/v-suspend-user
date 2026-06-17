@@ -12,13 +12,19 @@
 
 # Argument definition
 user=$1
-restart=$2
+restart=${2:-no}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,9 +53,17 @@ if [ -z "$POLICY_USER_VIEW_SUSPENDED" ] || [ "$POLICY_USER_VIEW_SUSPENDED" = 'no
 	/usr/sbin/usermod --lock "$user"
 
 	# Suspending ftp accounts
-	for ftp in $(grep "^${user}_" /etc/passwd | cut -f 1 -d :); do
-		/usr/sbin/usermod --lock "$ftp" 2> /dev/null
-	done
+	if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+		for ftp in $(grep "^${user}_" /etc/passwd | cut -f 1 -d :); do
+			/usr/sbin/usermod --lock "$ftp"
+		done
+	else
+		# FreeBSD: use pw lock
+		pw lock "$user"
+		for ftp in $(grep "^${user}_" /etc/passwd | cut -f 1 -d :); do
+			pw lock "$ftp"
+		done
+	fi
 fi
 
 # Suspending web domains
@@ -67,7 +81,7 @@ if [ -n "$DNS_SYSTEM" ] && [ "$DNS_SYSTEM" != 'no' ]; then
 	$BIN/v-suspend-dns-domains "$user" "no"
 fi
 
-# Suspending datbabases
+# Suspending databases
 if [ -n "$DB_SYSTEM" ] && [ "$DB_SYSTEM" != 'no' ]; then
 	$BIN/v-suspend-databases "$user"
 fi
@@ -82,17 +96,12 @@ fi
 #----------------------------------------------------------#
 
 # Restarting system services
-$BIN/v-restart-web "$restart"
-check_result $? "Web restart failed" > /dev/null
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "Proxy restart failed" > /dev/null
-
-$BIN/v-restart-dns "$restart"
-check_result $? "DNS restart failed" > /dev/null
-
-$BIN/v-restart-cron "$restart"
-check_result $? "Cron restart failed" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-web "$restart"
+	$BIN/v-restart-proxy "$restart"
+	$BIN/v-restart-dns "$restart"
+	$BIN/v-restart-cron "$restart"
+fi
 
 # Changing suspend value
 update_user_value "$user" '$SUSPENDED' 'yes'

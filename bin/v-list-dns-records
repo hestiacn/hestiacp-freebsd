@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns domain records
 # options: USER DOMAIN [FORMAT]
 #
@@ -13,86 +13,92 @@
 # Argument definition
 user=$1
 domain=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep ID $USER_DATA/dns/$domain.conf | wc -l)
+	objects=$(grep -c "ID" "$USER_DATA/dns/$domain.conf" 2>/dev/null || echo 0)
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		unset TTL
 		parse_object_kv_list "$str"
 		[ -z "$TTL" ] && TTL="$zone_ttl"
 		VALUE=$(echo "$VALUE" | sed -e 's/"/\\"/g' -e "s/%quote%/'/g" -e 's/     /\\u0009/g')
-		echo -n '    "'$ID'": {
-        "RECORD": "'$RECORD'",
-        "TYPE": "'$TYPE'",
-        "PRIORITY": "'$PRIORITY'",
-        "VALUE": "'$VALUE'",
-        "ID": "'$ID'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'",
-        "TTL": "'$TTL'"
-    }'
+		echo -n "    \"$ID\": {"
+		echo -n "\"RECORD\": \"$RECORD\", "
+		echo -n "\"TYPE\": \"$TYPE\", "
+		echo -n "\"PRIORITY\": \"$PRIORITY\", "
+		echo -n "\"VALUE\": \"$VALUE\", "
+		echo -n "\"ID\": \"$ID\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo -n "\"DATE\": \"$DATE\", "
+		echo "\"TTL\": \"$TTL\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $USER_DATA/dns/$domain.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$USER_DATA/dns/$domain.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "ID^RECORD^TYPE^VALUE^DATE^TTL"
-	echo "--^------^----^-----^----^----"
-	while read str; do
+	printf "%-6s %-20s %-8s %-40s %-12s %-8s\n" "ID" "RECORD" "TYPE" "VALUE" "DATE" "TTL"
+	printf "%-6s %-20s %-8s %-40s %-12s %-8s\n" "--" "------" "----" "-----" "----" "---"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		unset TTL
 		parse_object_kv_list "$str"
 		[ -z "$TTL" ] && TTL="$zone_ttl"
-		echo "$ID^$RECORD^$TYPE^${VALUE:0:30}^$DATE^$TTL"
-	done < <(cat $USER_DATA/dns/$domain.conf)
+		val=$(echo "$VALUE" | cut -c1-30)
+		printf "%-6s %-20s %-8s %-40s %-12s %-8s\n" \
+			"$ID" "$RECORD" "$TYPE" "$val" "$DATE" "$TTL"
+	done < "$USER_DATA/dns/$domain.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		unset TTL
 		parse_object_kv_list "$str"
 		[ -z "$TTL" ] && TTL="$zone_ttl"
-		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/\\'/g")
-		echo -ne "$ID\t$RECORD\t$TYPE\t$PRIORITY\t$VALUE\t"
-		echo -e "$SUSPENDED\t$TIME\t$DATE\t$TTL"
-	done < <(cat $USER_DATA/dns/$domain.conf)
+		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/'/g")
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$ID" "$RECORD" "$TYPE" "$PRIORITY" "$VALUE" "$SUSPENDED" "$TIME" "$DATE" "$TTL"
+	done < "$USER_DATA/dns/$domain.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
 	echo "ID,RECORD,TYPE,PRIORITY,VALUE,SUSPENDED,TIME,DATE,TTL"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		unset TTL
 		parse_object_kv_list "$str"
 		[ -z "$TTL" ] && TTL="$zone_ttl"
-		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/\\'/g")
-		echo -n "$ID,$RECORD,$TYPE,$PRIORITY,\"$VALUE\","
-		echo "$SUSPENDED,$TIME,$DATE,$TTL"
-	done < <(cat $USER_DATA/dns/$domain.conf)
+		VALUE=$(echo "$VALUE" | sed -e "s/%quote%/'/g")
+		echo "$ID,$RECORD,$TYPE,$PRIORITY,\"$VALUE\",$SUSPENDED,$TIME,$DATE,$TTL"
+	done < "$USER_DATA/dns/$domain.conf"
 }
 
 #----------------------------------------------------------#
@@ -108,6 +114,16 @@ is_object_valid 'dns' 'DOMAIN' "$domain"
 #                       Action                             #
 #----------------------------------------------------------#
 
+if [ ! -f "$USER_DATA/dns/$domain.conf" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No DNS records found for domain $domain" ;;
+		plain) ;;
+		csv) echo "ID,RECORD,TYPE,PRIORITY,VALUE,SUSPENDED,TIME,DATE,TTL" ;;
+	esac
+	exit 0
+fi
+
 zone_ttl="$(get_object_value 'dns' 'DOMAIN' "$domain" '$TTL')"
 
 # Listing data
@@ -115,7 +131,7 @@ case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t -s '^' ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

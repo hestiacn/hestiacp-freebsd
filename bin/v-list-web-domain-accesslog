@@ -13,14 +13,20 @@
 # Argument definition
 user=$1
 domain=$2
-ttl=${3-70}
-format=${4-shell}
+ttl=${3:-70}
+format=${4:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -29,16 +35,17 @@ json_list() {
 	i=1
 	objects=$(echo "$lines" | wc -l)
 	echo '['
-	for str in $lines; do
-		str=$(echo "$str" | sed -e 's/"/\\"/g')
+	echo "$lines" | while read -r line; do
+		[ -z "$line" ] && continue
+		line=$(echo "$line" | sed -e 's/"/\\"/g')
 		if [ "$i" -lt "$objects" ]; then
-			echo -e "\t\"$str\","
+			printf '    "%s",\n' "$line"
 		else
-			echo -e "\t\"$str\""
+			printf '    "%s"\n' "$line"
 		fi
-		((++i))
+		i=$((i + 1))
 	done
-	echo "]"
+	echo ']'
 }
 
 # SHELL list function
@@ -69,16 +76,30 @@ is_object_valid 'web' 'DOMAIN' "$domain"
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
+log_path="/var/log/$WEB_SYSTEM/domains/$domain.log"
 
 # Check number of output lines
-if [ "$ttl" -gt '3000' ]; then
+if [ "$ttl" -gt 3000 ]; then
 	read_cmd="cat"
 else
 	read_cmd="tail -n $ttl"
 fi
 
-lines=$($read_cmd /var/log/$WEB_SYSTEM/domains/$domain.log)
-IFS=$'\n'
+if [ -f "$log_path" ]; then
+	lines=$($read_cmd "$log_path" 2>/dev/null)
+else
+	lines=""
+fi
+
+if [ -z "$lines" ]; then
+	case $format in
+		json) echo "[]" ;;
+		shell) echo "No log entries found" ;;
+		plain) ;;
+		csv) echo "LOG" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in

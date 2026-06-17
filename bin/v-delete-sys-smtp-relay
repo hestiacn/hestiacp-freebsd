@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: disable system wide smtp relay support
 # options:
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -34,7 +40,7 @@ change_sys_value "SMTP_RELAY_HOST" ""
 change_sys_value "SMTP_RELAY_PORT" ""
 change_sys_value "SMTP_RELAY_USER" ""
 
-rm -f /etc/exim4/smtp_relay.conf
+rm -f "/usr/local/etc/exim/smtp_relay.conf"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -44,4 +50,4 @@ rm -f /etc/exim4/smtp_relay.conf
 $BIN/v-log-action "system" "Info" "Mail" "Global SMTP Relay disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

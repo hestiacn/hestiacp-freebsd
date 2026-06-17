@@ -1,0 +1,166 @@
+#!/bin/bash
+
+# Script: v-add-php-version
+# Description: Add new PHP version support to HestiaCP configuration
+# sed -i 's/"8.5"/"8.6"/' /usr/local/hestia/bin/v-add-php-version
+# ============================================
+# Only need to change the version number here
+PHP_VERSION="8.5"
+# ============================================
+
+# Color output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# Check if running as root
+if [ "$(id -u)" != "0" ]; then
+    echo -e "${RED}Error: Please run this script with root privileges${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}[*] Starting to add PHP ${PHP_VERSION} support to HestiaCP...${NC}"
+echo ""
+
+PHP_VERSION_DOT="${PHP_VERSION}"
+
+# Get previous version
+get_previous_version() {
+    local major="${PHP_VERSION%.*}"
+    local minor="${PHP_VERSION#*.}"
+    local prev_minor=$((minor - 1))
+    echo "${major}.${prev_minor}"
+}
+
+PREV_VERSION=$(get_previous_version)
+PREV_VERSION_DOT="${PREV_VERSION}"
+
+# Check if all configurations already exist
+check_all_exists() {
+    local missing=0
+    if ! grep -q "\"${PHP_VERSION}\"" $HESTIA/install/upgrade/upgrade.conf 2>/dev/null; then
+        missing=1
+    fi
+    if ! grep -q "\"php-${PHP_VERSION}\"" $HESTIA/web/edit/server/index.php 2>/dev/null; then
+        missing=1
+    fi
+    if ! grep -q "'php${PHP_VERSION_DOT}'" $HESTIA/bin/v-run-cli-cmd 2>/dev/null; then
+        missing=1
+    fi
+    if ! grep -q "\"php${PHP_VERSION_DOT}-fpm\"" $HESTIA/bin/v-restart-service 2>/dev/null; then
+        missing=1
+    fi
+    return $missing
+}
+
+# If all already exist, show message and exit
+if check_all_exists; then
+    echo -e "${GREEN}[✓] PHP ${PHP_VERSION} support already exists, no modification needed${NC}"
+    echo ""
+    echo -e "${YELLOW}Current configuration:${NC}"
+    echo "   grep \"${PHP_VERSION}\" $HESTIA/install/upgrade/upgrade.conf"
+    echo "   grep \"php-${PHP_VERSION}\" $HESTIA/web/edit/server/index.php"
+    echo "   grep 'php${PHP_VERSION_DOT}' $HESTIA/bin/v-run-cli-cmd"
+    echo "   grep \"php${PHP_VERSION_DOT}-fpm\" $HESTIA/bin/v-restart-service"
+    exit 0
+fi
+
+# Show context function
+show_context() {
+    local file=$1
+    local pattern=$2
+    local lines=${3:-5}
+    echo -e "${YELLOW}--- $file modified context ---${NC}"
+    grep -B "$lines" -A "$lines" "$pattern" "$file" 2>/dev/null || echo "No matching content found"
+    echo ""
+}
+
+# 1. Modify upgrade.conf
+UPGRADE_CONF="$HESTIA/install/upgrade/upgrade.conf"
+if [ -f "$UPGRADE_CONF" ]; then
+    if grep -q "\"${PHP_VERSION}\"" "$UPGRADE_CONF"; then
+        echo -e "${GREEN}[✓] PHP ${PHP_VERSION} already exists in $UPGRADE_CONF${NC}"
+        show_context "$UPGRADE_CONF" "multiphp_v" 3
+    else
+        echo -e "${YELLOW}[*] Modifying $UPGRADE_CONF${NC}"
+        sed -i "s/\"${PREV_VERSION}\"/\"${PREV_VERSION}\" \"${PHP_VERSION}\"/" "$UPGRADE_CONF"
+        echo -e "${GREEN}[✓] Successfully added PHP ${PHP_VERSION} to $UPGRADE_CONF${NC}"
+        show_context "$UPGRADE_CONF" "multiphp_v" 3
+    fi
+else
+    echo -e "${RED}[!] $UPGRADE_CONF not found${NC}"
+fi
+
+# 2. Modify index.php (Web UI)
+INDEX_PHP="$HESTIA/web/edit/server/index.php"
+if [ -f "$INDEX_PHP" ]; then
+    if grep -q "\"php-${PHP_VERSION}\"" "$INDEX_PHP"; then
+        echo -e "${GREEN}[✓] PHP ${PHP_VERSION} already exists in $INDEX_PHP${NC}"
+        show_context "$INDEX_PHP" "php-${PHP_VERSION}" 5
+    else
+        echo -e "${YELLOW}[*] Modifying $INDEX_PHP${NC}"
+        sed -i "/\"php-${PREV_VERSION}\",/a\\\t\"php-${PHP_VERSION}\"," "$INDEX_PHP"
+        echo -e "${GREEN}[✓] Successfully added PHP ${PHP_VERSION} to $INDEX_PHP${NC}"
+        show_context "$INDEX_PHP" "php-${PHP_VERSION}" 6
+    fi
+else
+    echo -e "${RED}[!] $INDEX_PHP not found${NC}"
+fi
+
+# 3. Modify v-run-cli-cmd
+RUN_CLI_CMD="$HESTIA/bin/v-run-cli-cmd"
+if [ -f "$RUN_CLI_CMD" ]; then
+    if grep -q "'php${PHP_VERSION_DOT}'" "$RUN_CLI_CMD"; then
+        echo -e "${GREEN}[✓] PHP ${PHP_VERSION} already exists in $RUN_CLI_CMD${NC}"
+        show_context "$RUN_CLI_CMD" "php${PHP_VERSION_DOT}" 5
+    else
+        echo -e "${YELLOW}[*] Modifying $RUN_CLI_CMD${NC}"
+        line_num=$(grep -n "'php${PREV_VERSION_DOT}' -a \\\\" "$RUN_CLI_CMD" | cut -d: -f1)
+        if [ -n "$line_num" ]; then
+            sed -i "${line_num}a\\\t\"\$basecmd\" != 'php${PHP_VERSION_DOT}' -a \\\\" "$RUN_CLI_CMD"
+            echo -e "${GREEN}[✓] Successfully added PHP ${PHP_VERSION} to $RUN_CLI_CMD${NC}"
+        else
+            echo -e "${RED}[!] php${PREV_VERSION_DOT} line not found, skipping modification${NC}"
+        fi
+        show_context "$RUN_CLI_CMD" "php${PHP_VERSION_DOT}" 8
+    fi
+else
+    echo -e "${RED}[!] $RUN_CLI_CMD not found${NC}"
+fi
+
+# 4. Modify v-restart-service
+RESTART_SERVICE="$HESTIA/bin/v-restart-service"
+if [ -f "$RESTART_SERVICE" ]; then
+    if grep -q "\"php${PHP_VERSION_DOT}-fpm\"" "$RESTART_SERVICE"; then
+        echo -e "${GREEN}[✓] PHP ${PHP_VERSION} already exists in $RESTART_SERVICE${NC}"
+        show_context "$RESTART_SERVICE" "php${PHP_VERSION_DOT}-fpm" 5
+    else
+        echo -e "${YELLOW}[*] Modifying $RESTART_SERVICE${NC}"
+        line_num=$(grep -n "\"\$service\" = \"php${PREV_VERSION_DOT}-fpm\" -o \\\\" "$RESTART_SERVICE" | cut -d: -f1)
+        if [ -n "$line_num" ]; then
+            sed -i "${line_num}a\\\t\t\"\$service\" = \"php${PHP_VERSION_DOT}-fpm\" -o \\\\" "$RESTART_SERVICE"
+            echo -e "${GREEN}[✓] Successfully added PHP ${PHP_VERSION} to $RESTART_SERVICE${NC}"
+        else
+            echo -e "${RED}[!] php${PREV_VERSION_DOT}-fpm line not found, skipping modification${NC}"
+        fi
+        show_context "$RESTART_SERVICE" "php${PHP_VERSION_DOT}-fpm" 10
+    fi
+else
+    echo -e "${RED}[!] $RESTART_SERVICE not found${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}[✓] PHP ${PHP_VERSION} support successfully added!${NC}"
+echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+echo ""
+echo -e "${GREEN}Success! You can now continue with the following steps:${NC}"
+echo "Run v-add-web-php ${PHP_VERSION} to install PHP ${PHP_VERSION} support"
+echo "Then enable PHP ${PHP_VERSION} for your websites in HestiaCP Web UI"
+echo ""
+echo -e "${YELLOW}Verify the modifications:${NC}"
+echo "   grep \"${PHP_VERSION}\" $HESTIA/install/upgrade/upgrade.conf"
+echo "   grep \"php-${PHP_VERSION}\" $HESTIA/web/edit/server/index.php"
+echo "   grep 'php${PHP_VERSION_DOT}' $HESTIA/bin/v-run-cli-cmd"
+echo "   grep \"php${PHP_VERSION_DOT}-fpm\" $HESTIA/bin/v-restart-service"

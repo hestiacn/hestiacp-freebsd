@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change user random key
 # options: USER [HASH]
 #
@@ -12,9 +12,15 @@
 user=$1
 hash=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -33,12 +39,13 @@ is_object_unsuspended 'user' 'USER' "$user"
 check_hestia_demo_mode
 
 if [ -n "$hash" ]; then
-	password=$hash
-	is_password_valid
-	hash=$password
+    password=$hash
+    is_password_valid
+    hash=$password
 else
-	hash=$(generate_password)
+    hash=$(generate_password)
 fi
+
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
@@ -48,11 +55,11 @@ d=$(date +%s)
 # Changing RKEY value
 update_user_value "$user" '$RKEY' "$hash"
 
-#check if RKEYEXP exists
+# check if RKEYEXP exists
 if [ -z "$(grep RKEYEXP $USER_DATA/user.conf)" ]; then
-	sed -i "s/^RKEY/RKEYEXP='$d'\nRKEY/g" $USER_DATA/user.conf
+    sed -i "" "s/^RKEY/RKEYEXP='$d'\nRKEY/g" $USER_DATA/user.conf
 else
-	update_user_value "$user" '$RKEYEXP' "$d"
+    update_user_value "$user" '$RKEYEXP' "$d"
 fi
 
 #----------------------------------------------------------#
@@ -64,4 +71,4 @@ $BIN/v-log-action "system" "Warning" "Users" "Password reset requested (User: $u
 $BIN/v-log-action "$user" "Warning" "System" "Password reset requested."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

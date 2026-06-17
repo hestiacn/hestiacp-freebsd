@@ -15,9 +15,15 @@
 # Argument definition
 branch=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -45,21 +51,21 @@ if [ -z "$branch" ]; then
 	echo "You can also specify another branch name from the"
 	echo "GitHub repository to install the code from that branch."
 	echo ""
-	exit
+	exit 0
 else
 	# Check that requested branch exists
 	echo "Checking for existence of $branch branch..."
-	branch_check=$(curl -s --head -w %{http_code} "https://raw.githubusercontent.com/hestiacp/hestiacp/$branch/src/deb/hestia/control" -o /dev/null)
+	branch_check=$(curl -s --head -w %{http_code} "https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/$branch/src/pkg/hestia/control" -o /dev/null)
 	if [ "$branch_check" -ne "200" ]; then
 		echo "Error: invalid branch name specified."
 		exit 1
 	fi
 
 	# Remove old branch variable
-	sed -i "/RELEASE_BRANCH/d" $HESTIA/conf/hestia.conf
+	sed -i "" "/RELEASE_BRANCH/d" "$HESTIA/conf/hestia.conf"
 
 	# Set new branch variable
-	echo "RELEASE_BRANCH='$branch'" >> $HESTIA/conf/hestia.conf
+	echo "RELEASE_BRANCH='$branch'" >> "$HESTIA/conf/hestia.conf"
 	echo "Updated system to update from Git using branch: $branch"
 fi
 
@@ -68,4 +74,4 @@ fi
 #----------------------------------------------------------#
 
 $BIN/v-log-action "system" "Info" "System" "Update branch changed (Value: $branch)."
-exit
+exit 0

@@ -1,5 +1,5 @@
 #!/bin/bash
-# info: Enable cgroup support for user
+# info: Enable Resource Limits (RCTL) support for user
 # options: NONE
 #
 # example: v-add-sys-cgroup
@@ -9,8 +9,7 @@
 #----------------------------------------------------------#
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -30,20 +29,18 @@ check_hestia_demo_mode
 # Updating hestia.conf value
 $BIN/v-change-sys-config-value "RESOURCES_LIMIT" "yes"
 
-# enable cgroup for all users
+# enable Resource Limits (RCTL) for all users
 for user in $("$BIN/v-list-users" list); do
 	$BIN/v-update-user-cgroup "$user"
 done
 
-# Reload daemon
-systemctl daemon-reload
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
 # Logging
-$BIN/v-log-action "system" "Info" "Plugins" "System cgroup Enforcement Enabled."
+$BIN/v-log-action "system" "Info" "Plugins" "System Resource Limits (RCTL) Enforcement Enabled."
 log_event "$OK" "$ARGUMENTS"
 
 exit

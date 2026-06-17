@@ -35,8 +35,7 @@ if [[ "$domain" =~ .*\.$ ]]; then
 fi
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -102,7 +101,7 @@ else
 		if [ "$dns_domain" = "$domain" ]; then
 			if [ "$WEBMAIL_ALIAS" != "mail" ]; then
 				# Handle non-mail webmail alias (e.g., "webmail")
-				webmail_record=$($BIN/v-list-dns-records $user $domain | awk '{if ($2 == "'"$WEBMAIL_ALIAS"'") print $1}')
+				webmail_record=$($BIN/v-list-dns-records $user $domain | grep -w "RECORD='$WEBMAIL_ALIAS'" | cut -f 2 -d "'")
 				if [ -z "$webmail_record" ]; then
 					if [ "$quiet" = "yes" ]; then
 						$BIN/v-add-dns-record "$user" "$domain" "$WEBMAIL_ALIAS" A "$ip" '' '' "$restart" '' 'yes'
@@ -120,7 +119,7 @@ else
 				fi
 			else
 				# WEBMAIL_ALIAS is "mail" - ensure webmail CNAME points to mail.domain.com
-				webmail_cname_record=$($BIN/v-list-dns-records $user $domain | awk '$2 == "webmail" && $3 == "CNAME" {print $1}')
+				webmail_cname_record=$($BIN/v-list-dns-records $user $domain | grep "RECORD='webmail'" | grep "TYPE='CNAME'" | cut -f 2 -d "'")
 				mail_target="mail.$domain."
 				if [ -z "$webmail_cname_record" ]; then
 					# Add webmail CNAME record
@@ -182,7 +181,7 @@ else
 fi
 
 WEBMAIL=$(get_object_value 'mail' 'DOMAIN' "$domain" '$WEBMAIL')
-if [ -z "$WEBMAIL" ]; then
+if [ -z "$WORKSPACE_MAIL" ] && [ -z "$WEBMAIL" ]; then
 	add_object_key 'mail' 'DOMAIN' "$domain" 'WEBMAIL' 'SSL'
 fi
 

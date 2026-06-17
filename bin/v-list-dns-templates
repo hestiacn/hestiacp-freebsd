@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list dns templates
 # options: [FORMAT]
 #
@@ -11,39 +11,45 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	objects=$(echo "$templates" | wc -l)
 	i=1
+	objects=$(echo "$templates" | wc -w | tr -d ' ')
 	echo "["
 	for template in $templates; do
-		echo -n '    "'$template'"'
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo "    \"$template\","
 		else
-			echo
+			echo "    \"$template\""
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo "]"
-
 }
 
 # SHELL list function
 shell_list() {
 	echo "TEMPLATE"
 	echo "--------"
-	ls -t $DNSTPL | grep '\.tpl' | cut -f 1 -d '.'
+	if [ -d "$DNSTPL" ]; then
+		ls -t "$DNSTPL" 2>/dev/null | grep '\.tpl$' | sed 's/\.tpl$//'
+	fi
 }
 
 # PLAIN list function
@@ -64,9 +70,13 @@ csv_list() {
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
-
-# Defining template list
-templates=$(ls -t $DNSTPL | grep '\.tpl' | cut -f 1 -d '.')
+if [ ! -d "$DNSTPL" ]; then
+	exit 0
+fi
+templates=$(ls -t "$DNSTPL" 2>/dev/null | grep '\.tpl$' | sed 's/\.tpl$//' | tr '\n' ' ' | sed 's/ $//')
+if [ -z "$templates" ]; then
+	exit 0
+fi
 
 # Listing data
 case $format in

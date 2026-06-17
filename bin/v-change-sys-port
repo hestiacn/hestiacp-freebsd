@@ -14,9 +14,15 @@
 PORT=$1
 NGINX_CONFIG="$HESTIA/nginx/conf/nginx.conf"
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source "$HESTIA/func/main.sh"
 # load config file
@@ -25,16 +31,18 @@ source_conf "$HESTIA/conf/hestia.conf"
 # Functions
 is_port_valid() {
 	# Check if PORT is numeric
-	if [[ ! "$PORT" =~ ^[0-9]+$ ]]; then
-		echo "Port should contains a numeric value only!"
-		log_event "$E_INVALID" "$ARGUMENTS"
-		exit "$E_INVALID"
-	fi
+	case "$PORT" in
+		*[!0-9]*)
+			echo "Port should contains a numeric value only!"
+			log_event "$E_INVALID" "$ARGUMENTS"
+			exit "$E_INVALID"
+			;;
+	esac
 
-	# Check if PORT is already used
+    # Check if PORT is already used
 	BUSY_PORT=$(lsof -i:"$PORT")
 	if [ -n "$BUSY_PORT" ] && [ "$PORT" != "$BACKEND_PORT" ]; then
-		echo "Port is already used by Hestia, please set anotherone!"
+		echo "Port is already used by Hestia, please set another one!"
 		log_event "$E_INUSE" "$ARGUMENTS"
 		exit "$E_INUSE"
 	fi
@@ -61,34 +69,34 @@ ORIGINAL_PORT=$(sed -ne "/listen/{s/.*listen[^0-9]*\([0-9][0-9]*\)[ \t]*ssl\;/\1
 # Check if port is different to nginx.conf
 if [ "$ORIGINAL_PORT" = "$PORT" ]; then
 	# Nothing to do, exit
-	exit
+	exit 0
 else
 	# Set new port in config via v-change-sys-config-value
 	"$BIN/v-change-sys-config-value" "BACKEND_PORT" "$PORT"
-	# Replace port in config files.
-	sed -i "s/\(listen[ \t]*.*[: \t]\)[0-9][0-9]*\([^0-9]*ssl\;$\)/\1$PORT\2/" "$NGINX_CONFIG"
-	if [ -d /etc/roundcube/ ]; then
-		sed -i "/password_hestia_port/c\$rcmail_config['password_hestia_port'] = '$PORT';" /etc/roundcube/plugins/password/config.inc.php
+    # Replace port in config files.
+	sed -i "" "s/\(listen[ \t]*.*[: \t]\)[0-9][0-9]*\([^0-9]*ssl\;$\)/\1$PORT\2/" "$NGINX_CONFIG"
+	if [ -d /usr/local/etc/roundcube/ ]; then
+		sed -i "" "/password_hestia_port/c\\\$rcmail_config['password_hestia_port'] = '$PORT';" /usr/local/etc/roundcube/plugins/password/config.inc.php
 	fi
-	if [ -d /etc/snappymail/ ]; then
-		sed -i "/\"hestia_port\":/c\\\"hestia_host\": $PORT" /etc/snappymail/data/_data_/_default_/configs/plugin-change-password.json
+	if [ -d /usr/local/etc/snappymail/ ]; then
+		sed -i "" "/\"hestia_port\":/c\\\"hestia_host\": $PORT" /usr/local/etc/snappymail/data/_data_/_default_/configs/plugin-change-password.json
 	fi
 
 	if [ -f "$HESTIA/data/firewall/rules.conf" ]; then
-		sed -i "/COMMENT='HESTIA'/c\RULE='2' ACTION='ACCEPT' PROTOCOL='TCP' PORT='$PORT' IP='0.0.0.0/0' COMMENT='HESTIA' SUSPENDED='no' TIME='07:40:16' DATE='2014-05-25'" "$HESTIA/data/firewall/rules.conf"
+		sed -i "" "/COMMENT='HESTIA'/c\RULE='2' ACTION='ACCEPT' PROTOCOL='TCP' PORT='$PORT' IP='0.0.0.0/0' COMMENT='HESTIA' SUSPENDED='no' TIME='07:40:16' DATE='2014-05-25'" "$HESTIA/data/firewall/rules.conf"
 	fi
 
 	if [ -f "$HESTIA/data/firewall/chains.conf" ]; then
-		sed -i "/CHAIN='HESTIA'/c\CHAIN='HESTIA' PORT='$PORT' PROTOCOL='TCP'" "$HESTIA/data/firewall/chains.conf"
+		sed -i "" "/CHAIN='HESTIA'/c\CHAIN='HESTIA' PORT='$PORT' PROTOCOL='TCP'" "$HESTIA/data/firewall/chains.conf"
 	fi
 
 	# Restart services
-	if [ -n "$FIREWALL_SYSTEM" ] && [ "$FIREWALL_SYSTEM" != no ]; then
-		"$BIN/v-restart-service" iptables
+	if [ -n "$FIREWALL_SYSTEM" ] && [ "$FIREWALL_SYSTEM" != "no" ]; then
+		"$BIN/v-restart-service" iptables #firewall可能要换名称pf
 	fi
 
 	# Check if Hestia is running
-	if [[ $(ps -eaf | grep -i hestia | sed '/^$/d' | wc -l) -gt 1 ]]; then
+	if [ $(/bin/ps -ax | grep -i hestia | grep -v grep | sed '/^$/d' | wc -l) -gt 0 ]; then
 		"$BIN/v-restart-service" hestia
 	fi
 fi
@@ -99,9 +107,9 @@ fi
 
 # Logging
 "$BIN/v-log-action" "system" "Warning" "System" "Hestia Control Panel backend port changed (New Value: $PORT, Old Value: $ORIGINAL_PORT)."
-if [ $LISTEN_ROWS -gt 1 ]; then
+if [ "$LISTEN_ROWS" -gt 1 ]; then
 	"$BIN/v-log-action" "system" "Warning" "System" "Hestia Control Panel backend port: Use first of $LISTEN_ROWS listened ports in $NGINX_CONFIG"
 fi
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

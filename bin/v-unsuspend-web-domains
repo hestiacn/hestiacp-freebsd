@@ -12,15 +12,21 @@
 
 # Argument definition
 user=$1
-restart=$2
+restart=${2:-no}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -42,7 +48,7 @@ check_hestia_demo_mode
 
 # Starting unsuspend loop
 for domain in $(search_objects 'web' 'SUSPENDED' "yes" 'DOMAIN'); do
-	$BIN/v-unsuspend-web-domain "$user" "$domain" 'no'
+    $BIN/v-unsuspend-web-domain "$user" "$domain" 'no'
 done
 
 #----------------------------------------------------------#
@@ -50,11 +56,10 @@ done
 #----------------------------------------------------------#
 
 # Restarting web server
-$BIN/v-restart-web "$restart"
-check_result $? "Web restart failed" > /dev/null
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "Proxy restart failed" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+    $BIN/v-restart-web "$restart"
+    $BIN/v-restart-proxy "$restart"
+fi
 
 # Logging
 log_event "$OK" "$ARGUMENTS"

@@ -15,11 +15,37 @@ src=$1
 service=$2
 restart=$3
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+	apache2="httpd/conf"
+	named="/etc/"
+	bind="bind"
+	hestiaweb="/var/spool/cron/crontabs"
+	fail2ban="/etc/fail2ban/"
+	apache="/etc/apache2/"
+	etc="/etc"
+	exim_path="/etc/exim/exim"
+	exim4_path="/etc/exim4/exim4"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+	apache2="apache24"
+	named="/usr/local/etc/namedb/"
+	bind="named"
+	hestiaweb="/var/cron/tabs"
+	fail2ban="/usr/local/etc/fail2ban/"
+	apache="/usr/local/etc/apache24/"
+	etc="/usr/local/etc"
+	exim_path="/usr/local/etc/exim/exim"
+	exim4_path="/usr/local/etc/exim/exim"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -43,38 +69,39 @@ check_hestia_demo_mode
 
 # Defining dst config path
 case $service in
-	nginx) dst='/etc/nginx/nginx.conf' ;;
-	httpd) dst='/etc/httpd/conf/httpd.conf' ;;
-	apache2) dst='/etc/apache2/apache2.conf' ;;
-	exim) dst='/etc/exim/exim.conf' ;;
-	exim4) dst='/etc/exim4/exim4.conf.template' ;;
-	vsftpd) dst=$(find /etc/vsftpd* -name 'vsftpd.conf') ;;
-	proftpd) dst=$(find /etc/proftpd* -name 'proftpd.conf') ;;
-	php) dst=$(find /etc/php* -name php.ini) ;;
-	mysql) dst=$(find /etc/my* -name my.cnf) ;;
-	mysqld) dst=$(find /etc/my* -name my.cnf) ;;
-	mariadb) dst=$(find /etc/my* -name my.cnf) ;;
+	nginx)      dst="$etc/nginx/nginx.conf" ;;
+	httpd)      dst="$etc/$apache2/httpd.conf" ;;
+	apache2)    dst="$apache/apache2.conf" ;;
+	apache24)   dst="$apache/httpd.conf" ;;
+	exim)       dst="$exim_path.conf" ;;
+	exim4)      dst="$exim4_path.conf.template" ;;
+	vsftpd)     dst=$(find "$etc"/vsftpd* -name 'vsftpd.conf' 2>/dev/null | head -1) ;;
+	proftpd)    dst=$(find "$etc"/proftpd* -name 'proftpd.conf' 2>/dev/null | head -1) ;;
+	php)        dst=$(find "$etc"/php* -name 'php.ini' 2>/dev/null | head -1) ;;
+	mysql)      dst=$(find "$etc"/my* -name 'my.cnf' 2>/dev/null | head -1) ;;
+	mysqld)     dst=$(find "$etc"/my* -name 'my.cnf' 2>/dev/null | head -1) ;;
+	mariadb)    dst=$(find "$etc"/my* -name 'my.cnf' 2>/dev/null | head -1) ;;
 	postgresql) dst=$($BIN/v-list-sys-pgsql-config plain | cut -f 1) ;;
 	postgresql-hba) dst=$($BIN/v-list-sys-pgsql-config plain | cut -f 2) ;;
-	dovecot) dst=$(find /etc/dovecot* -name dovecot.conf) ;;
-	dovecot-1) dst='/etc/dovecot/conf.d/10-auth.conf' ;;
-	dovecot-2) dst='/etc/dovecot/conf.d/10-logging.conf' ;;
-	dovecot-3) dst='/etc/dovecot/conf.d/10-mail.conf' ;;
-	dovecot-4) dst='/etc/dovecot/conf.d/10-master.conf' ;;
-	dovecot-5) dst='/etc/dovecot/conf.d/10-ssl.conf' ;;
-	dovecot-6) dst='/etc/dovecot/conf.d/20-imap.conf' ;;
-	dovecot-7) dst='/etc/dovecot/conf.d/20-pop3.conf' ;;
-	dovecot-8) dst='/etc/dovecot/conf.d/auth-passwdfile.conf.ext' ;;
-	named) dst='/etc/named.conf' ;;
-	bind9) dst='/etc/bind/named.conf' ;;
-	bind9-opt) dst='/etc/bind/named.conf.options' ;;
-	spamd) dst=$($BIN/v-list-sys-spamd-config plain) ;;
+	dovecot)    dst=$(find "$etc"/dovecot* -name 'dovecot.conf' 2>/dev/null | head -1) ;;
+	dovecot-1)  dst="$etc/dovecot/conf.d/10-auth.conf" ;;
+	dovecot-2)  dst="$etc/dovecot/conf.d/10-logging.conf" ;;
+	dovecot-3)  dst="$etc/dovecot/conf.d/10-mail.conf" ;;
+	dovecot-4)  dst="$etc/dovecot/conf.d/10-master.conf" ;;
+	dovecot-5)  dst="$etc/dovecot/conf.d/10-ssl.conf" ;;
+	dovecot-6)  dst="$etc/dovecot/conf.d/20-imap.conf" ;;
+	dovecot-7)  dst="$etc/dovecot/conf.d/20-pop3.conf" ;;
+	dovecot-8)  dst="$etc/dovecot/conf.d/auth-passwdfile.conf.ext" ;;
+	named)      dst="$named/named.conf" ;;
+	bind9)      dst="$etc/$bind/named.conf" ;;
+	bind9-opt)  dst="$etc/$bind/named.conf.options" ;;
+	spamd)      dst=$($BIN/v-list-sys-spamd-config plain) ;;
 	spamassassin) dst=$($BIN/v-list-sys-spamd-config plain) ;;
-	clamd) dst=$($BIN/v-list-sys-clamd-config plain) ;;
-	fail2ban) dst='/etc/fail2ban/jail.local' ;;
-	ssh) dst='/etc/ssh/sshd_config' ;;
-	hestiaweb) dst='/var/spool/cron/crontabs/hestiaweb' ;;
-	*) check_result $E_NOTEXIST "service $service doesn't exist" ;;
+	clamd)      dst=$($BIN/v-list-sys-clamd-config plain) ;;
+	fail2ban)   dst="$fail2ban/jail.local" ;;
+	ssh)        dst="/etc/ssh/sshd_config" ;;
+	hestiaweb)  dst="$hestiaweb/hestiaweb" ;;
+	*) check_result "$E_NOTEXIST" "service $service doesn't exist" ;;
 esac
 
 # Checking config path
@@ -86,7 +113,7 @@ done
 
 # Checking diff between src and dst configs
 for config in $dst; do
-	diff -q "$src" "$config" > /dev/null
+	diff -q "$src" "$config" > /dev/null 2>&1
 
 	if [ $? -ne 0 ]; then
 		cp "$config" "$config.vst.back"
@@ -97,9 +124,11 @@ done
 
 # Restarting service
 if [ "$update" = 'yes' ] && [ "$restart" != 'no' ]; then
-	if [[ "$service" =~ - ]]; then
-		service=$(echo ${service%-*})
-	fi
+	case "$service" in
+		*-*)
+			service=$(echo "$service" | cut -d'-' -f1)
+			;;
+	esac
 
 	if [ "$service" = 'php' ]; then
 		if [ "$(multiphp_count)" -gt 0 ]; then
@@ -109,7 +138,7 @@ if [ "$update" = 'yes' ] && [ "$restart" != 'no' ]; then
 		fi
 	fi
 
-	if [[ "$service" != "hestiaweb" ]]; then
+	if [ "$service" != "hestiaweb" ]; then
 		$BIN/v-restart-service "$service" > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
 			for config in $dst; do
@@ -130,4 +159,4 @@ fi
 # Logging
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

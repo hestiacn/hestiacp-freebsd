@@ -11,13 +11,19 @@
 # Argument definition
 host=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/remote.sh
-source $HESTIA/func/remote.sh
+source "$HESTIA/func/remote.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -39,10 +45,10 @@ check_hestia_demo_mode
 
 # Selecting remote hosts
 IFS=$'\n'
-if [ -z $host ]; then
-	hosts=$(cat $HESTIA/conf/dns-cluster.conf | grep "SUSPENDED='no'")
+if [ -z "$host" ]; then
+	hosts=$(grep "SUSPENDED='no'" "$HESTIA/conf/dns-cluster.conf")
 else
-	hosts=$(grep "HOST='$host'" $HESTIA/conf/dns-cluster.conf)
+	hosts=$(grep "HOST='$host'" "$HESTIA/conf/dns-cluster.conf")
 fi
 
 # Starting cluster loop
@@ -55,22 +61,21 @@ for cluster in $hosts; do
 	parse_object_kv_list "$cluster"
 
 	# Wiping remote domains
-	cluster_cmd v-delete-dns-domains-src $DNS_USER $HOSTNAME no
-	check_result $? "$HOST connection failed" $E_CONNECT
+	cluster_cmd v-delete-dns-domains-src "$DNS_USER" "$HOSTNAME" no
+	check_result $? "$HOST connection failed" "$E_CONNECT"
 
 	# Syncing user domains
-	user_list=$(ls -d $HESTIA/data/users/*/ | sed "s#$HESTIA/data/users/##" | sed s"/.$//" | grep -v "dns-cluster")
+	user_list=$(ls -d "$HESTIA/data/users/"*/ | sed "s#$HESTIA/data/users/##" | sed "s/\/$//" | grep -v "dns-cluster")
 	for user in $user_list; do
 		USER_DATA="$HESTIA/data/users/$user"
 		ROLE=$(get_user_value '$ROLE')
 		if [ "$ROLE" != "dns-cluster" ]; then
-			for str in $(cat $HESTIA/data/users/$user/dns.conf); do
-				unset $SLAVE
+			for str in $(cat "$HESTIA/data/users/$user/dns.conf"); do
+				unset SLAVE
 				parse_object_kv_list "$str"
 				if [ "$SLAVE" != "yes" ]; then
 					if [ "$DNS_CLUSTER_SYSTEM" != "hestia-zone" ]; then
 						# Syncing domain index
-
 						cluster_cmd v-insert-dns-domain "$DNS_USER" "$str" "$HOSTNAME" ' ' "no"
 						check_result $? "$HOST connection failed" "$E_CONNECT"
 
@@ -87,19 +92,19 @@ for cluster in $hosts; do
 						str=$(echo "$str" | sed "s/SLAVE=''/SLAVE='yes'/g")
 
 						ip=$(ip addr | grep 'inet ' | grep global | head -n1 | awk '{print $2}' | cut -f1 -d/)
-						source_conf $HESTIA/data/ips/$ip
-						if [ -z $NAT ]; then
+						source_conf "$HESTIA/data/ips/$ip"
+						if [ -z "$NAT" ]; then
 							str=$(echo "$str" | sed "s/MASTER=''/MASTER='$ip'/g")
 						else
 							str=$(echo "$str" | sed "s/MASTER=''/MASTER='$NAT'/g")
 						fi
 
 						# Syncing domain data
-						cluster_cmd v-insert-dns-domain $DNS_USER "$str" $HOSTNAME $flush 'no'
+						cluster_cmd v-insert-dns-domain "$DNS_USER" "$str" "$HOSTNAME" "$flush" 'no'
 						check_result $? "$HOST connection failed" "$E_CONNECT"
 
 						cluster_cmd v-rebuild-dns-domain "$DNS_USER" "$DOMAIN"
-						rndc notify $DOMAIN > /dev/null 2>&1
+						rndc notify "$DOMAIN"
 					fi
 				fi
 			done
@@ -117,8 +122,8 @@ done
 #----------------------------------------------------------#
 
 # Flushing dns-cluster queue
-rm -f $HESTIA/data/queue/dns-cluster.pipe
-touch $HESTIA/data/queue/dns-cluster.pipe
-chmod 660 $HESTIA/data/queue/dns-cluster.pipe
+rm -f "$HESTIA/data/queue/dns-cluster.pipe"
+touch "$HESTIA/data/queue/dns-cluster.pipe"
+chmod 660 "$HESTIA/data/queue/dns-cluster.pipe"
 
 exit

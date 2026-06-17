@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list system interfaces
 # options: [FORMAT]
 #
@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format="${1-shell}"
+format="${1:-shell}"
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -27,13 +33,13 @@ json_list() {
 	i=1
 	echo '['
 	for interface in $physical_nics; do
-		echo -n '    "'$interface'"'
+		printf '    "%s"' "$interface"
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
 		else
 			echo
 		fi
-		((i++))
+		i=$((i + 1))
 	done
 	echo ']'
 }
@@ -68,7 +74,15 @@ csv_list() {
 
 # Defining interface list
 # Detect "physical" NICs only (virtual NICs created by Docker, WireGuard etc. are excluded)
-physical_nics="$(ip -d -j link show | jq -r '.[] | if .link_type == "loopback" then empty else .ifname end')"
+if command -v ip >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+	# Linux - using ip and jq
+	physical_nics="$(ip -d -j link show 2>/dev/null | jq -r '.[] | if .link_type == "loopback" then empty else .ifname end')"
+elif [ -f /sbin/ifconfig ] || [ -f /bin/ifconfig ]; then
+	# FreeBSD - using ifconfig
+	physical_nics="$(ifconfig -l 2>/dev/null | tr ' ' '\n' | grep -v '^lo' | grep -v '^vlan' | grep -v '^tun' | grep -v '^pflog')"
+else
+	physical_nics=""
+fi
 
 # Listing data
 case $format in

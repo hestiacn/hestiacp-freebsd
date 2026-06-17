@@ -17,8 +17,8 @@ ip=$3
 restart=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# source /usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -52,7 +52,7 @@ log_event "$OK" "$ARGUMENTS"
 
 # Define additional vars
 sub_domain=$(echo "$alias" | awk -F '.' '{print $1}')
-top_domain=$(echo "$alias" | sed -e "s/^$sub_domain.//")
+top_domain=$(echo "$alias" | sed "s/^$sub_domain\.//")
 domain_lvl=$(echo "$alias" | grep -o "\." | wc -l)
 
 # Adding second level domain

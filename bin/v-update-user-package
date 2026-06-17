@@ -13,11 +13,17 @@
 # Argument definition
 package=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -32,13 +38,14 @@ is_package_valid
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
+
 for user in $("$BIN/v-list-users" list); do
-	# Fix Bug User Data contain path to the root user
-	USER_DATA="$HESTIA/data/users/$user"
-	check_package=$(grep "PACKAGE='$package'" $USER_DATA/user.conf)
-	if [ -n "$check_package" ]; then
-		"$BIN/v-change-user-package" "$user" "$package" 'yes'
-	fi
+    # Fix Bug User Data contain path to the root user
+    USER_DATA="$HESTIA/data/users/$user"
+    check_package=$(grep "PACKAGE='$package'" "$USER_DATA/user.conf")
+    if [ -n "$check_package" ]; then
+        "$BIN/v-change-user-package" "$user" "$package" 'yes'
+    fi
 done
 
 #----------------------------------------------------------#

@@ -4,7 +4,7 @@
 #
 # example: v-update-user-quota alice
 #
-# The functions upates disk quota for specific user
+# The functions updates disk quota for specific user
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -13,11 +13,19 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -33,20 +41,44 @@ is_object_valid 'user' 'USER' "$user"
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Update disk quota
-# Hard quota quals package value. Soft quota equals 90% of package value.
-quota=$(get_user_value '$DISK_QUOTA')
-soft=$(echo "$quota * 1024" | bc | cut -f 1 -d .)
-hard=$(echo "$quota * 1024" | bc | cut -f 1 -d .)
+if [ "$OS" = "linux" ]; then
+	# Hard quota equals package value. Soft quota equals 90% of package value.
+	quota=$(get_user_value '$DISK_QUOTA')
+	if [ "$quota" = 'unlimited' ] || [ -z "$quota" ]; then
+		soft=0
+		hard=0
+	else
+		soft=$(echo "$quota * 1024" | bc | cut -f 1 -d .)
+		hard=$(echo "$quota * 1024" | bc | cut -f 1 -d .)
+		[ -z "$soft" ] && soft=0
+		[ -z "$hard" ] && hard=0
+	fi
 
-# Searching home mount point
-mnt=$(df -P /home | awk '{print $6}' | tail -n1)
+	# Searching home mount point
+	mnt=$(df -P /home | awk '{print $6}' | tail -n1)
+	[ -z "$mnt" ] && mnt="/"
 
-# Checking unlimited quota
-if [ "$quota" = 'unlimited' ]; then
-	setquota $user 0 0 0 0 $mnt 2> /dev/null
+	# Checking unlimited quota
+	if [ "$quota" = 'unlimited' ] || [ -z "$quota" ]; then
+		setquota "$user" 0 0 0 0 "$mnt" 2> /dev/null
+	else
+		setquota "$user" "$soft" "$hard" 0 0 "$mnt" 2> /dev/null
+	fi
 else
-	setquota $user $soft $hard 0 0 $mnt 2> /dev/null
+	quota=$(get_user_value '$DISK_QUOTA')
+	if [ "$quota" != 'unlimited' ] && [ -n "$quota" ]; then
+		quota_kb=$((quota * 1024))
+		tmpfile=$(mktemp)
+		edquota -u "$user" > "$tmpfile" 2>&1
+		if [ -f "$tmpfile" ]; then
+			sed -i '' "s/\(blocks.*\)soft=[0-9]*/\1soft=$quota_kb/" "$tmpfile"
+			sed -i '' "s/\(blocks.*\)hard=[0-9]*/\1hard=$quota_kb/" "$tmpfile"
+			edquota -u "$user" < "$tmpfile"
+			rm -f "$tmpfile"
+		fi
+	else
+		edquota -u "$user"
+	fi
 fi
 
 #----------------------------------------------------------#

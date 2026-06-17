@@ -14,8 +14,7 @@
 user=$1
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -49,8 +48,7 @@ query_le_v2() {
 	post_data='{"protected":"'"$protected_"'",'
 	post_data=$post_data'"payload":"'"$payload_"'",'
 	post_data=$post_data'"signature":"'"$signature_"'"}'
-
-	curl --user-agent "HestiaCP" -s -i -d "$post_data" "$1" -H "$content"
+	curl --user-agent "HestiaCP" --retry 5 --connect-timeout 10 -s -i -d "$post_data" "$1" -H "$content"
 }
 
 #----------------------------------------------------------#
@@ -98,8 +96,7 @@ fi
 
 # Defining key modulus
 if [ -z "$MODULUS" ]; then
-	MODULUS=$(openssl rsa -in "$KEY" -modulus -noout \
-		| sed -e 's/^Modulus=//' | xxd -r -p | encode_base64)
+	MODULUS=$(openssl rsa -in "$KEY" -modulus -noout | sed 's/^Modulus=//' | xxd -r -p | encode_base64)
 fi
 
 # Defining JWK
@@ -111,7 +108,7 @@ if [ -z "$THUMB" ]; then
 fi
 
 # Requesting ACME nonce
-nonce=$(curl -s -I "$LE_API/directory" | grep -i nonce | cut -f2 -d\  | tr -d '\r\n')
+nonce=$(curl --retry 5 --connect-timeout 10 -s -I "$LE_API/directory" | grep -i nonce | cut -f2 -d\  | tr -d '\r\n')
 
 # Creating ACME account
 url="$LE_API/acme/new-acct"
@@ -138,7 +135,7 @@ if [ ! -e "$USER_DATA/ssl/le.conf" ]; then
 	echo "KID='$kid'" >> $USER_DATA/ssl/le.conf
 	chmod 660 $USER_DATA/ssl/le.conf
 else
-	sed -i '/^KID=/d' $USER_DATA/ssl/le.conf
+	sed -i "" '/^KID=/d' $USER_DATA/ssl/le.conf
 	echo "KID='$kid'" >> $USER_DATA/ssl/le.conf
 fi
 

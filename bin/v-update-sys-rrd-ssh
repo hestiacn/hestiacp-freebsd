@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,18 +53,20 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/ssh" ]; then
-	mkdir $RRD/ssh
+	mkdir -p "$RRD/ssh"
 fi
 
 # Checking database
 if [ ! -e "$RRD/ssh/ssh.rrd" ]; then
 	# Adding database
-	rrdtool create $RRD/ssh/ssh.rrd --step "$RRD_STEP" \
+	rrdtool create "$RRD/ssh/ssh.rrd" --step "$RRD_STEP" \
 		DS:A:GAUGE:600:U:U \
 		RRA:AVERAGE:0.5:1:600 \
 		RRA:AVERAGE:0.5:6:700 \
@@ -73,14 +81,19 @@ fi
 # Parsing data
 if [ "$period" = 'daily' ]; then
 	a=0
-	a=$(ps auxf | grep sshd | grep -v grep | grep -v '/usr/sbin/' | wc -l)
+	if [ "$(uname)" = "FreeBSD" ]; then
+		a=$(ps aux 2>/dev/null | grep sshd | grep -v grep | grep -v '/usr/sbin/' | wc -l | tr -d ' ')
+	else
+		a=$(ps auxf 2>/dev/null | grep sshd | grep -v grep | grep -v '/usr/sbin/' | wc -l | tr -d ' ')
+	fi
+	[ -z "$a" ] && a=0
 
 	# Updating rrd database
 	rrdtool update "$RRD/ssh/ssh.rrd" "N:$a"
 fi
 
 # Updating daily graph
-rrdtool graph $RRD/ssh/$period-ssh.png \
+rrdtool graph "$RRD/ssh/$period-ssh.png" \
 	--imgformat PNG \
 	--height="150" \
 	--width="670" \
@@ -97,7 +110,7 @@ rrdtool graph $RRD/ssh/$period-ssh.png \
 	-c "MGRID#AAAAAA" \
 	-c "FRAME#302c2d" \
 	-c "ARROW#FFFFFF" \
-	DEF:a=$RRD/ssh/ssh.rrd:A:AVERAGE \
+	DEF:"a=$RRD/ssh/ssh.rrd:A:AVERAGE" \
 	COMMENT:'\r' \
 	LINE1:a#fefda0:"Users " \
 	GPRINT:a:'LAST:Current\:''%8.0lf' \

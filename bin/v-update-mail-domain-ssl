@@ -18,24 +18,33 @@ user=$1
 domain=$2
 domain_idn=$2
 ssl_dir=$3
-restart=$4
+restart=${4:-no}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+	mail_conf_dir="$HOMEDIR/$user/conf/mail/$domain"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+	mail_conf_dir="$HOMEDIR/$user/conf/mail/$domain_idn"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # shellcheck source=/usr/local/hestia/func/ip.sh
-source $HESTIA/func/ip.sh
+source "$HESTIA/func/ip.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # Additional argument formatting
 format_domain
 format_domain_idn
-# TODO: $domain_idn not used in this script - maybe $domain should be converted to $doman_idn ?
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -57,29 +66,30 @@ is_web_domain_cert_valid
 #----------------------------------------------------------#
 
 # Deleting old certificate
-rm -f $HOMEDIR/$user/conf/web/$domain/ssl/mail.$domain.*
-rm -f $USER_DATA/ssl/mail.$domain.*
+rm -f "$HOMEDIR/$user/conf/web/$domain/ssl/mail.$domain".*
+rm -f "$USER_DATA/ssl/mail.$domain".*
 
 # Add certificate to Hestia user configuration data directory
 if [ -f "$ssl_dir/$domain.crt" ]; then
-	cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/mail.$domain.crt
-	cp -f $ssl_dir/$domain.key $USER_DATA/ssl/mail.$domain.key
-	cp -f $ssl_dir/$domain.crt $USER_DATA/ssl/mail.$domain.pem
+	cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/mail.$domain.crt"
+	cp -f "$ssl_dir/$domain.key" "$USER_DATA/ssl/mail.$domain.key"
+	cp -f "$ssl_dir/$domain.crt" "$USER_DATA/ssl/mail.$domain.pem"
 	if [ -e "$ssl_dir/$domain.ca" ]; then
-		cp -f $ssl_dir/$domain.ca $USER_DATA/ssl/mail.$domain.ca
-		echo >> $USER_DATA/ssl/mail.$domain.pem
-		cat $USER_DATA/ssl/mail.$domain.ca >> $USER_DATA/ssl/mail.$domain.pem
+		cp -f "$ssl_dir/$domain.ca" "$USER_DATA/ssl/mail.$domain.ca"
+		echo >> "$USER_DATA/ssl/mail.$domain.pem"
+		cat "$USER_DATA/ssl/mail.$domain.ca" >> "$USER_DATA/ssl/mail.$domain.pem"
 	fi
 fi
 
-chmod 660 $USER_DATA/ssl/mail.$domain.*
+chmod 660 "$USER_DATA/ssl/mail.$domain".*
+mkdir -p "$mail_conf_dir/ssl"
 
 # Add certificate to user home directory
-cp -f $USER_DATA/ssl/mail.$domain.crt $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.crt
-cp -f $USER_DATA/ssl/mail.$domain.key $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.key
-cp -f $USER_DATA/ssl/mail.$domain.pem $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.pem
+cp -f "$USER_DATA/ssl/mail.$domain.crt" "$mail_conf_dir/ssl/$domain.crt"
+cp -f "$USER_DATA/ssl/mail.$domain.key" "$mail_conf_dir/ssl/$domain.key"
+cp -f "$USER_DATA/ssl/mail.$domain.pem" "$mail_conf_dir/ssl/$domain.pem"
 if [ -e "$USER_DATA/ssl/mail.$domain.ca" ]; then
-	cp -f $USER_DATA/ssl/mail.$domain.ca $HOMEDIR/$user/conf/mail/$domain/ssl/$domain.ca
+	cp -f "$USER_DATA/ssl/mail.$domain.ca" "$mail_conf_dir/ssl/$domain.ca"
 fi
 
 #----------------------------------------------------------#
@@ -87,15 +97,11 @@ fi
 #----------------------------------------------------------#
 
 # Restarting mail server
-$BIN/v-restart-mail "$restart"
-check_result $? "Mail restart failed" > /dev/null
-
-# Restarting web server
-$BIN/v-restart-web "$restart"
-check_result $? "Web restart failed" > /dev/null
-
-$BIN/v-restart-proxy "$restart"
-check_result $? "Proxy restart failed" > /dev/null
+if [ -n "$restart" ] && [ "$restart" != "no" ]; then
+	$BIN/v-restart-mail "$restart"
+	$BIN/v-restart-web "$restart"
+	$BIN/v-restart-proxy "$restart"
+fi
 
 # Logging
 $BIN/v-log-action "$user" "Info" "Mail" "SSL certificate updated (Domain: $domain)."

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: disables other users create subdomains
 # options: USER DOMAIN
 #
@@ -18,9 +18,15 @@ user=$1
 domain=$2
 domain_idn=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -50,14 +56,14 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Load domain data
-parse_object_kv_list $(grep "DOMAIN='$domain'" $USER_DATA/web.conf)
+parse_object_kv_list "$(grep "DOMAIN='$domain'" "$USER_DATA/web.conf")"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
 if [ -z "$ALLOW_USERS" ]; then
-	add_object_key "web" 'DOMAIN' "$domain" 'ALLOW_USERS' 'TIME'
+    add_object_key "web" 'DOMAIN' "$domain" 'ALLOW_USERS' 'TIME'
 fi
 
 # Adding new alias
@@ -66,4 +72,4 @@ update_object_value 'web' 'DOMAIN' "$domain" '$ALLOW_USERS' "no"
 $BIN/v-log-action "system" "Info" "Web" "Subdomain ownership enforcement enabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

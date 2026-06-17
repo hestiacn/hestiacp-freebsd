@@ -1,31 +1,93 @@
 #!/bin/bash
 # info: adds action event to user or system log
-# options: LOG_TYPE USER
+# options: USER TYPE CATEGORY DETAILS
+#
+# example: v-log-action system Info System "System started"
+# example: v-log-action admin Warning Web "Domain example.com suspended"
+# example: v-log-action admin Error Mail "Mail service failed"
+# 系统日志
+#v-log-action system Info System 'System started'
+#v-log-action system Info updates 'System updated to version 1.9.0'
+#v-log-action system Warning firewall 'Firewall rule blocked suspicious IP'
+
+# 用户日志
+#v-log-action admin Info web 'Domain example.com created'
+#v-log-action admin Warning web 'Domain example.com suspended'
+#v-log-action admin Error mail 'Mail service failed'
+#v-log-action admin Info letsencrypt 'SSL certificate renewed for example.com'
+#v-log-action admin Info pwchange 'Password changed'
+# 记录用户创建网站
+#v-log-action admin Info web 'Domain mysite.com created'
+
+# 记录系统重启
+#v-log-action system Info System 'System rebooted'
+
+# 记录警告
+#v-log-action admin Warning web 'Domain example.com SSL certificate expires in 7 days'
+
+# 记录错误
+#v-log-action admin Error mail 'Failed to deliver email to user@example.com'
 
 # Event Levels:
-# info, warning, error
+# Info, Warning, Error
 
 # Event Categories:
 # user:     web, dns, mail, db, letsencrypt, pwchange, pwreset
-# system:   ip, firewall, service, updates,
-#           users, pwchange, pwreset, impersonation
+# system:   ip, firewall, service, updates, users, pwchange, pwreset, impersonation
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+show_usage() {
+	echo "Usage: v-log-action USER TYPE CATEGORY DETAILS"
+	echo ""
+	echo "Arguments:"
+	echo "  USER      Username or 'system'"
+	echo "  TYPE      Event level: Info, Warning, Error"
+	echo "  CATEGORY  Event category (web, dns, mail, system, etc.)"
+	echo "  DETAILS   Event description"
+	echo ""
+	echo "Examples:"
+	echo "  v-log-action system Info System 'System started'"
+	echo "  v-log-action admin Warning Web 'Domain suspended'"
+	echo "  v-log-action admin Error Mail 'Mail service failed'"
+	echo ""
+	echo "Event Levels:"
+	echo "  Info, Warning, Error"
+	echo ""
+	echo "Event Categories (system):"
+	echo "  ip, firewall, service, updates, users, pwchange, pwreset, impersonation"
+	echo ""
+	echo "Event Categories (user):"
+	echo "  web, dns, mail, db, letsencrypt, pwchange, pwreset"
+}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 #----------------------------------------------------------#
 #                    Verifications                         #
 #----------------------------------------------------------#
-# Argument definition
+
+# Show usage if no arguments or --help
+if [ $# -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+	show_usage
+	exit 0
+fi
+
+# Argument definition - after includes
 user=$1
 event_level=$2
 export event_category=$3
@@ -35,7 +97,10 @@ is_common_format_valid "$event_level" "event level"
 
 # Validate event type input
 if [ "$event_level" != "Info" ] && [ "$event_level" != "Warning" ] && [ "$event_level" != "Error" ]; then
-	echo "Error: Invalid event type specified."
+	echo "Error: Invalid event type '$event_level' specified."
+	echo "Valid types: Info, Warning, Error"
+	echo ""
+	show_usage
 	exit 1
 fi
 
@@ -59,4 +124,4 @@ log_history "$event_details" '' "$user"
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-exit
+exit 0

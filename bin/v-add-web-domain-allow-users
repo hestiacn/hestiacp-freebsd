@@ -20,7 +20,7 @@ domain_idn=$2
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -68,4 +68,4 @@ update_object_value 'web' 'DOMAIN' "$domain" '$ALLOW_USERS' "yes"
 $BIN/v-log-action "$user" "Warning" "Web" "Subdomain ownership enforcement disabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

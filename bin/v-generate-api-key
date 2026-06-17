@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: generate api key
 # options: NONE
 #
@@ -10,19 +10,24 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 keygen() {
-	tr < /dev/urandom -dc _A-Z-a-z-0-9 | head -c 32
-	echo
+    tr </dev/urandom -dc '_A-Za-z0-9' | head -c 32
+    echo
 }
-HASH=$(keygen)
 
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
@@ -32,18 +37,20 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 if [ ! -d "$HESTIA/data/keys/" ]; then
-	mkdir -p $HESTIA/data/keys/
-	chown hestiaweb:root $HESTIA/data/keys/
-	chmod 750 $HESTIA/data/keys/
+    mkdir -p "$HESTIA/data/keys/"
+    chown hestiaweb:root "$HESTIA/data/keys/"
+    chmod 750 "$HESTIA/data/keys/"
 fi
 
-if [[ -e "$HESTIA/data/keys/$HASH" ]]; then
-	while [[ -e "$HESTIA/data/keys/$HASH" ]]; do
-		HASH=$(keygen)
-	done
+HASH=$(keygen)
+
+if [ -e "$HESTIA/data/keys/$HASH" ]; then
+    while [ -e "$HESTIA/data/keys/$HASH" ]; do
+        HASH=$(keygen)
+    done
 fi
 
-touch $HESTIA/data/keys/$HASH
+touch "$HESTIA/data/keys/$HASH"
 echo "$HASH"
 
 #----------------------------------------------------------#

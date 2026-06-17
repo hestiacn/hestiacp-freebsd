@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: check user token
 # options: USER TOKEN
 #
@@ -14,9 +14,15 @@
 user=$1
 token=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -35,23 +41,23 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 # Reading user values
-source $USER_DATA/user.conf
+source "$USER_DATA/user.conf"
 
 # Check if 2FA is enabled
 if [ -z "$TWOFA" ]; then
-	echo "Error: Two-factor authentication is not enabled."
-	exit "$E_NOTEXIST"
+    echo "Error: Two-factor authentication is not enabled."
+    exit "$E_NOTEXIST"
 fi
 
 # Check if token is valid
-result=$($HESTIA_PHP $HESTIA/web/inc/2fa/check.php "$TWOFA" "$token")
+result=$($HESTIA_PHP "$HESTIA/web/inc/2fa/check.php" "$TWOFA" "$token")
 if [ "$result" != "ok" ]; then
-	echo "Error: Authentication token mismatch."
-	exit 9
+    echo "Error: Authentication token mismatch."
+    exit 9
 fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-exit
+exit 0

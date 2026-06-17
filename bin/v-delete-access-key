@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete access key
 # options: ACCESS_KEY_ID
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -36,14 +42,14 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 if [ ! -d "$HESTIA/data/access-keys/" ]; then
-	exit "$E_NOTEXIST"
+    exit "$E_NOTEXIST"
 fi
 
-if [[ -e "${HESTIA}/data/access-keys/${access_key_id}" ]]; then
-	source_conf "${HESTIA}/data/access-keys/${access_key_id}"
-	rm "${HESTIA}/data/access-keys/${access_key_id}"
+if [ -e "${HESTIA}/data/access-keys/${access_key_id}" ]; then
+    source_conf "${HESTIA}/data/access-keys/${access_key_id}"
+    rm "${HESTIA}/data/access-keys/${access_key_id}"
 else
-	exit "$E_NOTEXIST"
+    exit "$E_NOTEXIST"
 fi
 
 #----------------------------------------------------------#
@@ -54,4 +60,4 @@ fi
 log_history "Access key $access_key_id deleted" "Info" "$USER" "API"
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

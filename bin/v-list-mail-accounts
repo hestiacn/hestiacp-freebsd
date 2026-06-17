@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list mail domain accounts
 # options: USER DOMAIN [FORMAT]
 #
@@ -13,90 +13,100 @@
 # Argument definition
 user=$1
 domain=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep ACCOUNT $USER_DATA/mail/$domain.conf | wc -l)
+	objects=$(grep -c "ACCOUNT" "$USER_DATA/mail/$domain.conf")
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n '    "'$ACCOUNT'": {
-        "ALIAS": "'$ALIAS'",
-        "FWD": "'$FWD'",
-        "FWD_ONLY": "'$FWD_ONLY'",
-        "AUTOREPLY": "'$AUTOREPLY'",
-        "QUOTA": "'$QUOTA'",
-        "U_DISK": "'$U_DISK'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$ACCOUNT\": {"
+		echo -n "\"ALIAS\": \"$ALIAS\", "
+		echo -n "\"FWD\": \"$FWD\", "
+		echo -n "\"FWD_ONLY\": \"$FWD_ONLY\", "
+		echo -n "\"AUTOREPLY\": \"$AUTOREPLY\", "
+		echo -n "\"QUOTA\": \"$QUOTA\", "
+		echo -n "\"U_DISK\": \"$U_DISK\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $USER_DATA/mail/$domain.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$USER_DATA/mail/$domain.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "ACCOUNT   ALIAS   FWD   DISK  DATE"
-	echo "-------   -----   ---   ----  ----"
-	while read str; do
+	printf "%-10s %-15s %-23s %-8s %-12s\n" "ACCOUNT" "ALIAS" "FWD" "DISK" "DATE"
+	printf "%-10s %-15s %-23s %-8s %-12s\n" "-------" "-----" "---" "----" "----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
+		alias_display="$ALIAS"
+		fwd_display="$FWD"
+		
 		if [ -z "$ALIAS" ]; then
-			ALIAS='no'
+			alias_display='no'
 		else
-			if [ "${#ALIAS}" -gt 12 ]; then
-				ALIAS="${ALIAS:0:12}..."
+			if [ "$(echo "$ALIAS" | wc -m)" -gt 12 ]; then
+				alias_display=$(echo "$ALIAS" | awk '{print substr($0, 1, 12) "..."}')
 			fi
 		fi
+		
 		if [ -z "$FWD" ]; then
-			FWD='no'
+			fwd_display='no'
 		else
-			if [ "${#FWD}" -gt 20 ]; then
-				FWD="${FWD:0:20}..."
+			if [ "$(echo "$FWD" | wc -m)" -gt 20 ]; then
+				fwd_display=$(echo "$FWD" | awk '{print substr($0, 1, 20) "..."}')
 			fi
 		fi
-		echo "$ACCOUNT $ALIAS $FWD $U_DISK $DATE"
-	done < <(cat $USER_DATA/mail/$domain.conf)
+		
+		printf "%-10s %-15s %-23s %-8s %-12s\n" \
+			"$ACCOUNT" "$alias_display" "$fwd_display" "$U_DISK" "$DATE"
+	done < "$USER_DATA/mail/$domain.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -ne "$ACCOUNT\t$ALIAS\t$FWD\t$FWD_ONLY\t$AUTOREPLY\t"
-		echo -e "$QUOTA\t$U_DISK\t$SUSPENDED\t$TIME\t$DATE"
-	done < <(cat $USER_DATA/mail/$domain.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$ACCOUNT" "$ALIAS" "$FWD" "$FWD_ONLY" "$AUTOREPLY" \
+			"$QUOTA" "$U_DISK" "$SUSPENDED" "$TIME" "$DATE"
+	done < "$USER_DATA/mail/$domain.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
-	echo -n "ACCOUNT,ALIAS,FWD,FWD_ONLY,AUTOREPLY,QUOTA,U_DISK,"
-	echo "SUSPENDED,TIME,DATE"
-	while read str; do
+	echo "ACCOUNT,ALIAS,FWD,FWD_ONLY,AUTOREPLY,QUOTA,U_DISK,SUSPENDED,TIME,DATE"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n "$ACCOUNT,\"$ALIAS\",\"$FWD\",$FWD_ONLY,$AUTOREPLY,"
-		echo "$QUOTA,$U_DISK,$SUSPENDED,$TIME,$DATE"
-	done < <(cat $USER_DATA/mail/$domain.conf)
+		echo "$ACCOUNT,\"$ALIAS\",\"$FWD\",$FWD_ONLY,$AUTOREPLY,$QUOTA,$U_DISK,$SUSPENDED,$TIME,$DATE"
+	done < "$USER_DATA/mail/$domain.conf"
 }
 
 #----------------------------------------------------------#
@@ -112,12 +122,22 @@ is_object_valid 'mail' 'DOMAIN' "$domain"
 #                       Action                             #
 #----------------------------------------------------------#
 
+if [ ! -f "$USER_DATA/mail/$domain.conf" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No mail accounts found" ;;
+		plain) ;;
+		csv) echo "ACCOUNT,ALIAS,FWD,FWD_ONLY,AUTOREPLY,QUOTA,U_DISK,SUSPENDED,TIME,DATE" ;;
+	esac
+	exit 0
+fi
+
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

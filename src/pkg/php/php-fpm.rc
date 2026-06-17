@@ -1,0 +1,73 @@
+#!/bin/sh
+#
+# PROVIDE: php%%VERSION%%-fpm
+# REQUIRE: NETWORKING LOGIN
+# BEFORE: DAEMON
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name="php%%VERSION%%-fpm"
+rcvar="php%%VERSION%%_fpm_enable"
+
+PHP_FPM_DAEMON="/usr/local/sbin/php-fpm"
+PHP_FPM_PIDFILE="/var/run/php%%VERSION%%-fpm.pid"
+PHP_FPM_CONFIG="/usr/local/etc/php%%VERSION%%/php-fpm.d/php-fpm.conf"
+
+load_rc_config $name
+
+: ${php%%VERSION%%_fpm_enable:=NO}
+
+start_cmd="php_fpm_start"
+stop_cmd="php_fpm_stop"
+status_cmd="php_fpm_status"
+restart_cmd="php_fpm_restart"
+
+php_fpm_start() {
+    echo "Starting PHP %%PHP_DOT_VERSION%%-FPM..."
+    
+    if [ ! -d /var/run ]; then
+        mkdir -p /var/run
+    fi
+    
+    if [ -x "${PHP_FPM_DAEMON}" ]; then
+        echo "  Starting php%%VERSION%%-fpm..."
+        /usr/sbin/daemon -f -p "${PHP_FPM_PIDFILE}" \
+            "${PHP_FPM_DAEMON}" --fpm-config "${PHP_FPM_CONFIG}"
+    fi
+}
+
+php_fpm_stop() {
+    echo "Stopping PHP %%PHP_DOT_VERSION%%-FPM..."
+    
+    if [ -f "${PHP_FPM_PIDFILE}" ]; then
+        pid=$(cat "${PHP_FPM_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "  Stopping php%%VERSION%%-fpm..."
+            kill -TERM "$pid" 2>/dev/null
+            sleep 1
+            kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
+        fi
+        rm -f "${PHP_FPM_PIDFILE}"
+    fi
+}
+
+php_fpm_restart() {
+    php_fpm_stop
+    sleep 2
+    php_fpm_start
+}
+
+php_fpm_status() {
+    if [ -f "${PHP_FPM_PIDFILE}" ]; then
+        pid=$(cat "${PHP_FPM_PIDFILE}" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "php%%VERSION%%-fpm is running as pid ${pid}"
+            return 0
+        fi
+    fi
+    echo "php%%VERSION%%-fpm is not running"
+    return 1
+}
+
+run_rc_command "$1"

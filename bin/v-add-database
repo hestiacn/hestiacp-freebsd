@@ -28,8 +28,7 @@ charset=${7-UTF8MB4}
 charset=$(echo "$charset" | tr '[:lower:]' '[:upper:]')
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/db.sh
@@ -91,7 +90,7 @@ esac
 #----------------------------------------------------------#
 
 # Generating timestamp
-time_n_date=$(date +'%T %F')
+time_n_date=$(date +'%H:%M:%S %Y-%m-%d')
 time=$(echo "$time_n_date" | cut -f 1 -d \ )
 date=$(echo "$time_n_date" | cut -f 2 -d \ )
 

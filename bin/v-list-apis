@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list available APIs
 # options: [FORMAT]
 #
@@ -11,51 +11,68 @@
 # Argument definition
 format="${1:-shell}"
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	echo '{'
-	local quote COMMANDS_ARR
-	for api in $HESTIA/data/api/*; do
-		api="$(basename -- "$api")"
-		source_conf $HESTIA/data/api/$api
-
-		COMMANDS_ARR='[]'
-		if [[ -n "$COMMANDS" ]]; then
-			COMMANDS_ARR="[\"$(echo "$COMMANDS" | sed -E 's|,|", "|g')\"]"
-		fi
-
-		echo -en "$quote"
-		echo -n '    "'$api'": {"COMMANDS": '${COMMANDS_ARR}', "ROLE": "'${ROLE}'"}'
-		quote=",\n"
-	done
-	echo -e '\n}'
+    first=1
+    echo '{'
+    for api_file in "$HESTIA/data/api"/*; do
+        [ -f "$api_file" ] || continue
+        api=$(basename -- "$api_file")
+        
+        ROLE=""
+        COMMANDS=""
+        source_conf "$HESTIA/data/api/$api"
+        
+        COMMANDS_ARR='[]'
+        if [ -n "$COMMANDS" ]; then
+            COMMANDS_ARR="[\"$(echo "$COMMANDS" | sed 's|,|", "|g')\"]"
+        fi
+        
+        if [ "$first" -eq 0 ]; then
+            echo ','
+        fi
+        first=0
+        echo -n "    \"$api\": {\"COMMANDS\": $COMMANDS_ARR, \"ROLE\": \"$ROLE\"}"
+    done
+    echo ''
+    echo '}'
 }
 
 # SHELL list function
 shell_list() {
-	list="API\tROLE\tCOMMANDS\n"
-	list+="---\t----\t--------\n"
-
-	for api in $HESTIA/data/api/*; do
-		api="$(basename -- "$api")"
-		source_conf $HESTIA/data/api/$api
-		list+="${api}\t${ROLE}\t${COMMANDS}\n"
-	done
-	echo -e "$list" | column -t -s "	"
+    printf "%-20s %-10s %-50s\n" "API" "ROLE" "COMMANDS"
+    printf "%-20s %-10s %-50s\n" "---" "----" "--------"
+    
+    for api_file in "$HESTIA/data/api"/*; do
+        [ -f "$api_file" ] || continue
+        api=$(basename -- "$api_file")
+        
+        ROLE=""
+        COMMANDS=""
+        source_conf "$HESTIA/data/api/$api"
+        
+        printf "%-20s %-10s %-50s\n" "$api" "$ROLE" "$COMMANDS"
+    done
 }
 
 # Listing data
 case $format in
-	json) json_list ;;
-	shell) shell_list ;;
+    json) json_list ;;
+    shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

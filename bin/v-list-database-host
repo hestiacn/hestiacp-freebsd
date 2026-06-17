@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list database host
 # options: TYPE HOST [FORMAT]
 #
@@ -13,34 +13,40 @@
 # Argument definition
 type=$1
 host=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/db.sh
-source $HESTIA/func/db.sh
+source "$HESTIA/func/db.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$HOST'": {
-        "HOST": "'$HOST'",
-        "PORT": "'$PORT'",
-        "TYPE": "'$type'",
-        "CHARSETS": "'$CHARSETS'",
-        "MAX_DB": "'$MAX_DB'",
-        "U_SYS_USERS": "'$U_SYS_USERS'",
-        "U_DB_BASES": "'$U_DB_BASES'",
-        "TPL": "'$TPL'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+	echo "    \"$HOST\": {"
+	echo "        \"HOST\": \"$HOST\","
+	echo "        \"PORT\": \"$PORT\","
+	echo "        \"TYPE\": \"$type\","
+	echo "        \"CHARSETS\": \"$CHARSETS\","
+	echo "        \"MAX_DB\": \"$MAX_DB\","
+	echo "        \"U_SYS_USERS\": \"$U_SYS_USERS\","
+	echo "        \"U_DB_BASES\": \"$U_DB_BASES\","
+	echo "        \"TPL\": \"$TPL\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -61,24 +67,24 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$HOST\t$PORT\t$type\t$CHARSETS\t$MAX_DB\t$U_SYS_USERS\t"
-	echo -e "$U_DB_BASES\t$TPL\t$SUSPENDED\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$HOST" "$PORT" "$type" "$CHARSETS" "$MAX_DB" "$U_SYS_USERS" "$U_DB_BASES" "$TPL" "$SUSPENDED" "$TIME" "$DATE"
 }
 
 # CSV list function
 csv_list() {
-	echo -n "HOST,PORT,TYPE,CHARSETS,MAX_DB,U_SYS_USERS,"
-	echo "U_DB_BASES,TPL,SUSPENDED,TIME,DATE'"
-	echo -n "$HOST,$PORT,$type,\"$CHARSETS\",$MAX_DB,\"$U_SYS_USERS\","
-	echo "$U_DB_BASES,$TPL,$SUSPENDED,$TIME,$DATE"
+	echo "HOST,PORT,TYPE,CHARSETS,MAX_DB,U_SYS_USERS,U_DB_BASES,TPL,SUSPENDED,TIME,DATE"
+	echo "$HOST,$PORT,$type,\"$CHARSETS\",$MAX_DB,\"$U_SYS_USERS\",$U_DB_BASES,$TPL,$SUSPENDED,$TIME,$DATE"
 }
 
 # Type format validator
 is_type_format_valid() {
-	exclude="[!|#|$|^|&|(|)|+|=|{|}|:|@|<|>|?|/|\|\"|'|;|%|\`| ]|\."
-	if [[ "$1" =~ $exclude ]]; then
-		check_result "$E_INVALID" "invalid type extention format :: $1"
-	fi
+	case "$1" in
+		*[!a-zA-Z0-9_-]*)
+			echo "Error: invalid type extension format :: $1"
+			exit 2
+			;;
+	esac
 }
 
 #----------------------------------------------------------#
@@ -98,7 +104,12 @@ database_set_default_ports
 #----------------------------------------------------------#
 
 # Parsing hosts
-parse_object_kv_list $(grep "HOST='$host'" $HESTIA/conf/$type.conf)
+host_line=$(grep "HOST='$host'" "$HESTIA/conf/$type.conf")
+if [ -z "$host_line" ]; then
+	echo "Error: Host $host not found for type $type"
+	exit 3
+fi
+parse_object_kv_list "$host_line"
 
 # Listing data
 case $format in

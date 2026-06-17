@@ -11,21 +11,25 @@
 #----------------------------------------------------------#
 
 # Argument definition
-requested_version=$1
+version=$1
+
+# Detect OS
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	OS_TYPE="linux"
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	OS_TYPE="freebsd"
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 source_conf "$HESTIA/install/upgrade/upgrade.conf"
-
-version=$(echo "$requested_version" | sed 's/^php//g')
-if [[ "$version" =~ ^[0-9][0-9]$ ]]; then
-    version=$(echo "$version" | sed -E 's/^([0-9])([0-9])/\1.\2/')
-fi
 
 #----------------------------------------------------------#
 #                    Verifications                         #
@@ -33,20 +37,8 @@ fi
 
 check_args '1' "$#" 'VERSION'
 
-if [ -z "$WEB_BACKEND" ]; then
+if [ "$OS_TYPE" = "linux" ] && [ -z "$WEB_BACKEND" ]; then
 	echo "Multiple php versions are not supported for modphp"
-fi
-
-# Set file locations based on OS
-# v_ver_nodot 代表不带点的版本号（如 84），用于 FreeBSD 路径和包名
-v_ver_nodot=${version//./}
-
-if [ "$OS" = "freebsd" ]; then
-	php_fpm="/usr/local/etc/rc.d/php${v_ver_nodot}_fpm"
-	php_config_base="/usr/local/etc/php${v_ver_nodot}"
-else
-	php_fpm="/etc/init.d/php$version-fpm"
-	php_config_base="/etc/php/$version"
 fi
 
 # Verify php version format
@@ -56,8 +48,19 @@ if [[ ! $version =~ ^[0-9]+\.[0-9]+ ]]; then
 	exit "$E_INVALID"
 fi
 
+# Convert version for file naming (e.g., 8.4 -> 84)
+version_clean=$(echo "$version" | tr -d '.')
+
+if [ "$OS_TYPE" = "linux" ]; then
+	php_fpm="/etc/init.d/php$version-fpm"
+	tpl_file="$HESTIA/data/templates/web/php-fpm/PHP-${version/\./_}.tpl"
+else
+	php_fpm="/usr/local/etc/rc.d/php$version-fpm"
+	tpl_file="$HESTIA/data/templates/web/php-fpm/PHP-${version_clean}.tpl"
+fi
+
 # Check if php version already exists
-if [ -f "$php_fpm" ] && [ -f "$HESTIA/data/templates/web/php-fpm/PHP-${version/\./_}.tpl" ]; then
+if [ -f "$php_fpm" ] && [ -f "$tpl_file" ]; then
 	echo "ERROR: Specified PHP version is already installed."
 	exit "$E_INVALID"
 fi
@@ -75,136 +78,189 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-if [ "$OS" = "freebsd" ]; then
-	# 💡 FreeBSD 专属：重配符合 pkg 官方源的多版本 PHP 依赖矩阵
-	mph="php${v_ver_nodot} php${v_ver_nodot}-mbstring php${v_ver_nodot}-bcmath php${v_ver_nodot}-curl
-	     php${v_ver_nodot}-gd php${v_ver_nodot}-intl php${v_ver_nodot}-soap php${v_ver_nodot}-xml
-	     php${v_ver_nodot}-zip php${v_ver_nodot}-bz2 php${v_ver_nodot}-pgsql php${v_ver_nodot}-ldap"
-	
-	if echo "$DB_SYSTEM" | grep -w 'mysql' > /dev/null; then
-		# FreeBSD 下对应的 MySQL 驱动包名是 phpXX-mysqli 或 pdo_mysql
-		mph="$mph php${v_ver_nodot}-mysqli"
-	fi
-else
-	# Linux 原版依赖矩阵
+# 根据操作系统设置包名和路径
+if [ "$OS_TYPE" = "linux" ]; then
+	# Linux (Debian/Ubuntu) 包名
 	mph="php$version-common php$version-mbstring php$version-bcmath php$version-cli php$version-curl
-	     php$version-fpm php$version-gd php$version-intl php$version-mysql
-	     php$version-soap php$version-xml php$version-zip php$version-json php$version-bz2
-	     php$version-pspell php$version-imagick php$version-pgsql php$version-imap php$version-ldap php$version-apcu"
-
+		php$version-fpm php$version-gd php$version-intl php$version-mysql
+		php$version-soap php$version-xml php$version-zip php$version-json php$version-bz2
+		php$version-pspell php$version-imagick php$version-pgsql php$version-imap php$version-ldap php$version-apcu"
+		
+	# PHP 7.1 及以下需要 mcrypt
 	if [[ $(echo "$version 7.2" | awk '{print ($1 < $2)}') == 1 ]]; then
 		mph="$mph php$version-mcrypt"
 	fi
+	
+	# PHP 8.0 及以上移除 json 扩展
 	if [[ ${version:0:1} == "8" ]]; then
 		mph=$(echo "$mph" | sed -e "s/php$version-json//")
 	fi
+	
+	# 根据数据库系统调整包名
 	if ! echo "$DB_SYSTEM" | grep -w 'mysql' > /dev/null; then
 		mph=$(echo "$mph" | sed -e "s/php$version-mysql//")
 	fi
+	
 	if ! echo "$DB_SYSTEM" | grep -w 'pgsql' > /dev/null; then
 		mph=$(echo "$mph" | sed -e "s/php$version-pgsql//")
 	fi
-fi
-
-# Install php packages based on OS
-if [ "$OS" = "freebsd" ]; then
-	# 使用 FreeBSD 纯净无干扰模式进行后台异步静默安装
-	pkg install -y $mph > /dev/null 2>&1 &
+	
+	# 安装 PHP 包
+	echo "Installing PHP-$version, please wait..."
+	apt-get -qq update
+	apt-get -y -qq -o Dpkg::Options::="--force-confold" install $mph > /dev/null 2>&1 &
+	BACK_PID=$!
+	
 else
-	if [ -f '/etc/redhat-release' ]; then
-		dnf makecache -q
-		dnf install -q -y $mph > /dev/null 2>&1 &
-	else
-		apt-get -qq update
-		apt-get -y -qq -o Dpkg::Options::="--force-confold" install $mph > /dev/null 2>&1 &
-	fi
-fi
-BACK_PID=$!
+	# FreeBSD 包名
+	mph="php$version_clean php$version_clean-extensions php$version_clean-mbstring php$version_clean-bcmath php$version_clean-curl
+		php$version_clean-gd php$version_clean-intl php$version_clean-mysqli
+		php$version_clean-soap php$version_clean-xml php$version_clean-zip php$version_clean-bz2
+		php$version_clean-pspell php$version_clean-pecl-imagick php$version_clean-pgsql php$version_clean-pecl-imap
+		php$version_clean-ldap php$version_clean-pecl-APCu php$version_clean-filter php$version_clean-session
+		php$version_clean-tokenizer php$version_clean-readline php$version_clean-pdo php$version_clean-pdo_mysql php$version_clean-pdo_pgsql"
 
-# Check if package installation is done, print a spinner
-echo "Installing PHP-$version, please wait..."
+	# PHP 7.1 及以下需要 mcrypt（FreeBSD 包名可能不同）
+	if [[ $(echo "$version 7.2" | awk '{print ($1 < $2)}') == 1 ]]; then
+		mph="$mph php${version_clean}-mcrypt"
+	fi
+	
+	# 安装 PHP 包
+	echo "Installing PHP-$version, please wait..."
+	pkg update -f > /dev/null 2>&1
+	pkg install -y $mph > /dev/null 2>&1 &
+	BACK_PID=$!
+fi
+
+# 显示安装进度动画
 spinner="/-\|"
 spin_i=1
 while kill -0 $BACK_PID > /dev/null 2>&1; do
 	printf "\b${spinner:spin_i++%${#spinner}:1}"
 	sleep 0.5
 done
-
-# Do a blank echo to get the \n back
 echo
 
-# Check if installation was successful
-
-if [ ! -f "$php_fpm" ]; then
-	echo "ERROR: Installation failed, please run the following command manually for debugging:"
-	if [ "$OS" = "freebsd" ]; then
-		# FreeBSD 报错引导：提示管理员手动使用 pkg 调试
-		echo "pkg install $mph"
-	elif [ -f '/etc/redhat-release' ]; then
-		echo "dnf install $mph"
-	else
+# 检查安装是否成功
+if [ "$OS_TYPE" = "linux" ]; then
+	if [ ! -f "$php_fpm" ]; then
+		echo "ERROR: Installation failed, please run the following command manually for debugging:"
 		echo "apt-get install $mph"
+		exit 1
 	fi
-	exit "$E_INVALID"
+else
+	if [ ! -f "/usr/local/sbin/php-fpm" ]; then
+		echo "ERROR: Installation failed, please run the following command manually for debugging:"
+		echo "pkg install $mph"
+		exit 1
+	fi
 fi
 
-# Check if required modules for apache2 are enabled (Linux specific tool wrapper)
-if [ "$OS" != "freebsd" ] && [ "$WEB_SYSTEM" = "apache2" ]; then
-	if ! a2query -q -m proxy_fcgi; then
-		a2enmod -q proxy_fcgi
-	fi
-	if ! a2query -q -m setenvif; then
-		a2enmod -q setenvif
+# 配置 Apache2 模块
+if [ "$WEB_SYSTEM" = "apache2" ]; then
+	if [ "$OS_TYPE" = "linux" ]; then
+		# Linux
+		if ! a2query -q -m proxy_fcgi; then
+			a2enmod -q proxy_fcgi
+		fi
+		if ! a2query -q -m setenvif; then
+			a2enmod -q setenvif
+		fi
+	else
+		# FreeBSD
+		if [ -f "/usr/local/etc/apache24/httpd.conf" ]; then
+			# 检查并启用 proxy_fcgi 模块
+			if ! grep -q "mod_proxy_fcgi" /usr/local/etc/apache24/httpd.conf; then
+				sed -i '' '/mod_proxy.so/s/^#//' /usr/local/etc/apache24/httpd.conf
+				sed -i '' '/mod_proxy_fcgi.so/s/^#//' /usr/local/etc/apache24/httpd.conf
+				sed -i '' '/mod_setenvif.so/s/^#//' /usr/local/etc/apache24/httpd.conf
+			fi
+		fi
 	fi
 	$BIN/v-restart-web "yes"
 fi
 
-# Configure fpm
-if [ "$OS" = "freebsd" ]; then
-	# 💡 FreeBSD 专属：完美注册开机自启到系统 /etc/rc.conf
-	sysrc php${v_ver_nodot}_fpm_enable="YES" > /dev/null 2>&1
-	
-	mkdir -p "$php_config_base/fpm/pool.d"
-	rm -f $php_config_base/fpm/pool.d/*
-	cp -f $HESTIA_INSTALL_DIR/php-fpm/dummy.conf $php_config_base/fpm/pool.d/
-	
-	# FreeBSD 专属：应用带补丁的专属 sed -i '' 语法，防止破坏配置文件
-	sed -i '' "s/%backend_version%/$version/g" $php_config_base/fpm/pool.d/dummy.conf
-	cp -f $HESTIA_INSTALL_DIR/php-fpm/php-fpm.conf $php_config_base/fpm/
-	sed -i '' "s/fpm_v/$version/g" $php_config_base/fpm/php-fpm.conf
-
-	# FreeBSD 配额和安全调优参数注入
-	sed -i '' "s/upload_max_filesize = 2M/upload_max_filesize = 100M/g" $php_config_base/fpm/php.ini 2>/dev/null || \
-	sed -i '' "s/upload_max_filesize = 2M/upload_max_filesize = 100M/g" /usr/local/etc/php.ini
-	
-	sed -i '' "s/post_max_size = 8M/post_max_size = 100M/g" $php_config_base/fpm/php.ini 2>/dev/null || \
-	sed -i '' "s/post_max_size = 8M/post_max_size = 100M/g" /usr/local/etc/php.ini
-	
-	sed -i '' "s/max_execution_time = 30/max_execution_time = 60/g" $php_config_base/fpm/php.ini 2>/dev/null || \
-	sed -i '' "s/max_execution_time = 30/max_execution_time = 60/g" /usr/local/etc/php.ini
-else
-	# Linux 原版配置及 sed 逻辑
+# 配置 PHP-FPM
+if [ "$OS_TYPE" = "linux" ]; then
+	# Linux 配置
 	update-rc.d php$version-fpm defaults > /dev/null 2>&1
+	
+	# 创建 pool 目录
+	mkdir -p /etc/php/$version/fpm/pool.d/
 	rm -f /etc/php/$version/fpm/pool.d/*
+	
+	# 复制配置文件
 	cp -f $HESTIA_INSTALL_DIR/php-fpm/dummy.conf /etc/php/$version/fpm/pool.d/
 	sed -i "s/%backend_version%/$version/g" /etc/php/$version/fpm/pool.d/dummy.conf
+	
 	cp -f $HESTIA_INSTALL_DIR/php-fpm/php-fpm.conf /etc/php/$version/fpm/
 	sed -i "s/fpm_v/$version/g" /etc/php/$version/fpm/php-fpm.conf
-
-	sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 100M/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/post_max_size = 8M/post_max_size = 100M/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/max_execution_time = 30/max_execution_time = 60/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/;max_input_vars = 1000/max_input_vars = 4000/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/disable_functions =.*/disable_functions = pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority,exec,system,passthru,shell_exec,proc_open,popen/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/disable_functions =.*/disable_functions = pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority/g" /etc/php/$version/cli/php.ini
-	sed -i "s/;opcache.enable=1/opcache.enable=1/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/;opcache.memory_consumption=128/opcache.memory_consumption=512/g" /etc/php/$version/fpm/php.ini
-	sed -i "s/;opcache.max_accelerated_files=10000/opcache.max_accelerated_files=100000/g" /etc/php/$version/fpm/php.ini
+	
+	# 修改 php.ini
+	php_ini="/etc/php/$version/fpm/php.ini"
+	php_cli_ini="/etc/php/$version/cli/php.ini"
+	
+	sed -i "s/upload_max_filesize = 2M/upload_max_filesize = 100M/g" $php_ini
+	sed -i "s/post_max_size = 8M/post_max_size = 100M/g" $php_ini
+	sed -i "s/max_execution_time = 30/max_execution_time = 60/g" $php_ini
+	sed -i "s/;max_input_vars = 1000/max_input_vars = 4000/g" $php_ini
+	
+	# 禁用危险函数
+	sed -i "s/disable_functions =.*/disable_functions = pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority,exec,system,passthru,shell_exec,proc_open,popen/g" $php_ini
+	sed -i "s/disable_functions =.*/disable_functions = pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority/g" $php_cli_ini
+	
+	# 启用 OPcache
+	sed -i "s/;opcache.enable=1/opcache.enable=1/g" $php_ini
+	sed -i "s/;opcache.memory_consumption=128/opcache.memory_consumption=512/g" $php_ini
+	sed -i "s/;opcache.max_accelerated_files=10000/opcache.max_accelerated_files=100000/g" $php_ini
+	
+else
+	# FreeBSD 配置
+	php_etc_dir="/usr/local/etc/php${version_clean}"
+	
+	# 创建配置目录
+	mkdir -p "$php_etc_dir"
+	mkdir -p "$php_etc_dir/php-fpm.d"
+	
+	# 复制 php.ini
+	if [ -f "/usr/local/etc/php.ini-production" ]; then
+		cp "/usr/local/etc/php.ini-production" "$php_etc_dir/php.ini"
+	fi
+	
+	# 复制 php-fpm.conf
+	if [ -f "$HESTIA_INSTALL_DIR/php-fpm/php-fpm.conf" ]; then
+		cp -f "$HESTIA_INSTALL_DIR/php-fpm/php-fpm.conf" "$php_etc_dir/php-fpm.conf"
+		sed -i '' "s/fpm_v/$version_clean/g" "$php_etc_dir/php-fpm.conf"
+	fi
+	
+	# 复制 dummy pool
+	if [ -f "$HESTIA_INSTALL_DIR/php-fpm/dummy.conf" ]; then
+		cp -f "$HESTIA_INSTALL_DIR/php-fpm/dummy.conf" "$php_etc_dir/php-fpm.d/www.conf"
+		sed -i '' "s/%backend_version%/$version_clean/g" "$php_etc_dir/php-fpm.d/www.conf"
+	fi
+	
+	# 修改 php.ini
+	php_ini="$php_etc_dir/php.ini"
+	
+	sed -i '' "s/upload_max_filesize = 2M/upload_max_filesize = 100M/g" "$php_ini"
+	sed -i '' "s/post_max_size = 8M/post_max_size = 100M/g" "$php_ini"
+	sed -i '' "s/max_execution_time = 30/max_execution_time = 60/g" "$php_ini"
+	sed -i '' "s/;max_input_vars = 1000/max_input_vars = 4000/g" "$php_ini"
+	
+	# 禁用危险函数
+	sed -i '' "s/disable_functions =.*/disable_functions = pcntl_alarm,pcntl_fork,pcntl_waitpid,pcntl_wait,pcntl_wifexited,pcntl_wifstopped,pcntl_wifsignaled,pcntl_wifcontinued,pcntl_wexitstatus,pcntl_wtermsig,pcntl_wstopsig,pcntl_signal,pcntl_signal_dispatch,pcntl_get_last_error,pcntl_strerror,pcntl_sigprocmask,pcntl_sigwaitinfo,pcntl_sigtimedwait,pcntl_exec,pcntl_getpriority,pcntl_setpriority,exec,system,passthru,shell_exec,proc_open,popen/g" "$php_ini"
+	
+	# 启用 OPcache
+	sed -i '' "s/;opcache.enable=1/opcache.enable=1/g" "$php_ini"
+	sed -i '' "s/;opcache.memory_consumption=128/opcache.memory_consumption=512/g" "$php_ini"
+	sed -i '' "s/;opcache.max_accelerated_files=10000/opcache.max_accelerated_files=100000/g" "$php_ini"
+	
+	# 启用 php-fpm 服务
+	sysrc php_fpm_enable="YES"
 fi
 
-# Install backend template
-cp -f $HESTIA_INSTALL_DIR/php-fpm/multiphp.tpl \
-	$HESTIA/data/templates/web/php-fpm/PHP-${version/\./_}.tpl
+# 复制后端模板
+cp -f "$HESTIA_INSTALL_DIR/php-fpm/multiphp.tpl" "$tpl_file"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -213,5 +269,6 @@ cp -f $HESTIA_INSTALL_DIR/php-fpm/multiphp.tpl \
 # Logging
 $BIN/v-log-action "system" "Info" "System" "Installed PHP $version."
 log_event "$OK" "$ARGUMENTS"
+echo "PHP $version installation completed successfully!"
 
 exit

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list cron job
 # options: USER JOB [FORMAT]
 #
@@ -13,33 +13,38 @@
 # Argument definition
 user=$1
 job=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo "{"
-	echo -n '    "'$job'": {
-        "MIN": "'$MIN'",
-        "HOUR": "'$HOUR'",
-        "DAY": "'$DAY'",
-        "MONTH": "'$MONTH'",
-        "WDAY": "'$WDAY'",
-        "CMD": "'$CMD'",
-        "JOB": "'$JOB'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
-	echo
-	echo '}'
+	echo "    \"$job\": {"
+	echo "        \"MIN\": \"$MIN\","
+	echo "        \"HOUR\": \"$HOUR\","
+	echo "        \"DAY\": \"$DAY\","
+	echo "        \"MONTH\": \"$MONTH\","
+	echo "        \"WDAY\": \"$WDAY\","
+	echo "        \"CMD\": \"$(echo "$CMD" | sed 's/"/\\"/g')\","
+	echo "        \"JOB\": \"$JOB\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
+	echo "}"
 }
 
 # SHELL list function
@@ -57,13 +62,13 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -e "$MIN\t$HOUR\t$DAY\t$MONTH\t$WDAY\t$CMD\t$SUSPENDED\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$MIN" "$HOUR" "$DAY" "$MONTH" "$WDAY" "$CMD" "$SUSPENDED" "$TIME" "$DATE"
 }
 
 # CSV list function
 csv_list() {
 	echo "MIN,HOUR,DAY,MONTH,WDAY,CMD,SUSPENDED,TIME,DATE"
-	echo "$MIN,$HOUR,$DAY,$MONTH,$WDAY,\"$CMD\",$SUSPENDED,$TIME,$DATE'"
+	echo "$MIN,$HOUR,$DAY,$MONTH,$WDAY,\"$CMD\",$SUSPENDED,$TIME,$DATE"
 }
 
 #----------------------------------------------------------#
@@ -80,12 +85,13 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 # Defining config
-conf=$USER_DATA/cron.conf
+conf="$USER_DATA/cron.conf"
 
 # Checking job id
-cron_line=$(grep "JOB='$job'" $conf)
+cron_line=$(grep "JOB='$job'" "$conf")
 if [ -z "$cron_line" ]; then
-	check_result "$E_NOTEXIST" "cron job $job doesn't exist"
+	echo "Error: cron job $job doesn't exist"
+	exit 1
 fi
 
 # Parsing cron job

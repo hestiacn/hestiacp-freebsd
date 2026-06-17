@@ -16,8 +16,7 @@ domain=$2
 id=$3
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/remote.sh
@@ -50,7 +49,7 @@ if [ -z "$str" ]; then
 	pipe="$HESTIA/data/queue/dns-cluster.pipe"
 	queue_str=$(grep -n "$SCRIPT $1 $2 $3$" $pipe | cut -f1 -d: | head -n1)
 	if [ -n "$queue_str" ]; then
-		sed -i "$queue_str d" $pipe
+		sed -i "" "$queue_str d" $pipe
 	fi
 	exit
 fi
@@ -92,7 +91,7 @@ fi
 pipe="$HESTIA/data/queue/dns-cluster.pipe"
 str=$(grep -n "$SCRIPT $1 $2 $3$" $pipe | cut -f1 -d: | head -n1)
 if [ -n "$str" ]; then
-	sed -i "$str d" $pipe
+	sed -i "" "$str d" $pipe
 fi
 
 exit

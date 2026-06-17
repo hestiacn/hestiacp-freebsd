@@ -9,101 +9,99 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
 	objects=$(echo "$packages" | wc -l)
 	echo "{"
 	for package in $packages; do
 		PACKAGE=${package/.pkg/}
 		source_conf "$HESTIA/data/packages/$PACKAGE.pkg"
-		echo -n '    "'$PACKAGE'": {
-        "WEB_TEMPLATE": "'$WEB_TEMPLATE'",
-        "PROXY_TEMPLATE": "'$PROXY_TEMPLATE'",
-        "DNS_TEMPLATE": "'$DNS_TEMPLATE'",
-        "WEB_DOMAINS": "'$WEB_DOMAINS'",
-        "WEB_ALIASES": "'$WEB_ALIASES'",
-        "DNS_DOMAINS": "'$DNS_DOMAINS'",
-        "DNS_RECORDS": "'$DNS_RECORDS'",
-        "MAIL_DOMAINS": "'$MAIL_DOMAINS'",
-        "MAIL_ACCOUNTS": "'$MAIL_ACCOUNTS'",
-        "DATABASES": "'$DATABASES'",
-        "CRON_JOBS": "'$CRON_JOBS'",
-        "DISK_QUOTA": "'$DISK_QUOTA'",
-        "CPU_QUOTA":"'$CPU_QUOTA'",
-        "CPU_QUOTA_PERIOD":"'$CPU_QUOTA_PERIOD'",
-        "MEMORY_LIMIT":"'$MEMORY_LIMIT'",
-        "SWAP_LIMIT":"'$SWAP_LIMIT'",
-        "BANDWIDTH": "'$BANDWIDTH'",
-        "NS": "'$NS'",
-        "SHELL": "'$SHELL'",
-        "BACKUPS": "'$BACKUPS'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$PACKAGE\": {"
+		echo -n "\"WEB_TEMPLATE\": \"$WEB_TEMPLATE\", "
+		echo -n "\"PROXY_TEMPLATE\": \"$PROXY_TEMPLATE\", "
+		echo -n "\"DNS_TEMPLATE\": \"$DNS_TEMPLATE\", "
+		echo -n "\"WEB_DOMAINS\": \"$WEB_DOMAINS\", "
+		echo -n "\"WEB_ALIASES\": \"$WEB_ALIASES\", "
+		echo -n "\"DNS_DOMAINS\": \"$DNS_DOMAINS\", "
+		echo -n "\"DNS_RECORDS\": \"$DNS_RECORDS\", "
+		echo -n "\"MAIL_DOMAINS\": \"$MAIL_DOMAINS\", "
+		echo -n "\"MAIL_ACCOUNTS\": \"$MAIL_ACCOUNTS\", "
+		echo -n "\"DATABASES\": \"$DATABASES\", "
+		echo -n "\"CRON_JOBS\": \"$CRON_JOBS\", "
+		echo -n "\"DISK_QUOTA\": \"$DISK_QUOTA\", "
+		echo -n "\"CPU_QUOTA\": \"$CPU_QUOTA\", "
+		echo -n "\"CPU_QUOTA_PERIOD\": \"$CPU_QUOTA_PERIOD\", "
+		echo -n "\"MEMORY_LIMIT\": \"$MEMORY_LIMIT\", "
+		echo -n "\"SWAP_LIMIT\": \"$SWAP_LIMIT\", "
+		echo -n "\"BANDWIDTH\": \"$BANDWIDTH\", "
+		echo -n "\"NS\": \"$NS\", "
+		echo -n "\"SHELL\": \"$SHELL\", "
+		echo -n "\"BACKUPS\": \"$BACKUPS\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
+		i=$((i + 1))
 	done
-	echo '}'
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	echo "PKG   TPL   WEB   DNS   MAIL   DB   SHELL   DISK   CPU_QUOTA   CPU_QUOTA_PERIOD   MEMORY_LIMIT   SWAP_LIMIT   BW"
-	echo "---   ---   ---   ---   ----   --   -----   ----   ---------   ----------------   ------------   ----------   --"
+	printf "%-10s %-8s %-8s %-8s %-8s %-6s %-8s %-8s %-12s %-20s %-12s %-12s %-8s\n" "PKG" "TPL" "WEB" "DNS" "MAIL" "DB" "SHELL" "DISK" "CPU_QUOTA" "CPU_QUOTA_PERIOD" "MEMORY_LIMIT" "SWAP_LIMIT" "BW"
+	printf "%-10s %-8s %-8s %-8s %-8s %-6s %-8s %-8s %-12s %-20s %-12s %-12s %-8s\n" "---" "---" "---" "---" "----" "--" "-----" "----" "---------" "----------------" "------------" "----------" "--"
 	for package in $packages; do
-		source $HESTIA/data/packages/$package
 		PACKAGE=${package/.pkg/}
-		package_data=$(cat $HESTIA/data/packages/$package)
-		package_data=$(echo "$package_data" | sed -e 's/unlimited/unlim/g')
-		parse_object_kv_list "$package_data"
-		echo -n "$PACKAGE $WEB_TEMPLATE $WEB_DOMAINS $DNS_DOMAINS "
-		echo "$MAIL_DOMAINS $DATABASES $SHELL $DISK_QUOTA $CPU_QUOTA $CPU_QUOTA_PERIOD $MEMORY_LIMIT $SWAP_LIMIT $BANDWIDTH"
+		source_conf "$HESTIA/data/packages/$PACKAGE"
+		WEB_DOMAINS_DISP=${WEB_DOMAINS/unlimited/unlim}
+		DNS_DOMAINS_DISP=${DNS_DOMAINS/unlimited/unlim}
+		MAIL_DOMAINS_DISP=${MAIL_DOMAINS/unlimited/unlim}
+		DATABASES_DISP=${DATABASES/unlimited/unlim}
+		DISK_QUOTA_DISP=${DISK_QUOTA/unlimited/unlim}
+		BANDWIDTH_DISP=${BANDWIDTH/unlimited/unlim}
+		printf "%-10s %-8s %-8s %-8s %-8s %-6s %-8s %-8s %-12s %-20s %-12s %-12s %-8s\n" \
+			"$PACKAGE" "$WEB_TEMPLATE" "$WEB_DOMAINS_DISP" "$DNS_DOMAINS_DISP" \
+			"$MAIL_DOMAINS_DISP" "$DATABASES_DISP" "$SHELL" "$DISK_QUOTA_DISP" \
+			"$CPU_QUOTA" "$CPU_QUOTA_PERIOD" "$MEMORY_LIMIT" "$SWAP_LIMIT" "$BANDWIDTH_DISP"
 	done
 }
 
 # PLAIN list function
 plain_list() {
 	for package in $packages; do
-		source $HESTIA/data/packages/$package
 		PACKAGE=${package/.pkg/}
-		echo -ne "$PACKAGE\t$WEB_TEMPLATE\t$PROXY_TEMPLATE\t$DNS_TEMPLATE\t"
-		echo -ne "$WEB_DOMAINS\t$WEB_ALIASES\t$DNS_DOMAINS\t$DNS_RECORDS\t"
-		echo -ne "$MAIL_DOMAINS\t$MAIL_ACCOUNTS\t$DATABASES\t$CRON_JOBS\t"
-		echo -ne "$DISK_QUOTA\t$CPU_QUOTA\t$CPU_QUOTA_PERIOD\t$MEMORY_LIMIT\t$SWAP_LIMIT\t"
-		echo -e "$BANDWIDTH\t$NS\t$SHELL\t$BACKUPS\t$TIME\t$DATE"
+		source_conf "$HESTIA/data/packages/$PACKAGE"
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" "$PACKAGE" "$WEB_TEMPLATE" "$PROXY_TEMPLATE" "$DNS_TEMPLATE" "$WEB_DOMAINS" "$WEB_ALIASES" "$DNS_DOMAINS" "$DNS_RECORDS" "$MAIL_DOMAINS" "$MAIL_ACCOUNTS" "$DATABASES" "$CRON_JOBS" "$DISK_QUOTA" "$CPU_QUOTA" "$CPU_QUOTA_PERIOD" "$MEMORY_LIMIT" "$SWAP_LIMIT" "$BANDWIDTH" "$NS" "$SHELL" "$BACKUPS" "$TIME" "$DATE"
 	done
 }
 
 # CSV list function
 csv_list() {
-	echo -n "PACKAGE,WEB_TEMPLATE,PROXY_TEMPLATE,DNS_TEMPLATE,"
-	echo -n "WEB_DOMAINS,WEB_ALIASES,DNS_DOMAINS,DNS_RECORDS,"
-	echo -n "MAIL_DOMAINS,MAIL_ACCOUNTS,DATABASES,CRON_JOBS,"
-	echo -n "DISK_QUOTA,CPU_QUOTA,CPU_QUOTA_PERIOD,MEMORY_LIMIT,"
-	echo "SWAP_LIMIT,BANDWIDTH,NS,SHELL,BACKUPS,TIME,DATE"
+	echo "PACKAGE,WEB_TEMPLATE,PROXY_TEMPLATE,DNS_TEMPLATE,WEB_DOMAINS,WEB_ALIASES,DNS_DOMAINS,DNS_RECORDS,MAIL_DOMAINS,MAIL_ACCOUNTS,DATABASES,CRON_JOBS,DISK_QUOTA,CPU_QUOTA,CPU_QUOTA_PERIOD,MEMORY_LIMIT,SWAP_LIMIT,BANDWIDTH,NS,SHELL,BACKUPS,TIME,DATE"
 	for package in $packages; do
 		PACKAGE=${package/.pkg/}
-		echo -n "$PACKAGE,$WEB_TEMPLATE,$PROXY_TEMPLATE,$DNS_TEMPLATE,"
-		echo -n "$WEB_DOMAINS,$WEB_ALIASES,$DNS_DOMAINS,$DNS_RECORDS,"
-		echo -n "$MAIL_DOMAINS,$MAIL_ACCOUNTS,$DATABASES,$CRON_JOBS,"
-		echo -n "$DISK_QUOTA,$CPU_QUOTA,$CPU_QUOTA_PERIOD,$MEMORY_LIMIT,"
-		echo "$SWAP_LIMIT,$BANDWIDTH,\"$NS\",$SHELL,$BACKUPS,$TIME,$DATE"
+		source_conf "$HESTIA/data/packages/$PACKAGE"
+		echo "$PACKAGE,$WEB_TEMPLATE,$PROXY_TEMPLATE,$DNS_TEMPLATE,$WEB_DOMAINS,$WEB_ALIASES,$DNS_DOMAINS,$DNS_RECORDS,$MAIL_DOMAINS,$MAIL_ACCOUNTS,$DATABASES,$CRON_JOBS,$DISK_QUOTA,$CPU_QUOTA,$CPU_QUOTA_PERIOD,$MEMORY_LIMIT,$SWAP_LIMIT,$BANDWIDTH,\"$NS\",$SHELL,$BACKUPS,$TIME,$DATE"
 	done
 }
 
@@ -112,14 +110,24 @@ csv_list() {
 #----------------------------------------------------------#
 
 # Parsing packages
-packages=$(ls --sort=time $HESTIA/data/packages | grep .pkg)
+packages=$(ls --sort=time "$HESTIA/data/packages" 2>/dev/null | grep ".pkg")
+
+if [ -z "$packages" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No packages found" ;;
+		plain) ;;
+		csv) echo "PACKAGE,WEB_TEMPLATE,PROXY_TEMPLATE,DNS_TEMPLATE,WEB_DOMAINS,WEB_ALIASES,DNS_DOMAINS,DNS_RECORDS,MAIL_DOMAINS,MAIL_ACCOUNTS,DATABASES,CRON_JOBS,DISK_QUOTA,CPU_QUOTA,CPU_QUOTA_PERIOD,MEMORY_LIMIT,SWAP_LIMIT,BANDWIDTH,NS,SHELL,BACKUPS,TIME,DATE" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

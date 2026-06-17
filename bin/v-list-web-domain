@@ -13,49 +13,55 @@
 # Argument definition
 user=$1
 domain=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$DOMAIN'": {
-        "IP": "'$IP'",
-        "IP6": "'$IP6'",
-        "DOCUMENT_ROOT": "'$DOCROOT'",
-        "U_DISK": "'$U_DISK'",
-        "U_BANDWIDTH": "'$U_BANDWIDTH'",
-        "TPL": "'$TPL'",
-        "ALIAS": "'$ALIAS'",
-        "STATS": "'$STATS'",
-        "STATS_USER": "'$STATS_USER'",
-        "SSL": "'$SSL'",
-        "SSL_FORCE": "'$SSL_FORCE'",
-        "SSL_HSTS": "'$SSL_HSTS'",
-        "SSL_HOME": "'$SSL_HOME'",
-        "LETSENCRYPT": "'$LETSENCRYPT'",
-        "FTP_USER": "'$FTP_USER'",
-        "FTP_PATH": "'$FTP_PATH'",
-        "AUTH_USER": "'$AUTH_USER'",
-        "BACKEND": "'$BACKEND'",
-        "PROXY": "'$PROXY'",
-        "PROXY_EXT": "'$PROXY_EXT'",
-        "FASTCGI_CACHE": "'$FASTCGI_CACHE'",
-        "FASTCGI_DURATION": "'$FASTCGI_DURATION'",
-        "REDIRECT": "'$REDIRECT'",
-        "REDIRECT_CODE": "'$REDIRECT_CODE'",
-        "CUSTOM_DOCROOT": "'$CUSTOM_DOCROOT'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+	echo "    \"$DOMAIN\": {"
+	echo "        \"IP\": \"$IP\","
+	echo "        \"IP6\": \"$IP6\","
+	echo "        \"DOCUMENT_ROOT\": \"$DOCROOT\","
+	echo "        \"U_DISK\": \"$U_DISK\","
+	echo "        \"U_BANDWIDTH\": \"$U_BANDWIDTH\","
+	echo "        \"TPL\": \"$TPL\","
+	echo "        \"ALIAS\": \"$ALIAS\","
+	echo "        \"STATS\": \"$STATS\","
+	echo "        \"STATS_USER\": \"$STATS_USER\","
+	echo "        \"SSL\": \"$SSL\","
+	echo "        \"SSL_FORCE\": \"$SSL_FORCE\","
+	echo "        \"SSL_HSTS\": \"$SSL_HSTS\","
+	echo "        \"SSL_HOME\": \"$SSL_HOME\","
+	echo "        \"LETSENCRYPT\": \"$LETSENCRYPT\","
+	echo "        \"FTP_USER\": \"$FTP_USER\","
+	echo "        \"FTP_PATH\": \"$FTP_PATH\","
+	echo "        \"AUTH_USER\": \"$AUTH_USER\","
+	echo "        \"BACKEND\": \"$BACKEND\","
+	echo "        \"PROXY\": \"$PROXY\","
+	echo "        \"PROXY_EXT\": \"$PROXY_EXT\","
+	echo "        \"FASTCGI_CACHE\": \"$FASTCGI_CACHE\","
+	echo "        \"FASTCGI_DURATION\": \"$FASTCGI_DURATION\","
+	echo "        \"REDIRECT\": \"$REDIRECT\","
+	echo "        \"REDIRECT_CODE\": \"$REDIRECT_CODE\","
+	echo "        \"CUSTOM_DOCROOT\": \"$CUSTOM_DOCROOT\","
+	echo "        \"SUSPENDED\": \"$SUSPENDED\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -106,10 +112,10 @@ shell_list() {
 		echo "STATS_USER:       $STATS_USER"
 	fi
 	if [ -n "$FTP_USER" ]; then
-		echo "FTP_USER:         ${FTP_USER//,/, }"
+		echo "FTP_USER:         ${FTP_USER//,/ }"
 	fi
 	if [ -n "$FTP_PATH" ]; then
-		echo "FTP_PATH:         ${FTP_PATH}"
+		echo "FTP_PATH:         $FTP_PATH"
 	fi
 	if [ -n "$AUTH_USER" ]; then
 		echo "HTTP_AUTH:        $AUTH_USER"
@@ -123,21 +129,17 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$DOMAIN\t$IP\t$IP6\t$DOCROOT\t$U_DISK\t$U_BANDWIDTH\t$TPL\t"
-	echo -ne "$ALIAS\t$STATS\t$STATS_USER\t$SSL\t$SSL_FORCE\t$SSL_HSTS\t$SSL_HOME\t,$LETSENCRYPT"
-	echo -ne "$FTP_USER\t$FTP_PATH\t$AUTH_USER\t$BACKEND\t$PROXY\t"
-	echo -e "$PROXY_EXT\t$SUSPENDED\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$DOMAIN" "$IP" "$IP6" "$DOCROOT" "$U_DISK" "$U_BANDWIDTH" "$TPL" \
+		"$ALIAS" "$STATS" "$STATS_USER" "$SSL" "$SSL_FORCE" "$SSL_HSTS" \
+		"$SSL_HOME" "$LETSENCRYPT" "$FTP_USER" "$FTP_PATH" "$AUTH_USER" \
+		"$BACKEND" "$PROXY" "$PROXY_EXT" "$SUSPENDED" "$TIME" "$DATE"
 }
 
 # CSV list function
 csv_list() {
-	echo -n "DOMAIN,IP,IP6,DOCROOT,U_DISK,U_BANDWIDTH,TPL,ALIAS,STATS,STATS_USER,SSL,"
-	echo -n "SSL_FORCE,SSL_HSTS,SSL_HOME,LETSENCRYPT,FTP_USER,FTP_PATH,AUTH_USER,BACKEND,PROXY,PROXY_EXT,"
-	echo "SUSPENDED,TIME,DATE"
-	echo -n "$DOMAIN,$IP,$IP6,$DOCROOT,$U_DISK,$U_BANDWIDTH,$TPL,\"$ALIAS\",$STATS"
-	echo -n "\"$STATS_USER\",$SSL,$SSL_FORCE,$SSL_HSTS,$SSL_HOME,$LETSENCRYPT,\"$FTP_USER\",\"$FTP_PATH\","
-	echo -n "\"$AUTH_USER\",$BACKEND,$PROXY,\"$PROXY_EXT\",$SUSPENDED,$TIME,"
-	echo "$DATE"
+	echo "DOMAIN,IP,IP6,DOCROOT,U_DISK,U_BANDWIDTH,TPL,ALIAS,STATS,STATS_USER,SSL,SSL_FORCE,SSL_HSTS,SSL_HOME,LETSENCRYPT,FTP_USER,FTP_PATH,AUTH_USER,BACKEND,PROXY,PROXY_EXT,SUSPENDED,TIME,DATE"
+	echo "$DOMAIN,$IP,$IP6,$DOCROOT,$U_DISK,$U_BANDWIDTH,$TPL,\"$ALIAS\",$STATS,\"$STATS_USER\",$SSL,$SSL_FORCE,$SSL_HSTS,$SSL_HOME,$LETSENCRYPT,\"$FTP_USER\",\"$FTP_PATH\",\"$AUTH_USER\",$BACKEND,$PROXY,\"$PROXY_EXT\",$SUSPENDED,$TIME,$DATE"
 }
 
 #----------------------------------------------------------#
@@ -154,7 +156,7 @@ is_object_valid 'web' 'DOMAIN' "$domain"
 #----------------------------------------------------------#
 
 # Parsing domain
-parse_object_kv_list $(grep "DOMAIN='$domain'" $USER_DATA/web.conf)
+parse_object_kv_list $(grep "DOMAIN='$domain'" "$USER_DATA/web.conf")
 
 if [ -n "$CUSTOM_DOCROOT" ]; then
 	DOCROOT="$CUSTOM_DOCROOT"

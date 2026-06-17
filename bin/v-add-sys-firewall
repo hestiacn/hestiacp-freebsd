@@ -1,8 +1,9 @@
-#!/bin/bash
+#!/bin/sh
 # info: add system firewall
-# options: NONE
+# options: [TYPE]
 #
-# example: v-add-sys-firewall
+# example: v-add-sys-firewall pf
+# example: v-add-sys-firewall ipfw
 #
 # This function enables the system firewall.
 
@@ -10,9 +11,12 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+# Argument definition
+firewall_type=${1:-pf}
+
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -22,8 +26,26 @@ source_conf "$HESTIA/conf/hestia.conf"
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-if [ "$FIREWALL_SYSTEM" = 'iptables' ]; then
-	exit
+case "$firewall_type" in
+    pf|ipfw)
+        ;;
+    *)
+        echo "Error: Invalid firewall type. Valid options: pf, ipfw"
+        exit 1
+        ;;
+esac
+
+if [ "$FIREWALL_SYSTEM" = "$firewall_type" ]; then
+    echo "Firewall ($firewall_type) is already enabled."
+    exit 0
+fi
+if [ "$firewall_type" = "pf" ] && ! command -v pfctl > /dev/null 2>&1; then
+    echo "Error: PF is not available on this system."
+    exit 1
+fi
+if [ "$firewall_type" = "ipfw" ] && ! command -v ipfw > /dev/null 2>&1; then
+    echo "Error: IPFW is not available on this system."
+    exit 1
 fi
 
 # Perform verification if read-only mode is enabled
@@ -34,13 +56,21 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Adding default ruleset
-if [ -z "$(ls -A $HESTIA/data/firewall 2> /dev/null)" ]; then
-	cp -rf $HESTIA_COMMON_DIR/firewall $HESTIA/data/
-	rm -f $HESTIA/data/firewall/ipset/blacklist.sh $HESTIA/data/firewall/ipset/blacklist.ipv6.sh
+if [ -z "$(ls -A "$HESTIA/data/firewall" 2>/dev/null)" ]; then
+    cp -rf "$HESTIA_COMMON_DIR/firewall" "$HESTIA/data/"
+    rm -f "$HESTIA/data/firewall/ipset/blacklist.sh" "$HESTIA/data/firewall/ipset/blacklist.ipv6.sh"
 fi
 
-# Updating FIREWAL_SYSTEM value
-$BIN/v-change-sys-config-value "FIREWALL_SYSTEM" "iptables"
+# Set firewall system
+$BIN/v-change-sys-config-value "FIREWALL_SYSTEM" "$firewall_type"
+if [ "$firewall_type" = "pf" ]; then
+    sysrc pf_enable="YES" > /dev/null 2>&1
+    sysrc firewall_enable="NO" > /dev/null 2>&1
+else
+    sysrc firewall_enable="YES" > /dev/null 2>&1
+    sysrc firewall_type="$firewall_type" > /dev/null 2>&1
+    sysrc pf_enable="NO" > /dev/null 2>&1
+fi
 
 # Updating firewall rules
 $BIN/v-update-firewall
@@ -50,7 +80,7 @@ $BIN/v-update-firewall
 #----------------------------------------------------------#
 
 # Logging
-$BIN/v-log-action "system" "Info" "Firewall" "System firewall enabled."
+$BIN/v-log-action "system" "Info" "Firewall" "System firewall enabled (Type: $firewall_type)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete backup ftp server
 # options: [NONE]
 #
@@ -10,11 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Argument definition
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -32,7 +36,7 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Deleting host config
-rm -f $HESTIA/conf/restic.conf
+rm -f "$HESTIA/conf/restic.conf"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -44,4 +48,4 @@ $BIN/v-change-sys-config-value 'BACKUP_INCREMENTAL' 'no'
 $BIN/v-log-action "system" "Info" "Backup" "Removed remote backup host (Type: Restic)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

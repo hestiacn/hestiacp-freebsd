@@ -10,14 +10,17 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
-# Argument definition
-#format=${1-shell}
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -27,23 +30,36 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # Checking web system
 if [ -z "$WEB_SYSTEM" ]; then
-	exit
+	exit 0
 fi
 
 # Displaying proxy status
 if [ "$PROXY_SYSTEM" = 'nginx' ]; then
 	echo "<h2>$PROXY_SYSTEM STATUS</h2>" | tr '[:lower:]' '[:upper:]'
-	wget -qO- http://localhost:8084/
+	if command -v wget >/dev/null 2>&1; then
+		wget -qO- http://localhost:8084/
+	else
+		fetch -qo- http://localhost:8084/ 2>/dev/null
+	fi
 	echo "<br><br><br>"
 fi
 
 # Displaying web server status
 echo "<h2>$WEB_SYSTEM STATUS</h2>" | tr '[:lower:]' '[:upper:]'
 if [ "$WEB_SYSTEM" != 'nginx' ]; then
-	wget -qO- http://localhost:8081/server-status/ \
-		| egrep -v "html|DOCTYPE|h1>|title|head"
+	if command -v wget >/dev/null 2>&1; then
+		wget -qO- http://localhost:8081/server-status/ \
+			| grep -v -E "html|DOCTYPE|h1>|title|head"
+	else
+		fetch -q -o - http://localhost:8081/server-status/ \
+			| grep -v -E "html|DOCTYPE|h1>|title|head"
+	fi
 else
-	wget -qO- http://localhost:8084/
+	if command -v wget >/dev/null 2>&1; then
+		wget -qO- http://localhost:8084/
+	else
+		fetch -q -o - http://localhost:8084/
+	fi
 fi
 
 #----------------------------------------------------------#

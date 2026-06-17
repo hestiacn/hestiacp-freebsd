@@ -6,19 +6,29 @@
 #
 # This function reloads php interpreter configuration.
 
-restart=$1
-# For backward compatibility might change in the feature
-version=$2
-
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+# Argument definition
+restart=$1
+version=$2
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	SED_OPTS="-i"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	SED_OPTS="-i ''"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -26,8 +36,10 @@ send_email_report() {
 	email=$(grep CONTACT "$HESTIA/data/users/$ROOT_USER/user.conf")
 	email=$(echo "$email" | cut -f 2 -d "'")
 	subj="$(hostname): $WEB_BACKEND restart failed"
-	cat $tmpfile | $SENDMAIL -s "$subj" $email
-	[[ -f "$tmpfile" ]] && rm -f $tmpfile
+	cat "$tmpfile" | $SENDMAIL -s "$subj" "$email"
+	if [ -f "$tmpfile" ]; then
+		rm -f "$tmpfile"
+	fi
 }
 
 #----------------------------------------------------------#
@@ -43,6 +55,7 @@ if [ -n "$version" ]; then
 		exit "$E_INVALID"
 	fi
 fi
+
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
@@ -52,14 +65,14 @@ if [ -z "$WEB_BACKEND" ] || [ "$WEB_BACKEND" = 'remote' ]; then
 	exit
 fi
 
-if [ "$1" = "no" ]; then
+if [ "$restart" = "no" ]; then
 	exit
 fi
 
 # Schedule restart
-if [ "$1" = 'scheduled' ] || [ -z "$1" ] && [ "$SCHEDULED_RESTART" = 'yes' ]; then
-	sed -i "/\/$SCRIPT now/d" $HESTIA/data/queue/restart.pipe
-	echo "$BIN/$SCRIPT now" >> $HESTIA/data/queue/restart.pipe
+if [ "$restart" = 'scheduled' ] || { [ -z "$restart" ] && [ "$SCHEDULED_RESTART" = 'yes' ]; }; then
+	eval "sed $SED_OPTS \"/\/$SCRIPT now/d\" \"$HESTIA/data/queue/restart.pipe\""
+	echo "$BIN/$SCRIPT now" >> "$HESTIA/data/queue/restart.pipe"
 	exit
 fi
 
@@ -68,10 +81,22 @@ tmpfile=$(mktemp)
 if [ -z "$version" ]; then
 	# Substitute php-fpm service name formats
 	for version in $($BIN/v-list-sys-php plain); do
-		v_php="php$version-fpm"
-		if [ ! -f "/etc/php/${version}/fpm/pool.d/dummy.conf" ]; then
-			cp -f "$HESTIA_INSTALL_DIR/php-fpm/dummy.conf" "/etc/php/${version}/fpm/pool.d/"
-			sed -i "s/9999/99${version//./}/g" "/etc/php/${version}/fpm/pool.d/dummy.conf"
+		if [ "$OS" = "linux" ]; then
+			dummy_conf="/etc/php/${version}/fpm/pool.d/dummy.conf"
+			if [ ! -f "$dummy_conf" ]; then
+				cp -f "$HESTIA_INSTALL_DIR/php-fpm/dummy.conf" "/etc/php/${version}/fpm/pool.d/"
+				sed -i "s/9999/99${version//./}/g" "/etc/php/${version}/fpm/pool.d/dummy.conf"
+			fi
+			v_php="php$version-fpm"
+		else
+			version_clean=$(echo "$version" | tr -d '.')
+			dummy_conf="/usr/local/etc/php${version_clean}/php-fpm.d/dummy.conf"
+			if [ ! -f "$dummy_conf" ]; then
+				mkdir -p "/usr/local/etc/php${version_clean}/php-fpm.d"
+				cp -f "$HESTIA_INSTALL_DIR/php-fpm/dummy.conf" "$dummy_conf"
+				sed -i '' "s/9999/99${version_clean}/g" "$dummy_conf"
+			fi
+			v_php="php${version_clean}_fpm"
 		fi
 
 		$BIN/v-restart-service "$v_php" "$restart"
@@ -81,7 +106,12 @@ if [ -z "$version" ]; then
 		fi
 	done
 else
-	v_php="php$version-fpm"
+	if [ "$OS" = "linux" ]; then
+		v_php="php$version-fpm"
+	else
+		version_clean=$(echo "$version" | tr -d '.')
+		v_php="php${version_clean}_fpm"
+	fi
 	$BIN/v-restart-service "$v_php" "$restart"
 	if [ $? -ne 0 ]; then
 		send_email_report
@@ -91,12 +121,14 @@ fi
 
 # Update restart queue
 if [ -e "$HESTIA/data/queue/restart.pipe" ]; then
-	sed -i "/\/$SCRIPT now/d" $HESTIA/data/queue/restart.pipe
+	eval "sed $SED_OPTS \"/\/$SCRIPT now/d\" \"$HESTIA/data/queue/restart.pipe\""
 fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
-[[ -f "$tmpfile" ]] && rm -f $tmpfile
+if [ -f "$tmpfile" ]; then
+	rm -f "$tmpfile"
+fi
 exit

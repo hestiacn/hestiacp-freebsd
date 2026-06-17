@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: disable web domain stats authentication support
 # options: USER DOMAIN [RESTART]
 #
@@ -18,9 +18,15 @@ user=$1
 domain=$2
 restart=$3
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -53,9 +59,9 @@ rm -f "$stats_dir/.htaccess"
 
 # Deleting nginx auth config
 if [ "$WEB_SYSTEM" = 'nginx' ]; then
-	rm -f $stats_dir/auth.conf 2> /dev/null
-	$BIN/v-restart-web "$restart"
-	check_result $? "Web restart failed" > /dev/null
+    rm -f "$stats_dir/auth.conf" 2>/dev/null
+    $BIN/v-restart-web "$restart"
+    check_result $? "Web restart failed" > /dev/null
 fi
 
 #----------------------------------------------------------#
@@ -67,7 +73,7 @@ update_object_value 'web' 'DOMAIN' "$domain" '$STATS_USER' ''
 update_object_value 'web' 'DOMAIN' "$domain" '$STATS_CRYPT' ''
 
 # Logging
-$BIN/v-log-action "$user" "Info" "Web" "Web traffic analyzer password enabled (Domain: $domain)."
+$BIN/v-log-action "$user" "Info" "Web" "Web traffic analyzer password disabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

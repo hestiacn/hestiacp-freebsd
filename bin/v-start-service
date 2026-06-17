@@ -13,11 +13,19 @@
 # Argument definition
 service=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+	OS="linux"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+	OS="freebsd"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -33,18 +41,28 @@ is_format_valid 'service'
 #----------------------------------------------------------#
 
 if [ "$service" = "php-fpm" ]; then
+	service_list=""
 	for php_ver in $(multiphp_versions); do
-		service_list="${service_list} php${php_ver}-fpm"
+		if [ "$OS" = "freebsd" ]; then
+			version_clean=$(echo "$php_ver" | tr -d '.')
+			service_list="${service_list} php${version_clean}_fpm"
+		else
+			service_list="${service_list} php${php_ver}-fpm"
+		fi
 	done
 else
 	service_list="$service"
 fi
 
 for service in $service_list; do
-	if [ "$service" = "iptables" ]; then
+	if [ "$service" = "iptables" ] || [ "$service" = "pf" ] || [ "$service" = "ipfw" ]; then
 		$BIN/v-update-firewall
 	else
-		systemctl start "$service"
+		if [ "$OS" = "freebsd" ]; then
+			service "$service" start
+		else
+			systemctl start "$service"
+		fi
 		result=$?
 		if [ "$result" -ne 0 ]; then
 			$BIN/v-log-action "system" "Error" "System" "Service failed to start (Name: $service)."
@@ -52,7 +70,7 @@ for service in $service_list; do
 			$BIN/v-log-action "system" "Info" "System" "Service started (Name: $service)."
 		fi
 	fi
-	check_result $? "ERROR: $service start failed" "$E_RESTART"
+	check_result "$?" "ERROR: $service start failed" "$E_RESTART"
 done
 
 #----------------------------------------------------------#

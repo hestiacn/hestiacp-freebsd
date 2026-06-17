@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list system configuration
 # options: [FORMAT]
 #
@@ -11,119 +11,123 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
-# shellcheck source=/usr/local/hestia/conf/hestia.conf
-source $HESTIA/conf/hestia.conf
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
 	echo '{
-		"config": {
-			"ANTISPAM_SYSTEM": "'$ANTISPAM_SYSTEM'",
-			"ANTIVIRUS_SYSTEM": "'$ANTIVIRUS_SYSTEM'",
-			"API": "'$API'",
-			"API_ALLOWED_IP": "'$API_ALLOWED_IP'",
-			"API_SYSTEM": "'$API_SYSTEM'",
-			"APP_NAME": "'$APP_NAME'",
-			"BACKEND_PORT": "'$BACKEND_PORT'",
-			"BACKUP": "'$BACKUP'",
-			"BACKUP_GZIP": "'$BACKUP_GZIP'",
-            "BACKUP_INCREMENTAL": "'$BACKUP_INCREMENTAL'",
-			"BACKUP_MODE": "'$BACKUP_MODE'",
-			"BACKUP_SYSTEM": "'$BACKUP_SYSTEM'",
-			"CRON_SYSTEM": "'$CRON_SYSTEM'",
-			"DB_PGA_ALIAS": "'$DB_PGA_ALIAS'",
-			"DB_PMA_ALIAS": "'$DB_PMA_ALIAS'",
-			"DB_SYSTEM": "'$DB_SYSTEM'",
-			"DEBUG_MODE": "'$DEBUG_MODE'",
-			"DEMO_MODE": "'$DEMO_MODE'",
-			"DISABLE_IP_CHECK": "'$DISABLE_IP_CHECK'",
-			"DISK_QUOTA": "'$DISK_QUOTA'",
-			"RESOURCES_LIMIT": "'$RESOURCES_LIMIT'",
-			"DNS_CLUSTER": "'$DNS_CLUSTER'",
-			"DNS_CLUSTER_SYSTEM": "'$DNS_CLUSTER_SYSTEM'",
-			"DNS_SYSTEM": "'$DNS_SYSTEM'",
-			"ENFORCE_SUBDOMAIN_OWNERSHIP": "'$ENFORCE_SUBDOMAIN_OWNERSHIP'",
-			"FILE_MANAGER": "'$FILE_MANAGER'",
-			"FIREWALL_EXTENSION": "'$FIREWALL_EXTENSION'",
-			"FIREWALL_SYSTEM": "'$FIREWALL_SYSTEM'",
-			"FROM_EMAIL": "'$FROM_EMAIL'",
-			"FROM_NAME": "'$FROM_NAME'",
-			"FTP_SYSTEM": "'$FTP_SYSTEM'",
-			"HIDE_DOCS": "'$HIDE_DOCS'",
-			"IMAP_SYSTEM": "'$IMAP_SYSTEM'",
-			"INACTIVE_SESSION_TIMEOUT": "'$INACTIVE_SESSION_TIMEOUT'",
-			"LANGUAGE": "'$LANGUAGE'",
-			"LOGIN_STYLE": "'$LOGIN_STYLE'",
-			"MAIL_SYSTEM": "'$MAIL_SYSTEM'",
-			"PHPMYADMIN_KEY": "'$PHPMYADMIN_KEY'",
-			"PLUGIN_APP_INSTALLER": "'$PLUGIN_APP_INSTALLER'",
-			"PLUGIN_FILE_MANAGER": "'$PLUGIN_FILE_MANAGER'",
-			"POLICY_BACKUP_SUSPENDED_USERS": "'$POLICY_BACKUP_SUSPENDED_USERS'",
-			"POLICY_CSRF_STRICTNESS": "'$POLICY_CSRF_STRICTNESS'",
-			"POLICY_SYNC_ERROR_DOCUMENTS": "'$POLICY_SYNC_ERROR_DOCUMENTS'",
-			"POLICY_SYNC_SKELETON": "'$POLICY_SYNC_SKELETON'",
-			"POLICY_SYSTEM_ENABLE_BACON": "'$POLICY_SYSTEM_ENABLE_BACON'",
-			"POLICY_SYSTEM_HIDE_ADMIN": "'$POLICY_SYSTEM_HIDE_ADMIN'",
-			"POLICY_SYSTEM_HIDE_SERVICES": "'$POLICY_SYSTEM_HIDE_SERVICES'",
-			"POLICY_SYSTEM_PASSWORD_RESET": "'$POLICY_SYSTEM_PASSWORD_RESET'",
-			"POLICY_SYSTEM_PROTECTED_ADMIN": "'$POLICY_SYSTEM_PROTECTED_ADMIN'",
-			"POLICY_USER_CHANGE_THEME": "'$POLICY_USER_CHANGE_THEME'",
-			"POLICY_USER_DELETE_LOGS": "'$POLICY_USER_DELETE_LOGS'",
-			"POLICY_USER_EDIT_DETAILS": "'$POLICY_USER_EDIT_DETAILS'",
-			"POLICY_USER_EDIT_DNS_TEMPLATES": "'$POLICY_USER_EDIT_DNS_TEMPLATES'",
-			"POLICY_USER_EDIT_WEB_TEMPLATES": "'$POLICY_USER_EDIT_WEB_TEMPLATES'",
-			"POLICY_USER_VIEW_LOGS": "'$POLICY_USER_VIEW_LOGS'",
-			"POLICY_USER_VIEW_SUSPENDED": "'$POLICY_USER_VIEW_SUSPENDED'",
-			"PROXY_PORT": "'$PROXY_PORT'",
-			"PROXY_SSL_PORT": "'$PROXY_SSL_PORT'",
-			"PROXY_SYSTEM": "'$PROXY_SYSTEM'",
-			"RELEASE_BRANCH": "'$RELEASE_BRANCH'",
-			"REPOSITORY": "'$REPOSITORY'",
-      		"ROOT_USER": "'$ROOT_USER'",
-			"SERVER_SMTP_ADDR": "'$SERVER_SMTP_ADDR'",
-			"SERVER_SMTP_HOST": "'$SERVER_SMTP_HOST'",
-			"SERVER_SMTP_PASSWD": "'$SERVER_SMTP_PASSWD'",
-			"SERVER_SMTP_PORT": "'$SERVER_SMTP_PORT'",
-			"SERVER_SMTP_SECURITY": "'$SERVER_SMTP_SECURITY'",
-			"SERVER_SMTP_USER": "'$SERVER_SMTP_USER'",
-			"SMTP_RELAY": "'$SMTP_RELAY'",
-			"SMTP_RELAY_HOST": "'$SMTP_RELAY_HOST'",
-			"SMTP_RELAY_PORT": "'$SMTP_RELAY_PORT'",
-			"SMTP_RELAY_USER": "'$SMTP_RELAY_USER'",
-			"STATS_SYSTEM": "'$STATS_SYSTEM'",
-			"SUBJECT_EMAIL": "'$SUBJECT_EMAIL'",
-			"SUPPORT_DNSSEC": "'$SUPPORT_DNSSEC'",
-			"THEME": "'$THEME'",
-			"TITLE": "'$TITLE'",
-			"UPDATE_AVAILABLE": "'$UPDATE_AVAILABLE'",
-			"UPGRADE_SEND_EMAIL": "'$UPGRADE_SEND_EMAIL'",
-			"UPGRADE_SEND_EMAIL_LOG": "'$UPGRADE_SEND_EMAIL_LOG'",
-			"USE_SERVER_SMTP": "'$USE_SERVER_SMTP'",
-			"VERSION": "'$VERSION'",
-			"WEBMAIL_ALIAS": "'$WEBMAIL_ALIAS'",
-			"WEBMAIL_SYSTEM": "'$WEBMAIL_SYSTEM'",
-			"WEB_BACKEND": "'$WEB_BACKEND'",
-			"WEB_PORT": "'$WEB_PORT'",
-			"WEB_RGROUPS": "'$WEB_RGROUPS'",
-			"WEB_SSL": "'$WEB_SSL'",
-			"WEB_SSL_PORT": "'$WEB_SSL_PORT'",
-			"WEB_SYSTEM": "'$WEB_SYSTEM'",
-			"WEB_TERMINAL": "'$WEB_TERMINAL'",
-			"WEB_TERMINAL_PORT": "'$WEB_TERMINAL_PORT'"
-		}
-	}'
+	"config": {
+		"ANTISPAM_SYSTEM": "'"$ANTISPAM_SYSTEM"'",
+		"ANTIVIRUS_SYSTEM": "'"$ANTIVIRUS_SYSTEM"'",
+		"API": "'"$API"'",
+		"API_ALLOWED_IP": "'"$API_ALLOWED_IP"'",
+		"API_SYSTEM": "'"$API_SYSTEM"'",
+		"APP_NAME": "'"$APP_NAME"'",
+		"BACKEND_PORT": "'"$BACKEND_PORT"'",
+		"BACKUP": "'"$BACKUP"'",
+		"BACKUP_GZIP": "'"$BACKUP_GZIP"'",
+		"BACKUP_INCREMENTAL": "'"$BACKUP_INCREMENTAL"'",
+		"BACKUP_MODE": "'"$BACKUP_MODE"'",
+		"BACKUP_SYSTEM": "'"$BACKUP_SYSTEM"'",
+		"CRON_SYSTEM": "'"$CRON_SYSTEM"'",
+		"DB_PGA_ALIAS": "'"$DB_PGA_ALIAS"'",
+		"DB_PMA_ALIAS": "'"$DB_PMA_ALIAS"'",
+		"DB_SYSTEM": "'"$DB_SYSTEM"'",
+		"DEBUG_MODE": "'"$DEBUG_MODE"'",
+		"DEMO_MODE": "'"$DEMO_MODE"'",
+		"DISABLE_IP_CHECK": "'"$DISABLE_IP_CHECK"'",
+		"DISK_QUOTA": "'"$DISK_QUOTA"'",
+		"RESOURCES_LIMIT": "'"$RESOURCES_LIMIT"'",
+		"DNS_CLUSTER": "'"$DNS_CLUSTER"'",
+		"DNS_CLUSTER_SYSTEM": "'"$DNS_CLUSTER_SYSTEM"'",
+		"DNS_SYSTEM": "'"$DNS_SYSTEM"'",
+		"ENFORCE_SUBDOMAIN_OWNERSHIP": "'"$ENFORCE_SUBDOMAIN_OWNERSHIP"'",
+		"FILE_MANAGER": "'"$FILE_MANAGER"'",
+		"FIREWALL_EXTENSION": "'"$FIREWALL_EXTENSION"'",
+		"FIREWALL_SYSTEM": "'"$FIREWALL_SYSTEM"'",
+		"FROM_EMAIL": "'"$FROM_EMAIL"'",
+		"FROM_NAME": "'"$FROM_NAME"'",
+		"FTP_SYSTEM": "'"$FTP_SYSTEM"'",
+		"HIDE_DOCS": "'"$HIDE_DOCS"'",
+		"IMAP_SYSTEM": "'"$IMAP_SYSTEM"'",
+		"INACTIVE_SESSION_TIMEOUT": "'"$INACTIVE_SESSION_TIMEOUT"'",
+		"LANGUAGE": "'"$LANGUAGE"'",
+		"LOGIN_STYLE": "'"$LOGIN_STYLE"'",
+		"MAIL_SYSTEM": "'"$MAIL_SYSTEM"'",
+		"PHPMYADMIN_KEY": "'"$PHPMYADMIN_KEY"'",
+		"PLUGIN_APP_INSTALLER": "'"$PLUGIN_APP_INSTALLER"'",
+		"PLUGIN_FILE_MANAGER": "'"$PLUGIN_FILE_MANAGER"'",
+		"POLICY_BACKUP_SUSPENDED_USERS": "'"$POLICY_BACKUP_SUSPENDED_USERS"'",
+		"POLICY_CSRF_STRICTNESS": "'"$POLICY_CSRF_STRICTNESS"'",
+		"POLICY_SYNC_ERROR_DOCUMENTS": "'"$POLICY_SYNC_ERROR_DOCUMENTS"'",
+		"POLICY_SYNC_SKELETON": "'"$POLICY_SYNC_SKELETON"'",
+		"POLICY_SYSTEM_ENABLE_BACON": "'"$POLICY_SYSTEM_ENABLE_BACON"'",
+		"POLICY_SYSTEM_HIDE_ADMIN": "'"$POLICY_SYSTEM_HIDE_ADMIN"'",
+		"POLICY_SYSTEM_HIDE_SERVICES": "'"$POLICY_SYSTEM_HIDE_SERVICES"'",
+		"POLICY_SYSTEM_PASSWORD_RESET": "'"$POLICY_SYSTEM_PASSWORD_RESET"'",
+		"POLICY_SYSTEM_PROTECTED_ADMIN": "'"$POLICY_SYSTEM_PROTECTED_ADMIN"'",
+		"POLICY_USER_CHANGE_THEME": "'"$POLICY_USER_CHANGE_THEME"'",
+		"POLICY_USER_DELETE_LOGS": "'"$POLICY_USER_DELETE_LOGS"'",
+		"POLICY_USER_EDIT_DETAILS": "'"$POLICY_USER_EDIT_DETAILS"'",
+		"POLICY_USER_EDIT_DNS_TEMPLATES": "'"$POLICY_USER_EDIT_DNS_TEMPLATES"'",
+		"POLICY_USER_EDIT_WEB_TEMPLATES": "'"$POLICY_USER_EDIT_WEB_TEMPLATES"'",
+		"POLICY_USER_VIEW_LOGS": "'"$POLICY_USER_VIEW_LOGS"'",
+		"POLICY_USER_VIEW_SUSPENDED": "'"$POLICY_USER_VIEW_SUSPENDED"'",
+		"PROXY_PORT": "'"$PROXY_PORT"'",
+		"PROXY_SSL_PORT": "'"$PROXY_SSL_PORT"'",
+		"PROXY_SYSTEM": "'"$PROXY_SYSTEM"'",
+		"RELEASE_BRANCH": "'"$RELEASE_BRANCH"'",
+		"REPOSITORY": "'"$REPOSITORY"'",
+		"ROOT_USER": "'"$ROOT_USER"'",
+		"SERVER_SMTP_ADDR": "'"$SERVER_SMTP_ADDR"'",
+		"SERVER_SMTP_HOST": "'"$SERVER_SMTP_HOST"'",
+		"SERVER_SMTP_PASSWD": "'"$SERVER_SMTP_PASSWD"'",
+		"SERVER_SMTP_PORT": "'"$SERVER_SMTP_PORT"'",
+		"SERVER_SMTP_SECURITY": "'"$SERVER_SMTP_SECURITY"'",
+		"SERVER_SMTP_USER": "'"$SERVER_SMTP_USER"'",
+		"SMTP_RELAY": "'"$SMTP_RELAY"'",
+		"SMTP_RELAY_HOST": "'"$SMTP_RELAY_HOST"'",
+		"SMTP_RELAY_PORT": "'"$SMTP_RELAY_PORT"'",
+		"SMTP_RELAY_USER": "'"$SMTP_RELAY_USER"'",
+		"STATS_SYSTEM": "'"$STATS_SYSTEM"'",
+		"SUBJECT_EMAIL": "'"$SUBJECT_EMAIL"'",
+		"SUPPORT_DNSSEC": "'"$SUPPORT_DNSSEC"'",
+		"THEME": "'"$THEME"'",
+		"TITLE": "'"$TITLE"'",
+		"UPDATE_AVAILABLE": "'"$UPDATE_AVAILABLE"'",
+		"UPGRADE_SEND_EMAIL": "'"$UPGRADE_SEND_EMAIL"'",
+		"UPGRADE_SEND_EMAIL_LOG": "'"$UPGRADE_SEND_EMAIL_LOG"'",
+		"USE_SERVER_SMTP": "'"$USE_SERVER_SMTP"'",
+		"VERSION": "'"$VERSION"'",
+		"WEBMAIL_ALIAS": "'"$WEBMAIL_ALIAS"'",
+		"WEBMAIL_SYSTEM": "'"$WEBMAIL_SYSTEM"'",
+		"WEB_BACKEND": "'"$WEB_BACKEND"'",
+		"WEB_PORT": "'"$WEB_PORT"'",
+		"WEB_RGROUPS": "'"$WEB_RGROUPS"'",
+		"WEB_SSL": "'"$WEB_SSL"'",
+		"WEB_SSL_PORT": "'"$WEB_SSL_PORT"'",
+		"WEB_SYSTEM": "'"$WEB_SYSTEM"'",
+		"WEB_TERMINAL": "'"$WEB_TERMINAL"'",
+		"WEB_TERMINAL_PORT": "'"$WEB_TERMINAL_PORT"'"
+	}
+}'
 }
 
-# Shell list
+# Shell list function
 shell_list() {
 	if [ -n "$WEB_SYSTEM" ]; then
 		echo "Web Server:                       $WEB_SYSTEM:$WEB_PORT ($WEB_RGROUPS)"
@@ -137,21 +141,21 @@ shell_list() {
 		echo "Proxy SSL:                        $PROXY_SYSTEM:$PROXY_SSL_PORT"
 	fi
 	if [ -n "$STATS_SYSTEM" ]; then
-		echo "Statistics Engine:                ${STATS_SYSTEM//,/, }"
+		echo "Statistics Engine:                $(echo "$STATS_SYSTEM" | tr ',' ', ')"
 	fi
 	if [ -n "$FTP_SYSTEM" ]; then
 		echo "FTP Server:                       $FTP_SYSTEM"
 	fi
 	if [ -n "$MAIL_SYSTEM" ]; then
-		echo -n "Mail Server:                      $MAIL_SYSTEM"
+		printf "Mail Server:                      $MAIL_SYSTEM"
 		if [ -n "$IMAP_SYSTEM" ]; then
-			echo -n " + $IMAP_SYSTEM"
+			printf " + $IMAP_SYSTEM"
 		fi
 		if [ -n "$ANTIVIRUS_SYSTEM" ]; then
-			echo -n " + $ANTIVIRUS_SYSTEM"
+			printf " + $ANTIVIRUS_SYSTEM"
 		fi
 		if [ -n "$ANTISPAM_SYSTEM" ]; then
-			echo -n " + $ANTISPAM_SYSTEM"
+			printf " + $ANTISPAM_SYSTEM"
 		fi
 		echo
 		if [ -n "$WEBMAIL_ALIAS" ]; then
@@ -159,7 +163,7 @@ shell_list() {
 		fi
 	fi
 	if [ -n "$DB_SYSTEM" ]; then
-		echo "Database:                         ${DB_SYSTEM//,/, }"
+		echo "Database:                         $(echo "$DB_SYSTEM" | tr ',' ', ')"
 		if [ -n "$DB_PMA_ALIAS" ]; then
 			echo "phpMyAdmin Alias:                 $DB_PMA_ALIAS"
 		fi
@@ -168,9 +172,9 @@ shell_list() {
 		fi
 	fi
 	if [ -n "$DNS_SYSTEM" ]; then
-		echo -n "DNS Server:                       $DNS_SYSTEM"
+		printf "DNS Server:                       $DNS_SYSTEM"
 		if [ -n "$DNS_CLUSTER" ]; then
-			echo -n " (cluster)"
+			printf " (cluster)"
 		fi
 		echo
 	fi
@@ -178,21 +182,21 @@ shell_list() {
 		echo "CRON daemon:                      $CRON_SYSTEM"
 	fi
 	if [ -n "$FIREWALL_SYSTEM" ]; then
-		echo -n "Firewall:                         $FIREWALL_SYSTEM"
+		printf "Firewall:                         $FIREWALL_SYSTEM"
 		if [ -n "$FIREWALL_EXTENSION" ]; then
-			echo -n "+ $FIREWALL_EXTENSION"
+			printf "+ $FIREWALL_EXTENSION"
 		fi
 		echo
 	fi
 	if [ -n "$BACKUP_SYSTEM" ]; then
-		echo "Backups:                          ${BACKUP_SYSTEM//,/, }"
+		echo "Backups:                          $(echo "$BACKUP_SYSTEM" | tr ',' ', ')"
 		echo "Backup Directory:                 $BACKUP"
 	fi
 	if [ -n "$DISK_QUOTA" ]; then
 		echo "Disk Quota enabled:               $DISK_QUOTA"
 	fi
 	if [ -n "$RESOURCES_LIMIT" ]; then
-		echo "Resource limit with cgroup enabled:               $RESOURCES_LIMIT"
+		echo "Resource limit with cgroup enabled: $RESOURCES_LIMIT"
 	fi
 	if [ -n "$LANGUAGE" ] && [ "$LANGUAGE" != 'en' ]; then
 		echo "System Language:                  $LANGUAGE"
@@ -205,81 +209,53 @@ shell_list() {
 		echo "File Manager enabled:             $FILE_MANAGER"
 	fi
 	if [ -n "$API" ]; then
-		echo "API enabled:             $API"
-		echo "API allowed IP's:             $API_ALLOWED_IP"
-
+		echo "API enabled:                      $API"
+		echo "API allowed IP's:                 $API_ALLOWED_IP"
 	fi
-
 	if [ -n "$SMTP_RELAY" ] && [ "$SMTP_RELAY" != 'false' ]; then
-		echo "SMTP Relay enabled:                $SMTP_RELAY"
-		echo "SMTP Relay Server:                 $SMTP_RELAY_HOST"
-		echo "SMTP Relay Port:                   $SMTP_RELAY_PORT"
-		echo "SMTP Relay User:                   $SMTP_RELAY_USER"
+		echo "SMTP Relay enabled:               $SMTP_RELAY"
+		echo "SMTP Relay Server:                $SMTP_RELAY_HOST"
+		echo "SMTP Relay Port:                  $SMTP_RELAY_PORT"
+		echo "SMTP Relay User:                  $SMTP_RELAY_USER"
 	fi
-
-	echo "SMTP Server Account enabled:       $USE_SERVER_SMTP"
-
+	echo "SMTP Server Account enabled:      $USE_SERVER_SMTP"
 	if [ -n "$USE_SERVER_SMTP" ] && [ "$USE_SERVER_SMTP" != 'false' ]; then
-		echo "SMTP Server Account Host:          $SERVER_SMTP_HOST"
-		echo "SMTP Server Account Port:          $SERVER_SMTP_PORT"
-		echo "SMTP Server Account Security:      $SERVER_SMTP_SECURITY"
-		echo "SMTP Server Account Username:      $SERVER_SMTP_USER"
-		echo "SMTP Server Account Password:      $SERVER_SMTP_PASSWD"
-		echo "SMTP Server Account Address:       $SERVER_SMTP_ADDR"
+		echo "SMTP Server Account Host:         $SERVER_SMTP_HOST"
+		echo "SMTP Server Account Port:         $SERVER_SMTP_PORT"
+		echo "SMTP Server Account Security:     $SERVER_SMTP_SECURITY"
+		echo "SMTP Server Account Username:     $SERVER_SMTP_USER"
+		echo "SMTP Server Account Password:     $SERVER_SMTP_PASSWD"
+		echo "SMTP Server Account Address:      $SERVER_SMTP_ADDR"
 	fi
-
 	echo "Release Branch:                   $RELEASE_BRANCH"
 	echo "Debug Mode:                       $DEBUG_MODE"
 	echo "Theme:                            $THEME"
 	echo "Restricted Admin Access:          $POLICY_SYSTEM_PROTECTED_ADMIN"
-	echo "Hide System Administator:         $POLICY_SYSTEM_HIDE_ADMIN"
+	echo "Hide System Administrator:        $POLICY_SYSTEM_HIDE_ADMIN"
 	echo "Updates: Notify by email:         $UPGRADE_SEND_EMAIL"
 	echo "Updates: Email install log:       $UPGRADE_SEND_EMAIL_LOG"
 }
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$WEB_SYSTEM\t$WEB_RGROUPS\t$WEB_PORT\t$WEB_SSL\t"
-	echo -ne "$WEB_SSL_PORT\t$WEB_BACKEND\t$PROXY_SYSTEM\t$PROXY_PORT\t"
-	echo -ne "$PROXY_SSL_PORT\t$FTP_SYSTEM\t$MAIL_SYSTEM\t$IMAP_SYSTEM\t"
-	echo -ne "$ANTIVIRUS_SYSTEM\t$ANTISPAM_SYSTEM\t$DB_SYSTEM\t"
-	echo -ne "$DNS_SYSTEM\t$DNS_CLUSTER\t$STATS_SYSTEM\t$BACKUP_SYSTEM\t"
-	echo -ne "$CRON_SYSTEM\t$DISK_QUOTA\t$RESOURCES_LIMIT\t$FIREWALL_SYSTEM\t$FIREWALL_EXTENSION\t"
-	echo -ne "$FILE_MANAGER\t$REPOSITORY\t$VERSION\t$DEMO_MODE\t$RELEASE_BRANCH\t"
-	echo -ne "$SMTP_RELAY_HOST\t$SMTP_RELAY_PORT\t$SMTP_RELAY_USER\t"
-	echo -ne "$UPGRADE_SEND_EMAIL\t$UPGRADE_SEND_EMAIL_LOG\t$THEME\t$LANGUAGE\t$BACKUP_GZIP\t"
-	echo -ne "$BACKUP\t$WEBMAIL_ALIAS\t$DB_PMA_URL\t$DB_PGA_URL\t\t$DEBUG_MODE\t$API\t$API_ALLOWED_IP"
-	echo -e "$POLICY_SYSTEM_PROTECTED_ADMIN\t$POLICY_SYSTEM_HIDE_ADMIN"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$WEB_SYSTEM" "$WEB_RGROUPS" "$WEB_PORT" "$WEB_SSL" \
+		"$WEB_SSL_PORT" "$WEB_BACKEND" "$PROXY_SYSTEM" "$PROXY_PORT" \
+		"$PROXY_SSL_PORT" "$FTP_SYSTEM" "$MAIL_SYSTEM" "$IMAP_SYSTEM" \
+		"$ANTIVIRUS_SYSTEM" "$ANTISPAM_SYSTEM" "$DB_SYSTEM" \
+		"$DNS_SYSTEM" "$DNS_CLUSTER" "$STATS_SYSTEM" "$BACKUP_SYSTEM" \
+		"$CRON_SYSTEM" "$DISK_QUOTA" "$RESOURCES_LIMIT" "$FIREWALL_SYSTEM" "$FIREWALL_EXTENSION" \
+		"$FILE_MANAGER" "$REPOSITORY" "$VERSION" "$DEMO_MODE" "$RELEASE_BRANCH" \
+		"$SMTP_RELAY_HOST" "$SMTP_RELAY_PORT" "$SMTP_RELAY_USER" \
+		"$UPGRADE_SEND_EMAIL" "$UPGRADE_SEND_EMAIL_LOG" "$THEME" "$LANGUAGE" "$BACKUP_GZIP" \
+		"$BACKUP" "$WEBMAIL_ALIAS" "$DB_PMA_URL" "$DB_PGA_URL" "$DEBUG_MODE" "$API" "$API_ALLOWED_IP" \
+		"$POLICY_SYSTEM_PROTECTED_ADMIN" "$POLICY_SYSTEM_HIDE_ADMIN"
 }
 
-# CSV list
+# CSV list function
 csv_list() {
-	echo -n "'WEB_SYSTEM','WEB_RGROUPS','WEB_PORT','WEB_SSL',"
-	echo -n "'WEB_SSL_PORT','WEB_BACKEND','PROXY_SYSTEM','PROXY_PORT',"
-	echo -n "'PROXY_SSL_PORT','FTP_SYSTEM','MAIL_SYSTEM','IMAP_SYSTEM',"
-	echo -n "'ANTIVIRUS_SYSTEM','ANTISPAM_SYSTEM','DB_SYSTEM',"
-	echo -n "'DNS_SYSTEM','DNS_CLUSTER','STATS_SYSTEM','BACKUP_SYSTEM',"
-	echo -n "'CRON_SYSTEM','DISK_QUOTA','RESOURCES_LIMIT','FIREWALL_SYSTEM',"
-	echo -n "'FIREWALL_EXTENSION','FILE_MANAGER','REPOSITORY',"
-	echo -n "'VERSION','DEMO_MODE','RELEASE_BRANCH',"
-	echo -n "'SMTP_RELAY','SMTP_RELAY_HOST','SMTP_RELAY_PORT','SMTP_RELAY_USER',"
-	echo -n "'UPGRADE_SEND_EMAIL','UPGRADE_SEND_EMAIL_LOG',"
-	echo -n "'THEME', 'LANGUAGE','BACKUP_GZIP','BACKUP','WEBMAIL_ALIAS',"
-	echo -n "'DB_PMA_ALIAS','DB_PGA_ALIAS','DEBUG_MODE','API','API_ALLOWED_IP',"
-	echo -n "'POLICY_SYSTEM_PROTECTED_ADMIN',POLICY_SYSTEM_HIDE_ADMIN'"
-	echo
-	echo -n "'$WEB_SYSTEM','$WEB_RGROUPS','$WEB_PORT','$WEB_SSL',"
-	echo -n "'$WEB_SSL_PORT','$WEB_BACKEND','$PROXY_SYSTEM','$PROXY_PORT',"
-	echo -n "'$PROXY_SSL_PORT','$FTP_SYSTEM','$MAIL_SYSTEM','$IMAP_SYSTEM',"
-	echo -n "'$ANTIVIRUS_SYSTEM','$ANTISPAM_SYSTEM','$DB_SYSTEM','$DNS_SYSTEM',"
-	echo -n "'$DNS_CLUSTER','$STATS_SYSTEM','$BACKUP_SYSTEM','$CRON_SYSTEM',"
-	echo -n "'$DISK_QUOTA','$RESOURCES_LIMIT','$FIREWALL_SYSTEM','$FIREWALL_EXTENSION','$FILE_MANAGER',"
-	echo -n "'$REPOSITORY', '$VERSION','$DEMO_MODE','$RELEASE_BRANCH',"
-	echo -n "'$SMTP_RELAY','$SMTP_RELAY_HOST','$SMTP_RELAY_PORT','$SMTP_RELAY_USER',"
-	echo -n "'$UPGRADE_SEND_EMAIL','$UPGRADE_SEND_EMAIL_LOG','$THEME','$LANGUAGE',"
-	echo -n "'$BACKUP_GZIP','$BACKUP','$WEBMAIL_ALIAS','$DB_PMA_URL','$DB_PGA_URL'"
-	echo -n "'$DEBUG_MODE','$API','$API_ALLOWED_IP','$POLICY_SYSTEM_PROTECTED_ADMIN,$POLICY_SYSTEM_HIDE_ADMIN"
-	echo
+	echo "WEB_SYSTEM,WEB_RGROUPS,WEB_PORT,WEB_SSL,WEB_SSL_PORT,WEB_BACKEND,PROXY_SYSTEM,PROXY_PORT,PROXY_SSL_PORT,FTP_SYSTEM,MAIL_SYSTEM,IMAP_SYSTEM,ANTIVIRUS_SYSTEM,ANTISPAM_SYSTEM,DB_SYSTEM,DNS_SYSTEM,DNS_CLUSTER,STATS_SYSTEM,BACKUP_SYSTEM,CRON_SYSTEM,DISK_QUOTA,RESOURCES_LIMIT,FIREWALL_SYSTEM,FIREWALL_EXTENSION,FILE_MANAGER,REPOSITORY,VERSION,DEMO_MODE,RELEASE_BRANCH,SMTP_RELAY_HOST,SMTP_RELAY_PORT,SMTP_RELAY_USER,UPGRADE_SEND_EMAIL,UPGRADE_SEND_EMAIL_LOG,THEME,LANGUAGE,BACKUP_GZIP,BACKUP,WEBMAIL_ALIAS,DB_PMA_ALIAS,DB_PGA_ALIAS,DEBUG_MODE,API,API_ALLOWED_IP,POLICY_SYSTEM_PROTECTED_ADMIN,POLICY_SYSTEM_HIDE_ADMIN"
+	echo "$WEB_SYSTEM,$WEB_RGROUPS,$WEB_PORT,$WEB_SSL,$WEB_SSL_PORT,$WEB_BACKEND,$PROXY_SYSTEM,$PROXY_PORT,$PROXY_SSL_PORT,$FTP_SYSTEM,$MAIL_SYSTEM,$IMAP_SYSTEM,$ANTIVIRUS_SYSTEM,$ANTISPAM_SYSTEM,$DB_SYSTEM,$DNS_SYSTEM,$DNS_CLUSTER,$STATS_SYSTEM,$BACKUP_SYSTEM,$CRON_SYSTEM,$DISK_QUOTA,$RESOURCES_LIMIT,$FIREWALL_SYSTEM,$FIREWALL_EXTENSION,$FILE_MANAGER,$REPOSITORY,$VERSION,$DEMO_MODE,$RELEASE_BRANCH,$SMTP_RELAY_HOST,$SMTP_RELAY_PORT,$SMTP_RELAY_USER,$UPGRADE_SEND_EMAIL,$UPGRADE_SEND_EMAIL_LOG,$THEME,$LANGUAGE,$BACKUP_GZIP,$BACKUP,$WEBMAIL_ALIAS,$DB_PMA_ALIAS,$DB_PGA_ALIAS,$DEBUG_MODE,$API,$API_ALLOWED_IP,$POLICY_SYSTEM_PROTECTED_ADMIN,$POLICY_SYSTEM_HIDE_ADMIN"
 }
 
 #----------------------------------------------------------#
@@ -287,8 +263,8 @@ csv_list() {
 #----------------------------------------------------------#
 
 if [ -n "$DNS_SYSTEM" ]; then
-	version=$(named -v | awk 'NR==1{print $2}')
-	if version_ge '9.16.18' $version; then
+	version=$(named -v 2>/dev/null | awk 'NR==1{print $2}')
+	if version_ge '9.16.18' "$version"; then
 		SUPPORT_DNSSEC="no"
 	else
 		SUPPORT_DNSSEC="yes"
@@ -298,7 +274,7 @@ fi
 # Listing data
 case $format in
 	json) json_list ;;
-	plain) shell_list ;;
+	plain) plain_list ;;
 	csv) csv_list ;;
 	shell) shell_list ;;
 esac

@@ -38,8 +38,20 @@ terminal_start() {
         fi
         
         if [ ! -x "${TERMINAL_DAEMON}" ]; then
-            echo "Error: Node.js binary executor not found at ${TERMINAL_DAEMON}"
+            echo "Error: Node.js binary not found at ${TERMINAL_DAEMON}"
+            echo "Please install Node.js: pkg install -y node"
             return 1
+        fi
+
+        if [ ! -d "${TERMINAL_DIR}/node_modules" ]; then
+            echo "Installing Node.js dependencies..."
+            cd "${TERMINAL_DIR}" || return 1
+            if command -v npm > /dev/null 2>&1; then
+                npm install --omit=dev --no-package-lock --production
+            else
+                echo "Warning: npm not found, skipping dependency installation"
+                echo "Web terminal may not function correctly"
+            fi
         fi
 
         /usr/sbin/daemon -f -p "${TERMINAL_PIDFILE}" -u hestiaweb -c "${TERMINAL_DIR}" \
@@ -58,7 +70,6 @@ terminal_stop() {
             echo "  Killing web-terminal process node (PID: ${pid})"
             kill -TERM "$pid" 2>/dev/null
             sleep 0.5
-            # 保底熔断：若进程抗命，执行高级别杀伤制裁
             kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null
         fi
         rm -f "${TERMINAL_PIDFILE}"
@@ -76,10 +87,9 @@ terminal_restart() {
 
 terminal_status() {
     if [ -f "${TERMINAL_PIDFILE}" ]; then
-        # 利用 FreeBSD 官方原生的 check_pidfile 探针，精准核实当前 PID 对应的二进制是否是 node 
         local pid=$(check_pidfile "${TERMINAL_PIDFILE}" "${TERMINAL_DAEMON}")
         if [ -n "$pid" ]; then
-            echo "hestia-web-terminal is running natively as pid ${pid}"
+            echo "hestia-web-terminal is running as pid ${pid}"
             return 0
         else
             echo "hestia-web-terminal is NOT running (stale pidfile detected)"

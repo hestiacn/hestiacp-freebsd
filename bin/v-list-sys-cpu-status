@@ -1,7 +1,7 @@
 #!/bin/bash
 # info: list system cpu info
 # options:
-#
+# 此脚本需要安装后实际测试调整
 # example: v-list-sys-cpu-status
 #
 # This function lists cpu information

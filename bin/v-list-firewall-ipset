@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: List firewall ipset
 # options: [FORMAT]
 #
@@ -11,15 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
-# shellcheck source=/usr/local/hestia/conf/hestia.conf
-source $HESTIA/conf/hestia.conf
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -35,70 +39,81 @@ is_system_enabled "$FIREWALL_SYSTEM" 'FIREWALL_SYSTEM'
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep LISTNAME $HESTIA/data/firewall/ipset.conf | wc -l)
+	objects=$(grep -c "LISTNAME" "$HESTIA/data/firewall/ipset.conf")
 	echo "{"
-	while read str; do
-		[[ -z "$str" ]] && continue
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n '    "'$LISTNAME'": {
-        "IP_VERSION": "'$IP_VERSION'",
-        "AUTOUPDATE": "'$AUTOUPDATE'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "SOURCE": "'$SOURCE'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
-		[[ "$i" -lt "$objects" ]] && echo ',' || echo
-		((i++))
-	done < <(cat $HESTIA/data/firewall/ipset.conf)
-	echo '}'
+		echo -n "    \"$LISTNAME\": {"
+		echo -n "\"IP_VERSION\": \"$IP_VERSION\", "
+		echo -n "\"AUTOUPDATE\": \"$AUTOUPDATE\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"SOURCE\": \"$SOURCE\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
+		if [ "$i" -lt "$objects" ]; then
+			echo ","
+		else
+			echo ""
+		fi
+		i=$((i + 1))
+	done < "$HESTIA/data/firewall/ipset.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "LISTNAME^IP_VERSION^AUTOUPDATE^SUSPENDED^SOURCE^TIME^DATE"
-	echo "----^------^-----^----^--^----^----"
-	while read str; do
-		[[ -z "$str" ]] && continue
+	printf "%-20s %-12s %-10s %-10s %-20s %-10s %-12s\n" "LISTNAME" "IP_VERSION" "AUTOUPDATE" "SUSPENDED" "SOURCE" "TIME" "DATE"
+	printf "%-20s %-12s %-10s %-10s %-20s %-10s %-12s\n" "--------" "----------" "----------" "---------" "------" "----" "----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo "$LISTNAME^$IP_VERSION^$AUTOUPDATE^$SUSPENDED^$SOURCE^$TIME^$DATE"
-	done < <(cat $HESTIA/data/firewall/ipset.conf)
+		printf "%-20s %-12s %-10s %-10s %-20s %-10s %-12s\n" \
+			"$LISTNAME" "$IP_VERSION" "$AUTOUPDATE" "$SUSPENDED" "$SOURCE" "$TIME" "$DATE"
+	done < "$HESTIA/data/firewall/ipset.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
-		[[ -z "$str" ]] && continue
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -ne "$LISTNAME\t$IP_VERSION\t$AUTOUPDATE\t$SUSPENDED\t$SOURCE\t"
-		echo -e "$TIME\t$DATE"
-	done < <(cat $HESTIA/data/firewall/ipset.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$LISTNAME" "$IP_VERSION" "$AUTOUPDATE" "$SUSPENDED" "$SOURCE" "$TIME" "$DATE"
+	done < "$HESTIA/data/firewall/ipset.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
-	echo "LISTNAME,IP_VERSION,AUTOUPDATE,SUSPENDED,SOURCE,SUSPENDED,TIME,DATE"
-	while read str; do
-		[[ -z "$str" ]] && continue
+	echo "LISTNAME,IP_VERSION,AUTOUPDATE,SUSPENDED,SOURCE,TIME,DATE"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n "$LISTNAME,$IP_VERSION,$AUTOUPDATE,$SUSPENDED,\"$SOURCE\","
-		echo "$TIME,$DATE"
-	done < <(cat $HESTIA/data/firewall/ipset.conf)
+		echo "$LISTNAME,$IP_VERSION,$AUTOUPDATE,$SUSPENDED,\"$SOURCE\",$TIME,$DATE"
+	done < "$HESTIA/data/firewall/ipset.conf"
 }
 
-[ ! -f "$HESTIA/data/firewall/ipset.conf" ] && touch "$HESTIA/data/firewall/ipset.conf"
+#----------------------------------------------------------#
+#                       Action                             #
+#----------------------------------------------------------#
+
+if [ ! -f "$HESTIA/data/firewall/ipset.conf" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No ipset lists found" ;;
+		plain) ;;
+		csv) echo "LISTNAME,IP_VERSION,AUTOUPDATE,SUSPENDED,SOURCE,TIME,DATE" ;;
+	esac
+	exit 0
+fi
 
 # Listing data
 case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t -s '^' ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#

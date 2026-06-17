@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete user backup
 # options: USER BACKUP
 #
@@ -14,9 +14,15 @@
 user=$1
 backup=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/backup.sh
@@ -43,40 +49,40 @@ check_hestia_demo_mode
 
 backup_folder="$BACKUP"
 
-line=$(grep "BACKUP='$backup'" $USER_DATA/backup.conf)
+line=$(grep "BACKUP='$backup'" "$USER_DATA/backup.conf")
 parse_object_kv_list "$line"
 
 deleted=0
-if [[ "$TYPE" =~ "sftp" ]]; then
-	sftp_delete "$backup"
-	deleted=1
+case "$TYPE" in
+    *sftp*)
+        sftp_delete "$backup"
+        deleted=1
+        ;;
+esac
+if [ "$deleted" = "0" ]; then
+    case "$TYPE" in
+        *ftp*) ftp_delete "$backup" ;;
+    esac
 fi
-if [[ "$TYPE" =~ "ftp" ]] && [ "$deleted" == "0" ]; then
-	ftp_delete "$backup"
-fi
-if [[ "$TYPE" =~ "b2" ]]; then
-	b2_delete "$user" "$backup"
-fi
-if [[ "$TYPE" =~ "rclone" ]]; then
-	rclone_delete "$backup"
-fi
-if [[ "$TYPE" =~ "local" ]]; then
-	rm -f "$backup_folder/$2"
-fi
+case "$TYPE" in
+    *b2*) b2_delete "$user" "$backup" ;;
+    *rclone*) rclone_delete "$backup" ;;
+    *local*) rm -f "$backup_folder/$backup" ;;
+esac
 
-# Deleting backup
-sed -i "/BACKUP='$2' /d" "$USER_DATA/backup.conf"
+# Deleting backup (FreeBSD sed requires -i "")
+sed -i "" "/BACKUP='$backup' /d" "$USER_DATA/backup.conf"
 
 #----------------------------------------------------------#
 #                       Hestia                             #
 #----------------------------------------------------------#
 
 # Update counter
-U_BACKUPS=$(grep BACKUP $USER_DATA/backup.conf | wc -l)
+U_BACKUPS=$(grep -c "BACKUP" "$USER_DATA/backup.conf")
 update_user_value "$user" '$U_BACKUPS' "$U_BACKUPS"
 
 # Logging
 $BIN/v-log-action "$user" "Info" "Backup" "Deleted backup (Archive: $backup)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

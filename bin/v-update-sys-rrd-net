@@ -11,13 +11,19 @@
 #----------------------------------------------------------#
 
 # Argument definition
-period=${1-daily}
+period=${1:-daily}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -47,23 +53,29 @@ case $period in
 		end='now'
 		grid='MONTH:1:YEAR:1:MONTH:2:2419200:%b'
 		;;
-	*) exit "$E_RRD" ;;
+	*)
+		exit "$E_RRD"
+		;;
 esac
 
 # Checking directory
 if [ ! -d "$RRD/net" ]; then
-	mkdir $RRD/net
+	mkdir -p "$RRD/net"
 fi
 
 # Parsing network interfaces
-ndev=$(cat /proc/net/dev)
-ifaces=$(echo "$ndev" | grep : | cut -f 1 -d : | sed "s/ //g")
+if [ "$(uname)" = "FreeBSD" ]; then
+	ifaces=$(ifconfig -a | grep -E '^[a-z0-9]' | grep -v '^lo' | cut -d: -f1 | sort)
+else
+	ndev=$(cat /proc/net/dev)
+	ifaces=$(echo "$ndev" | grep : | cut -f 1 -d : | sed "s/ //g")
+fi
 
 # Parsing excludes
 if [ -z "$RRD_IFACE_EXCLUDE" ]; then
 	RRD_IFACE_EXCLUDE='lo,docker0,br-.*,veth.*'
 fi
-for exclude in $(echo ${RRD_IFACE_EXCLUDE//,/ }); do
+for exclude in $(echo "${RRD_IFACE_EXCLUDE//,/ }"); do
 	ifaces=$(echo "$ifaces" | grep -vw "$exclude")
 done
 
@@ -71,7 +83,7 @@ for iface in $ifaces; do
 	# Checking database
 	if [ ! -e "$RRD/net/$iface.rrd" ]; then
 		# Adding database
-		rrdtool create $RRD/net/$iface.rrd --step $RRD_STEP \
+		rrdtool create "$RRD/net/$iface.rrd" --step "$RRD_STEP" \
 			DS:RX:COUNTER:600:U:U \
 			DS:TX:COUNTER:600:U:U \
 			RRA:AVERAGE:0.5:1:600 \
@@ -86,16 +98,24 @@ for iface in $ifaces; do
 
 	# Parsing device stats
 	if [ "$period" = 'daily' ]; then
-		x=$(echo "$ndev" | sed "s/^ *//" | grep "^$iface:" | sed "s/:/ /")
-		rx=$(echo "$x" | awk '{print $2}')
-		tx=$(echo "$x" | awk '{print $10}')
+		if [ "$(uname)" = "FreeBSD" ]; then
+			stats=$(ifconfig "$iface" | grep "bytes")
+			rx=$(echo "$stats" | grep -m1 "bytes" | awk '{print $2}' | cut -d= -f2)
+			tx=$(echo "$stats" | grep -m2 "bytes" | tail -1 | awk '{print $2}' | cut -d= -f2)
+		else
+			x=$(echo "$ndev" | sed "s/^ *//" | grep "^$iface:" | sed "s/:/ /")
+			rx=$(echo "$x" | awk '{print $2}')
+			tx=$(echo "$x" | awk '{print $10}')
+		fi
+		[ -z "$rx" ] && rx=0
+		[ -z "$tx" ] && tx=0
 
 		# Updating rrd database
-		rrdtool update $RRD/net/$iface.rrd N:$rx:$tx
+		rrdtool update "$RRD/net/$iface.rrd" "N:$rx:$tx"
 	fi
 
 	# Updating rrd graph
-	rrdtool graph $RRD/net/$period-$iface.png \
+	rrdtool graph "$RRD/net/$period-$iface.png" \
 		--imgformat PNG \
 		--height="150" \
 		--width="670" \
@@ -112,8 +132,8 @@ for iface in $ifaces; do
 		-c "MGRID#AAAAAA" \
 		-c "FRAME#302c2d" \
 		-c "ARROW#FFFFFF" \
-		DEF:inoctets=$RRD/net/$iface.rrd:RX:AVERAGE \
-		DEF:outoctets=$RRD/net/$iface.rrd:TX:AVERAGE \
+		DEF:"inoctets=$RRD/net/$iface.rrd:RX:AVERAGE" \
+		DEF:"outoctets=$RRD/net/$iface.rrd:TX:AVERAGE" \
 		"CDEF:in=inoctets,8,*" \
 		"CDEF:out=outoctets,8,*" \
 		COMMENT:'\r' \

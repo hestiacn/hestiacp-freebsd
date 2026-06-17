@@ -15,7 +15,7 @@ archive=$2
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 
@@ -48,7 +48,7 @@ IFS=$'\n'
 i=1
 for src in $*; do
 	if [ "$i" -gt 2 ]; then
-		rpath=$(readlink -f "$src")
+		rpath=$(realpath "$src")
 		if [ -z "$(echo $rpath | egrep "^/tmp|^$homedir")" ]; then
 			echo "Error: invalid source path $src"
 			exit 1

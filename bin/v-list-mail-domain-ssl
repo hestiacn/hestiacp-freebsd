@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list mail domain ssl certificate
 # options: USER DOMAIN [FORMAT]
 #
@@ -13,13 +13,19 @@
 # Argument definition
 user=$1
 domain=$2
-format=${3-shell}
+format=${3:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -30,7 +36,7 @@ format_domain_idn
 # JSON list function
 json_list() {
 	echo '{'
-	echo -e "\t\"$domain\": {"
+	echo "    \"$domain\": {"
 	echo "        \"CRT\": \"$crt\","
 	echo "        \"KEY\": \"$key\","
 	echo "        \"CA\": \"$ca\","
@@ -41,26 +47,29 @@ json_list() {
 	echo "        \"SIGNATURE\": \"$signature\","
 	echo "        \"PUB_KEY\": \"$pub_key\","
 	echo "        \"ISSUER\": \"$issuer\""
-	echo -e "\t}\n}"
+	echo "    }"
+	echo '}'
 }
 
 # SHELL list function
 shell_list() {
 	if [ -n "$crt" ]; then
-		echo -e "$crt"
+		echo "$crt"
 	fi
 	if [ -n "$key" ]; then
-		echo -e "\n$key"
+		echo
+		echo "$key"
 	fi
 	if [ -n "$ca" ]; then
-		echo -e "\n$ca"
+		echo
+		echo "$ca"
 	fi
 	if [ -n "$crt" ]; then
 		echo
 		echo
 		echo "SUBJECT:        $subj"
 		if [ -n "$alt_dns" ]; then
-			echo "ALIASES:        ${alt_dns//,/ }"
+			echo "ALIASES:        $(echo "$alt_dns" | tr ',' ' ')"
 		fi
 		echo "VALID FROM:     $before"
 		echo "VALID TIL:      $after"
@@ -73,32 +82,31 @@ shell_list() {
 # PLAIN list function
 plain_list() {
 	if [ -n "$crt" ]; then
-		echo -e "$crt"
+		echo "$crt"
 	fi
 	if [ -n "$key" ]; then
-		echo -e "\n$key"
+		echo
+		echo "$key"
 	fi
 	if [ -n "$ca" ]; then
-		echo -e "\n$ca"
+		echo
+		echo "$ca"
 	fi
 	if [ -n "$crt" ]; then
 		echo "$subj"
-		echo "${alt_dns//,/ }"
+		echo "$(echo "$alt_dns" | tr ',' ' ')"
 		echo "$before"
 		echo "$after"
 		echo "$signature"
 		echo "$pub_key"
 		echo "$issuer"
 	fi
-
 }
 
 # CSV list function
 csv_list() {
-	echo -n "CRT,KEY,CA,SUBJECT,ALIASES,NOT_BEFORE,NOT_AFTER,SIGNATURE,"
-	echo "PUB_KEY,ISSUER"
-	echo -n "\"$crt\",\"$key\",\"$ca\",\"$subj\",\"${alt_dns//,/ }\","
-	echo "\"$before\",\"$after\",\"$signature\",\"$pub_key\",\"$issuer\""
+	echo "CRT,KEY,CA,SUBJECT,ALIASES,NOT_BEFORE,NOT_AFTER,SIGNATURE,PUB_KEY,ISSUER"
+	echo "\"$crt\",\"$key\",\"$ca\",\"$subj\",\"$(echo "$alt_dns" | tr ',' ' ')\",\"$before\",\"$after\",\"$signature\",\"$pub_key\",\"$issuer\""
 }
 
 #----------------------------------------------------------#
@@ -116,27 +124,27 @@ is_object_valid 'mail' 'DOMAIN' "$domain"
 
 # Parsing domain SSL certificate
 if [ -e "$USER_DATA/ssl/mail.$domain.crt" ]; then
-	crt=$(cat $USER_DATA/ssl/mail.$domain.crt | sed ':a;N;$!ba;s/\n/\\n/g')
+	crt=$(cat "$USER_DATA/ssl/mail.$domain.crt" | sed ':a;N;$!ba;s/\n/\\n/g')
 
-	info=$(openssl x509 -text -in $USER_DATA/ssl/mail.$domain.crt)
-	subj=$(echo "$info" | grep Subject: | sed -e "s/\"//g" -e "s/.*= //")
-	before=$(echo "$info" | grep Before: | sed -e "s/.*Before: //")
+	info=$(openssl x509 -text -in "$USER_DATA/ssl/mail.$domain.crt")
+	subj=$(echo "$info" | grep "Subject:" | sed -e "s/\"//g" -e "s/.*= //")
+	before=$(echo "$info" | grep "Before:" | sed -e "s/.*Before: //")
 	after=$(echo "$info" | grep "After :" | sed -e "s/.*After : //")
 	signature=$(echo "$info" | grep "Algorithm:" | head -n1)
 	signature=$(echo "$signature" | sed -e "s/.*Algorithm: //")
-	pub_key=$(echo "$info" | grep Public-Key: | cut -f2 -d \( | tr -d \))
-	issuer=$(echo "$info" | grep Issuer: | sed -e "s/.*Issuer: //")
-	alt_dns=$(echo "$info" | grep DNS | sed -e 's/DNS:/\n/g' | tr -d ',')
+	pub_key=$(echo "$info" | grep "Public-Key:" | cut -f2 -d \( | tr -d ' ')
+	issuer=$(echo "$info" | grep "Issuer:" | sed -e "s/.*Issuer: //")
+	alt_dns=$(echo "$info" | grep "DNS" | sed -e 's/DNS:/\n/g' | tr -d ',')
 	alt_dns=$(echo "$alt_dns" | tr -d ' ' | sed -e "/^$/d")
 	alt_dns=$(echo "$alt_dns" | sed -e ':a;N;$!ba;s/\n/,/g')
 fi
 
 if [ -e "$USER_DATA/ssl/mail.$domain.key" ]; then
-	key=$(cat $USER_DATA/ssl/mail.$domain.key | sed ':a;N;$!ba;s/\n/\\n/g')
+	key=$(cat "$USER_DATA/ssl/mail.$domain.key" | sed ':a;N;$!ba;s/\n/\\n/g')
 fi
 
 if [ -e "$USER_DATA/ssl/mail.$domain.ca" ]; then
-	ca=$(cat $USER_DATA/ssl/mail.$domain.ca | sed ':a;N;$!ba;s/\n/\\n/g')
+	ca=$(cat "$USER_DATA/ssl/mail.$domain.ca" | sed ':a;N;$!ba;s/\n/\\n/g')
 fi
 
 # Listing data

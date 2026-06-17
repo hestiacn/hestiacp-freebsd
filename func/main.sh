@@ -1891,26 +1891,21 @@ multiphp_versions() {
 }
 
 multiphp_default_version() {
-	# Get system wide default php version (set by update-alternatives)
-	local sys_phpversion=$(php -r "echo substr(phpversion(),0,3);" 2>/dev/null)
-
-	# Check if the system php also has php-fpm enabled, otherwise return
+    # Get system wide default php version (set by update-alternatives)
+    local sys_phpversion=$(php -r "echo str_replace('.', '', substr(phpversion(),0,3));" 2>/dev/null)
+	
+    # Check if the system php also has php-fpm enabled, otherwise return
 	# the most recent php version which does have it installed.
-	local check_dir="/etc/php/$sys_phpversion/fpm/pool.d/"
-	if [ "$OS" = "freebsd" ]; then
-		# FreeBSD 默认 PHP 路径适配
-		check_dir="/usr/local/etc/php/$sys_phpversion/fpm/pool.d/"
-		[ ! -d "$check_dir" ] && check_dir="/usr/local/etc/php${sys_phpversion//./}/fpm/pool.d/"
-	fi
-
-	if [ ! -d "$check_dir" ]; then
-		local all_versions="$(multiphp_versions)"
-		if [ -n "$all_versions" ]; then
-			sys_phpversion="${all_versions##*\ }"
-		fi
-	fi
-
-	echo "$sys_phpversion"
+    local check_dir="/usr/local/etc/php$sys_phpversion/php-fpm.d"
+    
+    if [ ! -d "$check_dir" ]; then
+        local all_versions="$(multiphp_versions)"
+        if [ -n "$all_versions" ]; then
+            sys_phpversion="${all_versions##*\ }"
+        fi
+    fi
+    
+    echo "$sys_phpversion"
 }
 
 is_hestia_package() {

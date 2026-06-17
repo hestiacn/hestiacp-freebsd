@@ -1,8 +1,8 @@
 #!/bin/bash
-# info: list system IP
-# options: IP [FORMAT]
+# info: list system IPs
+# options: [FORMAT]
 #
-# example: v-list-sys-ip 203.0.113.1
+# example: v-list-sys-ip json
 #
 # This function for getting the list of system IP parameters.
 
@@ -11,12 +11,16 @@
 #----------------------------------------------------------#
 
 # Argument definition
-ip="$1"
-format="${2-shell}"
+format=${1:-shell}
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/ip.sh
@@ -26,67 +30,85 @@ source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	echo '{'
-	echo '    "'$ip'": {
-        "OWNER": "'$OWNER'",
-        "STATUS": "'$STATUS'",
-        "NAME": "'$NAME'",
-        "U_SYS_USERS": "'$U_SYS_USERS'",
-        "U_WEB_DOMAINS": "'$U_WEB_DOMAINS'",
-        "INTERFACE": "'$INTERFACE'",
-        "NETMASK": "'$NETMASK'",
-        "NAT": "'$NAT'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-        }'
-	echo '}'
+	i=1
+	objects=$(ls -1 "$HESTIA/data/ips/" 2>/dev/null | wc -l)
+	echo "{"
+	for ip_file in $(ls -1 "$HESTIA/data/ips/" 2>/dev/null); do
+		ip="$ip_file"
+		. "$HESTIA/data/ips/$ip"
+		echo -n "    \"$ip\": {"
+		echo -n "\"OWNER\": \"$OWNER\", "
+		echo -n "\"STATUS\": \"$STATUS\", "
+		echo -n "\"NAME\": \"$NAME\", "
+		echo -n "\"U_SYS_USERS\": \"$U_SYS_USERS\", "
+		echo -n "\"U_WEB_DOMAINS\": \"$U_WEB_DOMAINS\", "
+		echo -n "\"INTERFACE\": \"$INTERFACE\", "
+		echo -n "\"NETMASK\": \"$NETMASK\", "
+		echo -n "\"NAT\": \"$NAT\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
+		if [ "$i" -lt "$objects" ]; then
+			echo ","
+		else
+			echo ""
+		fi
+		i=$((i + 1))
+	done
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	echo "IP:             $ip"
-	echo "NETMASK:        $NETMASK"
-	echo "INTERFACE:      $INTERFACE"
-	echo "NAT:            $NAT"
-	echo "OWNER:          $OWNER"
-	echo "STATUS:         $STATUS"
-	echo "NAME:           $NAME"
-	echo "USERS:          $U_SYS_USERS"
-	echo "DOMAINS:        $U_WEB_DOMAINS"
-	echo "TIME:           $TIME"
-	echo "DATE:           $DATE"
+	printf "%-15s %-10s %-10s %-15s %-10s %-15s %-10s %-12s\n" \
+		"IP" "OWNER" "STATUS" "NAME" "INTERFACE" "USERS" "DOMAINS" "DATE"
+	printf "%-15s %-10s %-10s %-15s %-10s %-15s %-10s %-12s\n" \
+		"--" "-----" "------" "----" "---------" "-----" "-------" "----"
+	for ip_file in $(ls -1 "$HESTIA/data/ips/" 2>/dev/null); do
+		ip="$ip_file"
+		. "$HESTIA/data/ips/$ip"
+		printf "%-15s %-10s %-10s %-15s %-10s %-15s %-10s %-12s\n" \
+			"$ip" "$OWNER" "$STATUS" "$NAME" "$INTERFACE" "$U_SYS_USERS" "$U_WEB_DOMAINS" "$DATE"
+	done
 }
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$ip\t$OWNER\t$STATUS\t$NAME\t$U_SYS_USERS\t$U_WEB_DOMAINS\t"
-	echo -e "$INTERFACE\t$NETMASK\t$NAT\t$TIME\t$DATE"
+	for ip_file in $(ls -1 "$HESTIA/data/ips/" 2>/dev/null); do
+		ip="$ip_file"
+		. "$HESTIA/data/ips/$ip"
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$ip" "$OWNER" "$STATUS" "$NAME" "$U_SYS_USERS" "$U_WEB_DOMAINS" \
+			"$INTERFACE" "$NETMASK" "$NAT" "$TIME" "$DATE"
+	done
 }
 
 # CSV list function
 csv_list() {
-	echo -n "IP,OWNER,STATUS,NAME,U_SYS_USERS,U_WEB_DOMAINS,INTERFACE"
-	echo "NETMASK,NAT,TIME,DATE"
-	echo -n "$ip,$OWNER,$STATUS,$NAME,\"$U_SYS_USERS\",$U_WEB_DOMAINS,"
-	echo "$INTERFACE, $NETMASK,$NAT,$TIME,$DATE"
+	echo "IP,OWNER,STATUS,NAME,U_SYS_USERS,U_WEB_DOMAINS,INTERFACE,NETMASK,NAT,TIME,DATE"
+	for ip_file in $(ls -1 "$HESTIA/data/ips/" 2>/dev/null); do
+		ip="$ip_file"
+		. "$HESTIA/data/ips/$ip"
+		echo "$ip,$OWNER,$STATUS,$NAME,\"$U_SYS_USERS\",$U_WEB_DOMAINS,$INTERFACE,$NETMASK,$NAT,$TIME,$DATE"
+	done
 }
 
 #----------------------------------------------------------#
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-check_args '1' "$#" 'IP [FORMAT]'
-is_format_valid 'ip'
-if [ ! -e "$HESTIA/data/ips/$ip" ]; then
-	check_result $E_NOTEXIST "IP $ip doesn't exist"
+if [ ! -d "$HESTIA/data/ips" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No IPs configured" ;;
+		plain) ;;
+		csv) echo "IP,OWNER,STATUS,NAME,U_SYS_USERS,U_WEB_DOMAINS,INTERFACE,NETMASK,NAT,TIME,DATE" ;;
+	esac
+	exit 0
 fi
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
-
-# Parsing IP
-source_conf "$HESTIA/data/ips/$ip"
 
 # Listing data
 case $format in

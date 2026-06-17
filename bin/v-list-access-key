@@ -1,84 +1,105 @@
 #!/bin/bash
-# info: list all API access keys
-# options: ACCESS_KEY_ID [FORMAT]
+# info: list API access key for a user
+# options: USER [FORMAT]
 #
-# example: v-list-access-key 1234567890ABCDefghij json
+# example: v-list-access-key user json
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
 # Argument definition
-access_key_id="$1"
+user="$1"
 format="${2:-shell}"
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
-# JSON list function
-json_list() {
-	local PERMISSIONS_ARR='[]'
-	if [[ -n "$PERMISSIONS" ]]; then
-		PERMISSIONS_ARR="[\"$(echo "$PERMISSIONS" | sed -E 's|,|", "|g')\"]"
-	fi
-
-	echo '{
-    "ACCESS_KEY_ID": "'$access_key_id'",
-    "SECRET_ACCESS_KEY": "'$SECRET_ACCESS_KEY'",
-    "USER": "'$USER'",
-    "PERMISSIONS": '$PERMISSIONS_ARR',
-    "COMMENT": "'$COMMENT'",
-    "TIME": "'$TIME'",
-    "DATE": "'$DATE'"
-}'
-}
-
-# SHELL list function
-shell_list() {
-	echo "ACCESS_KEY_ID:      $access_key_id"
-	echo "SECRET_ACCESS_KEY:  $SECRET_ACCESS_KEY"
-	echo "USER:               $USER"
-	echo "PERMISSIONS:        $PERMISSIONS"
-	echo "COMMENT:            $COMMENT"
-	echo "TIME:               $TIME"
-	echo "DATE:               $DATE"
-}
-
-plain_list() {
-	echo $access_key_id:$SECRET_ACCESS_KEY
-}
-
 #----------------------------------------------------------#
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-check_args '1' "$#" 'ACCESS_KEY_ID [FORMAT]'
-is_format_valid 'access_key_id'
-is_object_valid 'key' 'KEY' "$access_key_id"
+check_args '1' "$#" 'USER [FORMAT]'
+is_format_valid 'user'
+is_object_valid 'user' 'USER' "$user"
 
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
+access_key_id=""
+for key_file in "$HESTIA/data/access-keys"/*; do
+    if [ -f "$key_file" ]; then
+        key_user=$(grep "^USER=" "$key_file" | cut -d"'" -f2)
+        if [ "$key_user" = "$user" ]; then
+            access_key_id=$(basename "$key_file")
+            break
+        fi
+    fi
+done
 
-# Avoid "USER" receive "root" in old keys
+if [ -z "$access_key_id" ]; then
+    echo "Error: No API key found for user $user"
+    exit 1
+fi
+
 USER="$ROOT_USER"
 PERMISSIONS=""
 COMMENT=""
 DATE=""
 TIME=""
+SECRET_ACCESS_KEY=""
 
 source_conf "${HESTIA}/data/access-keys/${access_key_id}"
 
+# JSON list function
+json_list() {
+    PERMISSIONS_ARR='[]'
+    if [ -n "$PERMISSIONS" ]; then
+        PERMISSIONS_ARR="[\"$(echo "$PERMISSIONS" | sed 's|,|", "|g')\"]"
+    fi
+
+    echo '{
+    "ACCESS_KEY_ID": "'"$access_key_id"'",
+    "SECRET_ACCESS_KEY": "'"$SECRET_ACCESS_KEY"'",
+    "USER": "'"$USER"'",
+    "PERMISSIONS": '"$PERMISSIONS_ARR"',
+    "COMMENT": "'"$COMMENT"'",
+    "TIME": "'"$TIME"'",
+    "DATE": "'"$DATE"'"
+}'
+}
+
+# SHELL list function
+shell_list() {
+    echo "ACCESS_KEY_ID:      $access_key_id"
+    echo "SECRET_ACCESS_KEY:  $SECRET_ACCESS_KEY"
+    echo "USER:               $USER"
+    echo "PERMISSIONS:        $PERMISSIONS"
+    echo "COMMENT:            $COMMENT"
+    echo "TIME:               $TIME"
+    echo "DATE:               $DATE"
+}
+
+plain_list() {
+    echo "$access_key_id:$SECRET_ACCESS_KEY"
+}
+
 # Listing data
 case $format in
-	json) json_list ;;
-	shell) shell_list ;;
-	plain) plain_list ;;
+    json) json_list ;;
+    shell) shell_list ;;
+    plain) plain_list ;;
 esac
 
 #----------------------------------------------------------#

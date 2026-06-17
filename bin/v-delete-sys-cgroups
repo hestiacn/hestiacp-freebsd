@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete all cgroups
 # options: NONE
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -29,15 +35,21 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Revert cgroup for all users
-for user in $("$BIN/v-list-users" list); do
-	user_id=$(id -u "$user")
-	user_slice="user-${user_id}.slice"
-	systemctl revert "$user_slice"
-done
-
-# Reload daemon
-systemctl daemon-reload
+if [ "$OS" = "freebsd" ]; then
+    if command -v rctl > /dev/null 2>&1; then
+        for user in $("$BIN/v-list-users" list); do
+            rctl -h -u "$user" 2>/dev/null
+        done
+    fi
+else
+    for user in $("$BIN/v-list-users" list); do
+        user_id=$(id -u "$user")
+        user_slice="user-${user_id}.slice"
+        systemctl revert "$user_slice"
+    done
+    # Reload daemon
+    systemctl daemon-reload
+fi
 
 # Updating hestia.conf value
 $BIN/v-change-sys-config-value "RESOURCES_LIMIT" "no"
@@ -47,7 +59,7 @@ $BIN/v-change-sys-config-value "RESOURCES_LIMIT" "no"
 #----------------------------------------------------------#
 
 # Logging
-$BIN/v-log-action "system" "Info" "Plugins" "System cgroup Enforcement disabled."
+$BIN/v-log-action "system" "Info" "Plugins" "System resource enforcement disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change dns domain template
 # options: USER DOMAIN TEMPLATE [RESTART]
 #
@@ -20,8 +20,8 @@ template=$3
 restart=$4
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -59,7 +59,7 @@ check_hestia_demo_mode
 get_domain_values 'dns'
 i=1
 ns=$(get_user_value '$NS')
-for nameserver in ${ns//,/ }; do
+for nameserver in $(echo "$ns" | tr ',' ' '); do
 	eval ns$i=$nameserver
 	((++i))
 done
@@ -87,21 +87,21 @@ if [ -z "$ns8" ]; then
 	template_data=$(echo "$template_data" | grep -v %ns8%)
 fi
 
-# Changing tpl
-echo "$template_data" \
-	| sed -e "s/%ip%/$IP/g" \
-		-e "s/%domain_idn%/$domain_idn/g" \
-		-e "s/%domain%/$domain/g" \
-		-e "s/%ns1%/$ns1/g" \
-		-e "s/%ns2%/$ns2/g" \
-		-e "s/%ns3%/$ns3/g" \
-		-e "s/%ns4%/$ns4/g" \
-		-e "s/%ns5%/$ns5/g" \
-		-e "s/%ns6%/$ns6/g" \
-		-e "s/%ns7%/$ns7/g" \
-		-e "s/%ns8%/$ns8/g" \
-		-e "s/%time%/$TIME/g" \
-		-e "s/%date%/$DATE/g" > $USER_DATA/dns/$domain.conf
+# Changing tpl (using printf for safety)
+printf "%s\n" "$template_data" \
+    | sed -e "s/%ip%/$IP/g" \
+        -e "s/%domain_idn%/$domain_idn/g" \
+        -e "s/%domain%/$domain/g" \
+        -e "s/%ns1%/$ns1/g" \
+        -e "s/%ns2%/$ns2/g" \
+        -e "s/%ns3%/$ns3/g" \
+        -e "s/%ns4%/$ns4/g" \
+        -e "s/%ns5%/$ns5/g" \
+        -e "s/%ns6%/$ns6/g" \
+        -e "s/%ns7%/$ns7/g" \
+        -e "s/%ns8%/$ns8/g" \
+        -e "s/%time%/$TIME/g" \
+        -e "s/%date%/$DATE/g" > $USER_DATA/dns/$domain.conf
 records="$(wc -l $USER_DATA/dns/$domain.conf | cut -f 1 -d ' ')"
 
 # Refresh DKIM records in DNS if signing key exists for domain
@@ -129,15 +129,16 @@ fi
 
 # Update serial
 update_domain_serial
-# Updating zone
-if [[ "$DNS_SYSTEM" =~ named|bind ]]; then
+
+# Update zone for FreeBSD (named only)
+if [ "$DNS_SYSTEM" = "named" ]; then
 	rebuild_dns_domain_conf
 fi
 
 # Updating dns-cluster queue
 if [ "$DNS_CLUSTER" = "yes" ]; then
 	# Check for first sync
-	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe)
+	dlock=$(grep "domain $user $domain" $HESTIA/data/queue/dns-cluster.pipe 2>/dev/null)
 	if [ -z "$dlock" ]; then
 		cmd="$BIN/v-add-remote-dns-domain $user $domain domain"
 		echo "$cmd" >> $HESTIA/data/queue/dns-cluster.pipe
@@ -165,4 +166,4 @@ check_result $? "DNS restart failed" > /dev/null
 $BIN/v-log-action "system" "Info" "DNS" "Template for DNS domain changed (Template: $template, Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

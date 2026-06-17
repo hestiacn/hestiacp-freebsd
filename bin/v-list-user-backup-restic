@@ -1,10 +1,10 @@
 #!/bin/bash
-# info: backup system user with all its objects
-# options: USER NOTIFY
+# info: display user backup information from latest restic snapshot
+# options: USER [FORMAT]
 #
-# example: v-backup-user admin yes
+# example: v-list-user-backup-restic admin plain
 #
-# This function is used for backing up user with all its domains and databases.
+# This function displays backup information from the latest restic snapshot.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -12,19 +12,25 @@
 
 # Argument definition
 user=$1
-snapshot=$2
-format=${3-plain}
+format=${2:-plain}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # shellcheck source=/usr/local/hestia/func/domain.sh
-source $HESTIA/func/domain.sh
+source "$HESTIA/func/domain.sh"
 # shellcheck source=/usr/local/hestia/func/db.sh
-source $HESTIA/func/db.sh
+source "$HESTIA/func/db.sh"
 # shellcheck source=/usr/local/hestia/func/backup.sh
-source $HESTIA/func/backup.sh
+source "$HESTIA/func/backup.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -41,25 +47,63 @@ is_object_unsuspended 'user' 'USER' "$user"
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 
+# Check restic configuration
+if [ ! -f "$HESTIA/conf/restic.conf" ]; then
+	echo "Error: restic configuration not found at $HESTIA/conf/restic.conf"
+	exit 1
+fi
+
+if [ ! -f "$USER_DATA/restic.conf" ]; then
+	echo "Error: restic password file not found for user $user"
+	exit 1
+fi
+
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
 
+# Create tmp directory if not exists
+mkdir -p "$USER_DATA/tmp"
+
+# Load restic configuration
+source_conf "$HESTIA/conf/restic.conf"
+
+# Get the latest snapshot ID
+snapshot=$(restic --repo "$REPO$user" --password-file "$USER_DATA/restic.conf" snapshots --json 2>/dev/null | grep -o '"short_id":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$snapshot" ]; then
+	echo "Error: No snapshots found for user $user"
+	exit 1
+fi
+
+# Extract backup.conf from restic snapshot
+restic --repo "$REPO$user" --password-file "$USER_DATA/restic.conf" \
+	dump "$snapshot" "/home/$user/backup/backup.conf" > "$USER_DATA/tmp/backup.conf" 2>/dev/null
+
+# Parse backup configuration
+if [ -f "$USER_DATA/tmp/backup.conf" ]; then
+	parse_object_kv_list "$(cat "$USER_DATA/tmp/backup.conf")"
+	rm -f "$USER_DATA/tmp/backup.conf"
+else
+	echo "Error: Failed to extract backup information"
+	exit 1
+fi
+
 # JSON list function
 json_list() {
 	echo '{'
-	echo '    "'$BACKUP'": {
-		"TYPE": "'$TYPE'",
-		"WEB": "'$WEB'",
-		"DNS": "'$DNS'",
-		"MAIL": "'$MAIL'",
-		"DB": "'$DB'",
-		"CRON": "'$CRON'",
-		"UDIR": "'$UDIR'",
-		"RUNTIME": "'$RUNTIME'",
-		"TIME": "'$TIME'",
-		"DATE": "'$DATE'"
-	}'
+	echo "    \"$BACKUP\": {"
+	echo "        \"TYPE\": \"$TYPE\","
+	echo "        \"WEB\": \"$WEB\","
+	echo "        \"DNS\": \"$DNS\","
+	echo "        \"MAIL\": \"$MAIL\","
+	echo "        \"DB\": \"$DB\","
+	echo "        \"CRON\": \"$CRON\","
+	echo "        \"UDIR\": \"$UDIR\","
+	echo "        \"RUNTIME\": \"$RUNTIME\","
+	echo "        \"TIME\": \"$TIME\","
+	echo "        \"DATE\": \"$DATE\""
+	echo "    }"
 	echo '}'
 }
 
@@ -80,17 +124,11 @@ shell_list() {
 
 # PLAIN list function
 plain_list() {
-	echo -ne "$BACKUP\t$TYPE\t$WEB\t$DNS\t$MAIL\t$DB\t$CRON\t"
-	echo -e "$UDIR\t$RUNTIME\t$TIME\t$DATE"
+	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+		"$BACKUP" "$TYPE" "$WEB" "$DNS" "$MAIL" "$DB" "$CRON" \
+		"$UDIR" "$RUNTIME" "$TIME" "$DATE"
 }
 
-source_conf $HESTIA/conf/restic.conf
-
-restic --repo "$REPO$user" --password-file $USER_DATA/restic.conf --json dump $snapshot /home/$user/backup/backup.conf > /home/$user/tmp/backup.conf
-
-parse_object_kv_list $(cat /home/$user/tmp/backup.conf)
-
-rm /home/$user/tmp/backup.conf
 # Listing data
 case $format in
 	json) json_list ;;

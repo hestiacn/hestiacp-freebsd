@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete system ssh jail
 # options: NONE
 #
@@ -10,9 +10,15 @@
 #                Variables & Functions                     #
 #----------------------------------------------------------#
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -29,23 +35,17 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Unregister /usr/sbin/jailbash
-sed -i "/\/usr\/sbin\/jailbash/d" /etc/shells
+# Delete system ssh jail - FreeBSD version
 
-# Remove jailbash from /usr/sbin
-if [ -x /usr/sbin/jailbash ]; then
-	rm -f /usr/sbin/jailbash
-	rm -f /etc/apparmor.d/bwrap-userns-restrict
+# Remove jailbash from shells and filesystem
+sed -i "" "/\/usr\/sbin\/jailbash/d" /etc/shells
+rm -f /usr/sbin/jailbash
 
-	service apparmor reload > /dev/null 2>&1
-fi
+# Restore internal-sftp
+sed -i "" "s|Subsystem sftp /usr/sbin/jailbash|Subsystem sftp internal-sftp|g" /etc/ssh/sshd_config
 
-# Revert back to internal-sftp
-if [ -z "$(grep 'Subsystem sftp internal-sftp' /etc/ssh/sshd_config)" ]; then
-	sed -i -E "s/Subsystem sftp \/usr\/lib\/sftp-server/Subsystem sftp internal-sftp/g" /etc/ssh/sshd_config
-
-	service ssh restart > /dev/null 2>&1
-fi
+# Restart SSH
+service sshd restart
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -55,4 +55,4 @@ fi
 $BIN/v-log-action "system" "Warning" "Plugins" "SSH Chroot Jail disabled."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

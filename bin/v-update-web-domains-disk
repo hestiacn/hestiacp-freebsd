@@ -13,11 +13,17 @@
 # Argument definition
 user=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -35,10 +41,12 @@ is_object_valid 'user' 'USER' "$user"
 #----------------------------------------------------------#
 
 # Loop through all domains that are not suspended
-for domain in $($BIN/v-list-web-domains $user plain | cut -f 1); do
+for domain in $($BIN/v-list-web-domains "$user" plain | cut -f 1); do
 	home_dir="$HOMEDIR/$user/web/$domain/"
+	disk_usage=0
 	if [ -e "$home_dir" ]; then
-		disk_usage=$(nice -n 19 du -shm $home_dir | cut -f 1)
+		disk_usage=$(nice -n 19 du -sm "$home_dir" | cut -f 1)
+		[ -z "$disk_usage" ] && disk_usage=0
 	fi
 	update_object_value 'web' 'DOMAIN' "$domain" '$U_DISK' "$disk_usage"
 done

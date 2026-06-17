@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: delete web domain statistics
 # options: USER DOMAIN
 #
@@ -16,9 +16,15 @@ user=$1
 domain=$2
 domain_idn=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -55,6 +61,7 @@ get_domain_values 'web'
 rm -rf "$HOMEDIR/$user/web/$domain/stats"
 
 # Deleting config
+rm -f "/usr/local/etc/awstats/$STATS.$domain_idn.conf"
 rm -f "/etc/awstats/$STATS.$domain_idn.conf"
 rm -f "$HOMEDIR/$user/conf/web/$domain/$STATS.conf"
 
@@ -63,7 +70,7 @@ rm -f "$HOMEDIR/$user/conf/web/$domain/$STATS.conf"
 #----------------------------------------------------------#
 
 # Deleting pipe command
-sed -i "/ $domain$/d" $HESTIA/data/queue/webstats.pipe
+sed -i "" "/ $domain$/d" "$HESTIA/data/queue/webstats.pipe"
 
 # Update config
 update_object_value 'web' 'DOMAIN' "$domain" '$STATS' ''
@@ -72,4 +79,4 @@ update_object_value 'web' 'DOMAIN' "$domain" '$STATS' ''
 $BIN/v-log-action "$user" "Info" "Web" "Web traffic analyzer disabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

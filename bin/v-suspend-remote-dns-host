@@ -13,11 +13,17 @@
 # Argument definition
 host=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
@@ -38,8 +44,8 @@ check_hestia_demo_mode
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Unsuspend remote dns server
-update_object_value "../../conf/dns-cluster" 'HOST' "$host" '$SUSPENDED' 'yes'
+# Suspend remote dns server
+update_object_value "../../../conf/dns-cluster" 'HOST' "$host" '$SUSPENDED' 'yes'
 
 #----------------------------------------------------------#
 #                       Hestia                             #

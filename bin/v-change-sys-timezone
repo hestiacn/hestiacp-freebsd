@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: change system timezone
 # options: TIMEZONE
 #
@@ -13,20 +13,26 @@
 # Argument definition
 timezone=$1
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 is_timezone_valid() {
-	if [ ! -e "/usr/share/zoneinfo/$timezone" ]; then
-		echo "Error: tz file $timezone doesn't exist"
-		log_event "$E_NOTEXIST" "$ARGUMENTS"
-		exit "$E_NOTEXIST"
-	fi
+    if [ ! -e "/usr/share/zoneinfo/$timezone" ]; then
+        echo "Error: tz file $timezone doesn't exist"
+        log_event "$E_NOTEXIST" "$ARGUMENTS"
+        exit "$E_NOTEXIST"
+    fi
 }
 
 #----------------------------------------------------------#
@@ -44,27 +50,31 @@ check_hestia_demo_mode
 #----------------------------------------------------------#
 
 # Changing system timezone
-which timedatectls > /dev/null 2>&1
-if [ "$?" -eq 0 ]; then
-	timedatectl set-timezone "$timezone"
+if command -v timedatectl > /dev/null 2>&1; then
+    # Linux with systemd
+    timedatectl set-timezone "$timezone"
+elif [ "$OS" = "freebsd" ]; then
+    # FreeBSD: tzsetup works directly with zone name
+    tzsetup "$timezone"
 else
-	if [ -e "/etc/sysconfig/clock" ]; then
-		sed -i "s/ZONE.*//" /etc/sysconfig/clock
-		echo "ZONE=\"$timezone\"" >> /etc/sysconfig/clock
-	fi
-	if [ -e "/etc/timezone" ]; then
-		echo "$timezone" > /etc/timezone
-	fi
-	rm -f /etc/localtime
-	ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
+    # Legacy Linux (without systemd)
+    if [ -e "/etc/sysconfig/clock" ]; then
+        sed -i "s/ZONE.*//" /etc/sysconfig/clock
+        echo "ZONE=\"$timezone\"" >> /etc/sysconfig/clock
+    fi
+    if [ -e "/etc/timezone" ]; then
+        echo "$timezone" > /etc/timezone
+    fi
+    rm -f /etc/localtime
+    ln -sf "/usr/share/zoneinfo/$timezone" /etc/localtime
 fi
 
-# Chaning php timezone
+# Changing php timezone
 if [ -n "$WEB_SYSTEM" ]; then
-	for conf in $(find /etc/php* -name php.ini); do
-		sed -i "s|;date.timezone =|date.timezone =|" $conf
-		sed -i "s|date.timezone =.*|date.timezone = $timezone|" $conf
-	done
+    for conf in $(find /usr/local/etc/php* -name php.ini 2>/dev/null); do
+        sed -i "" "s|;date.timezone =|date.timezone =|" "$conf"
+        sed -i "" "s|date.timezone =.*|date.timezone = $timezone|" "$conf"
+    done
 fi
 
 #----------------------------------------------------------#
@@ -75,4 +85,4 @@ fi
 $BIN/v-log-action "system" "Info" "System" "System time zone changed (Value: $timezone)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

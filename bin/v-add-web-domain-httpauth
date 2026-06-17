@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: add password protection for web domain
 # options: USER DOMAIN AUTH_USER AUTH_PASSWORD [RESTART]
 #
@@ -19,8 +19,8 @@ HIDE=4
 restart=${5-yes}
 
 # Includes
-# shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/etc/hestiacp/hestia.conf
+source /usr/local/etc/hestiacp/hestia.conf
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # shellcheck source=/usr/local/hestia/func/domain.sh
@@ -49,10 +49,10 @@ is_object_unsuspended 'web' 'DOMAIN' "$domain"
 is_password_valid
 get_domain_values 'web'
 is_user_format_valid "$auth_user" "Auth user"
-if [ -n "$(echo "$AUTH_USER" | tr : '\n' | grep ^$auth_user$)" ]; then
-	echo "Error: auth user $auth_user already exists"
-	log_event "$E_EXISTS" "$ARGUMENTS"
-	exit "$E_EXISTS"
+if [ -n "$(echo "$AUTH_USER" | tr : '\n' | grep "^$auth_user$")" ]; then
+    echo "Error: auth user $auth_user already exists"
+    log_event "$E_EXISTS" "$ARGUMENTS"
+    exit "$E_EXISTS"
 fi
 
 #----------------------------------------------------------#
@@ -61,27 +61,27 @@ fi
 
 # Adding htaccess password protection
 if [ "$WEB_SYSTEM" = "nginx" ] || [ "$PROXY_SYSTEM" = "nginx" ]; then
-	htaccess="$HOMEDIR/$user/conf/web/$domain/nginx.conf_htaccess"
-	shtaccess="$HOMEDIR/$user/conf/web/$domain/nginx.ssl.conf_htaccess"
-	if [ ! -f "$htaccess" ]; then
-		echo "auth_basic  \"$domain password access\";" > $htaccess
-		echo "auth_basic_user_file    $htpasswd;" >> $htaccess
-		ln -s $htaccess $shtaccess
-		restart_required='yes'
-	fi
+    htaccess="$HOMEDIR/$user/conf/web/$domain/nginx.conf_htaccess"
+    shtaccess="$HOMEDIR/$user/conf/web/$domain/nginx.ssl.conf_htaccess"
+    if [ ! -f "$htaccess" ]; then
+        echo "auth_basic  \"$domain password access\";" > $htaccess
+        echo "auth_basic_user_file    $htpasswd;" >> $htaccess
+        ln -s $htaccess $shtaccess
+        restart_required='yes'
+    fi
 else
-	htaccess="$HOMEDIR/$user/conf/web/$domain/apache2.conf_htaccess"
-	shtaccess="$HOMEDIR/$user/conf/web/$domain/apache2.ssl.conf_htaccess"
-	if [ ! -f "$htaccess" ]; then
-		echo "<Directory $docroot>" > $htaccess
-		echo "    AuthUserFile $htpasswd" >> $htaccess
-		echo "    AuthName \"$domain access\"" >> $htaccess
-		echo "    AuthType Basic" >> $htaccess
-		echo "    Require valid-user" >> $htaccess
-		echo "</Directory>" >> $htaccess
-		ln -s $htaccess $shtaccess
-		restart_required='yes'
-	fi
+    htaccess="$HOMEDIR/$user/conf/web/$domain/apache24.conf_htaccess"
+    shtaccess="$HOMEDIR/$user/conf/web/$domain/apache24.ssl.conf_htaccess"
+    if [ ! -f "$htaccess" ]; then
+        echo "<Directory $docroot>" > $htaccess
+        echo "    AuthUserFile $htpasswd" >> $htaccess
+        echo "    AuthName \"$domain access\"" >> $htaccess
+        echo "    AuthType Basic" >> $htaccess
+        echo "    Require valid-user" >> $htaccess
+        echo "</Directory>" >> $htaccess
+        ln -s $htaccess $shtaccess
+        restart_required='yes'
+    fi
 fi
 
 # Adding httpasswd user
@@ -89,15 +89,15 @@ auth_hash=$($BIN/v-generate-password-hash htpasswd htpasswd $password)
 touch $htpasswd
 chmod 644 $htpasswd $htaccess
 chgrp $user $htpasswd $htaccess
-sed -i "/^$auth_user:/d" $htpasswd
+sed -i "" "/^$auth_user:/d" $htpasswd
 echo "$auth_user:$auth_hash" >> $htpasswd
 
 # Restarting web server
 if [ "$restart" != 'no' ] && [ "$restart_required" = 'yes' ]; then
-	$BIN/v-restart-web
-	if [ -n "$PROXY_SYSTEM" ]; then
-		$BIN/v-restart-proxy
-	fi
+    $BIN/v-restart-web
+    if [ -n "$PROXY_SYSTEM" ]; then
+        $BIN/v-restart-proxy
+    fi
 fi
 
 #----------------------------------------------------------#
@@ -106,12 +106,12 @@ fi
 
 # Preparing web.conf keys
 if [ -n "$AUTH_USER" ]; then
-	auth_user="$AUTH_USER:$auth_user"
-	auth_hash="$AUTH_HASH:$auth_hash"
+    auth_user="$AUTH_USER:$auth_user"
+    auth_hash="$AUTH_HASH:$auth_hash"
 else
-	# Adding new key into web.conf
-	add_object_key "web" 'DOMAIN' "$domain" 'AUTH_USER' 'U_DISK'
-	add_object_key "web" 'DOMAIN' "$domain" 'AUTH_HASH' 'U_DISK'
+    # Adding new key into web.conf
+    add_object_key "web" 'DOMAIN' "$domain" 'AUTH_USER' 'U_DISK'
+    add_object_key "web" 'DOMAIN' "$domain" 'AUTH_HASH' 'U_DISK'
 fi
 
 # Updating config
@@ -119,7 +119,7 @@ update_object_value 'web' 'DOMAIN' "$domain" '$AUTH_USER' "$auth_user"
 update_object_value 'web' 'DOMAIN' "$domain" '$AUTH_HASH' "$auth_hash"
 
 # Logging
-$BIN/v-log-action "$user" "Info" "Web" "Password protection enabled (Domain: $domain, Username: $httpauth_user)."
+$BIN/v-log-action "$user" "Info" "Web" "Password protection enabled (Domain: $domain, Username: $auth_user)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: Remove mail domain smtp relay support
 # options: USER DOMAIN
 #
@@ -14,9 +14,15 @@
 user=$1
 domain=$2
 
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+    HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+    HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
+
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
 source $HESTIA/func/main.sh
 # load config file
@@ -37,7 +43,12 @@ is_object_unsuspended 'mail' 'DOMAIN' "$domain"
 #                       Action                             #
 #----------------------------------------------------------#
 
-rm -f /etc/exim4/domains/${domain}/smtp_relay.conf
+# FreeBSD: exim config path
+if [ "$OS" = "freebsd" ]; then
+    rm -f "/usr/local/etc/exim/domains/${domain}/smtp_relay.conf"
+else
+    rm -f "/etc/exim4/domains/${domain}/smtp_relay.conf"
+fi
 
 #----------------------------------------------------------#
 #                       Hestia                             #
@@ -45,11 +56,11 @@ rm -f /etc/exim4/domains/${domain}/smtp_relay.conf
 
 # Adding smtp relay values in config
 if [ -z "$U_SMTP_RELAY" ]; then
-	add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY' 'ACCOUNTS'
-	add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_HOST' 'ACCOUNTS'
-	add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_PORT' 'ACCOUNTS'
-	add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_USERNAME' 'ACCOUNTS'
-	add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_PASSWORD' 'ACCOUNTS'
+    add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY' 'ACCOUNTS'
+    add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_HOST' 'ACCOUNTS'
+    add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_PORT' 'ACCOUNTS'
+    add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_USERNAME' 'ACCOUNTS'
+    add_object_key 'mail' 'DOMAIN' "$domain" 'U_SMTP_RELAY_PASSWORD' 'ACCOUNTS'
 fi
 
 update_object_value 'mail' 'DOMAIN' "$domain" '$U_SMTP_RELAY' 'false'
@@ -62,4 +73,4 @@ update_object_value 'mail' 'DOMAIN' "$domain" '$U_SMTP_RELAY_PASSWORD' ''
 $BIN/v-log-action "$user" "Info" "Mail" "SMTP Relay disabled (Domain: $domain)."
 log_event "$OK" "$ARGUMENTS"
 
-exit
+exit 0

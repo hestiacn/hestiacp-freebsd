@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # info: list remote dns host
 # options: [FORMAT]
 #
@@ -11,80 +11,94 @@
 #----------------------------------------------------------#
 
 # Argument definition
-format=${1-shell}
+format=${1:-shell}
+
+if [ -f /etc/redhat-release ] || [ -f /etc/debian_version ]; then
+	HESTIA_CONF="/etc/hestiacp/hestia.conf"
+else
+	HESTIA_CONF="/usr/local/etc/hestiacp/hestia.conf"
+fi
 
 # Includes
 # shellcheck source=/etc/hestiacp/hestia.conf
-source /etc/hestiacp/hestia.conf
+source "$HESTIA_CONF"
 # shellcheck source=/usr/local/hestia/func/main.sh
-source $HESTIA/func/main.sh
+source "$HESTIA/func/main.sh"
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
 # JSON list function
 json_list() {
-	IFS=$'\n'
 	i=1
-	objects=$(grep HOST $HESTIA/conf/dns-cluster.conf | wc -l)
+	objects=$(grep -c "HOST" "$HESTIA/conf/dns-cluster.conf")
 	echo "{"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -n '    "'$HOST'": {
-        "PORT": "'$PORT'",
-        "TYPE": "'$TYPE'",
-        "USER": "'$USER'",
-        "DNS_USER": "'$DNS_USER'",
-        "SUSPENDED": "'$SUSPENDED'",
-        "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
-    }'
+		echo -n "    \"$HOST\": {"
+		echo -n "\"PORT\": \"$PORT\", "
+		echo -n "\"TYPE\": \"$TYPE\", "
+		echo -n "\"USER\": \"$USER\", "
+		echo -n "\"DNS_USER\": \"$DNS_USER\", "
+		echo -n "\"SUSPENDED\": \"$SUSPENDED\", "
+		echo -n "\"TIME\": \"$TIME\", "
+		echo "\"DATE\": \"$DATE\"}"
 		if [ "$i" -lt "$objects" ]; then
-			echo ','
+			echo ","
 		else
-			echo
+			echo ""
 		fi
-		((i++))
-	done < <(cat $HESTIA/conf/dns-cluster.conf)
-	echo '}'
+		i=$((i + 1))
+	done < "$HESTIA/conf/dns-cluster.conf"
+	echo "}"
 }
 
 # SHELL list function
 shell_list() {
-	IFS=$'\n'
-	echo "HOST   PORT   TYPE   USER  DNS_USER   SPND   DATE"
-	echo "----   ----   ----   ----  --------   ----   ----"
-	while read str; do
+	printf "%-20s %-6s %-8s %-10s %-10s %-6s %-12s\n" \
+		"HOST" "PORT" "TYPE" "USER" "DNS_USER" "SPND" "DATE"
+	printf "%-20s %-6s %-8s %-10s %-10s %-6s %-12s\n" \
+		"----" "----" "----" "----" "--------" "----" "----"
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo "$HOST $PORT $TYPE $USER $DNS_USER $SUSPENDED $DATE"
-	done < <(cat $HESTIA/conf/dns-cluster.conf)
+		printf "%-20s %-6s %-8s %-10s %-10s %-6s %-12s\n" \
+			"$HOST" "$PORT" "$TYPE" "$USER" "$DNS_USER" "$SUSPENDED" "$DATE"
+	done < "$HESTIA/conf/dns-cluster.conf"
 }
 
 # PLAIN list function
 plain_list() {
-	IFS=$'\n'
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
-		echo -ne "$HOST\t$PORT\t$TYPE\t$USER\t$DNS_USER\t"
-		echo -e "$SUSPENDED\t$TIME\t$DATE"
-	done < <(cat $HESTIA/conf/dns-cluster.conf)
+		printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+			"$HOST" "$PORT" "$TYPE" "$USER" "$DNS_USER" "$SUSPENDED" "$TIME" "$DATE"
+	done < "$HESTIA/conf/dns-cluster.conf"
 }
 
 # CSV list function
 csv_list() {
-	IFS=$'\n'
 	echo "HOST,PORT,TYPE,USER,DNS_USER,SUSPENDED,TIME,DATE"
-	while read str; do
+	while read -r str; do
+		[ -z "$str" ] && continue
 		parse_object_kv_list "$str"
 		echo "$HOST,$PORT,$TYPE,$USER,$DNS_USER,$SUSPENDED,$TIME,$DATE"
-	done < <(cat $HESTIA/conf/dns-cluster.conf)
+	done < "$HESTIA/conf/dns-cluster.conf"
 }
 
 #----------------------------------------------------------#
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-if [ ! -e "$HESTIA/conf/dns-cluster.conf" ]; then
-	exit
+if [ ! -f "$HESTIA/conf/dns-cluster.conf" ]; then
+	case $format in
+		json) echo "{}" ;;
+		shell) echo "No remote DNS hosts found" ;;
+		plain) ;;
+		csv) echo "HOST,PORT,TYPE,USER,DNS_USER,SUSPENDED,TIME,DATE" ;;
+	esac
+	exit 0
 fi
 
 #----------------------------------------------------------#
@@ -96,7 +110,7 @@ case $format in
 	json) json_list ;;
 	plain) plain_list ;;
 	csv) csv_list ;;
-	shell) shell_list | column -t ;;
+	shell) shell_list ;;
 esac
 
 #----------------------------------------------------------#
