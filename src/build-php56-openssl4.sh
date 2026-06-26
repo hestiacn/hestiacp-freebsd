@@ -357,18 +357,27 @@ build_php() {
 
 	apply_patches "$build_dir"
 
-    if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
-        echo "[ * ] Using gcc12 for PHP 5.6 compatibility..."
-        export CC=gcc12
-        export CXX=g++12
-        export CPP=cpp12
-        # 验证
-        if command -v gcc12; then
-            echo "✅ Using $(gcc12 --version)"
-        else
-            echo "⚠️  gcc12 not found, using default compiler"
-        fi
-    fi
+	# 在 build_php() 中，如果是 PHP 5.6
+	if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
+		# 检查并编译 ICU 53
+		if [ ! -d "/usr/local/icu53" ]; then
+			echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
+			fetch -o /tmp/icu-53.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
+			tar -xf /tmp/icu-53.tar.gz -C /tmp
+			cd /tmp/icu-release-53-2/icu4c/source
+			./configure --prefix=/usr/local/icu53
+			make -j${NUM_CPUS}
+			make install
+			cd -
+		fi
+		
+		export CC=gcc12
+		export CXX=g++12
+		export CPPFLAGS="-I/usr/local/icu53/include"
+		export LDFLAGS="-L/usr/local/icu53/lib"
+		export CXXFLAGS="-std=c++11 -Wno-register"
+		export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/icu53/lib"
+	fi
 
 	# 设置 OpenSSL 4.x 环境变量
 	export CFLAGS="-I/usr/local/include -I/usr/local/include \
