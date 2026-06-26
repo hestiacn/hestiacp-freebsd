@@ -367,8 +367,8 @@ build_php() {
 			tar -xf /tmp/icu-53.tar.gz -C /tmp
 			cd /tmp/icu-release-53-2/icu4c/source
 			./configure --prefix=/usr/local/icu53
-			make -j${NUM_CPUS}
-			make install
+			gmake -j${NUM_CPUS}
+			gmake install
 			cd -
 			rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
 		fi
