@@ -463,25 +463,9 @@ EOF
         # 修复 ICU 53 头文件
         echo "[ * ] Patching ICU 53 headers..."
 
-        # 修补所有头文件
         for header in /usr/local/icu53/include/unicode/*.h; do
             if [ -f "$header" ]; then
-                # 检查是否已经包含了 type_traits
-                if ! grep -q "#include <type_traits>" "$header" 2>/dev/null; then
-                    # 在第一个 #define 或 #ifndef 后插入
-                    # 先用 sed 在 #define 后插入
-                    sed -i '' -e '/^#define /a\
-        #include <type_traits>
-        ' "$header" 2>/dev/null || true
-                    # 如果没有 #define，就在 #ifndef 后插入
-                    if ! grep -q "#include <type_traits>" "$header" 2>/dev/null; then
-                        sed -i '' -e '/^#ifndef /a\
-        #include <type_traits>
-        ' "$header" 2>/dev/null || true
-                    fi
-                fi
-                
-                # 替换 C++14/17 特性
+                # 只替换 C++14/17 特性，不添加 #include <type_traits>
                 sed -i '' \
                     -e 's/std::enable_if_t</std::enable_if</g' \
                     -e 's/std::is_pointer_v</std::is_pointer</g' \
@@ -490,6 +474,15 @@ EOF
                     -e 's/std::is_same_v</std::is_same</g' \
                     -e 's/std::is_integral_v</std::is_integral</g' \
                     "$header" 2>/dev/null || true
+            fi
+        done
+
+        # 特别处理可能包含 type_traits 的头文件
+        for header in char16ptr.h stringpiece.h unistr.h; do
+            if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
+                # 删除任何已添加的 #include <type_traits>
+                sed -i '' '/#include <type_traits>/d' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+                echo "[ ✓ ] Cleaned $header"
             fi
         done
         echo "[ ✓ ] ICU 53 headers patched"
