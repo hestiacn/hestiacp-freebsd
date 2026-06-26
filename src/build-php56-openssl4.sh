@@ -428,7 +428,7 @@ EOF
             chmod +x /usr/local/icu53/bin/icu-config
             echo "[ ✓ ] Created manual icu-config"
         fi
-        
+
         # ✅ 将 ICU 53 的 bin 放在 PATH 最前面
         export PATH="/usr/local/icu53/bin:$PATH"
         
@@ -451,19 +451,37 @@ EOF
             -Wno-pointer-sign \
             -Wno-implicit-const-int-float-conversion"
         export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
-        export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
+        export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations -fpermissive"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         
         # 修复 ICU 53 头文件
         echo "[ * ] Patching ICU 53 headers..."
-        for header in char16ptr.h stringpiece.h unistr.h; do
-            if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
-                sed -i '' 's/std::enable_if_t</std::enable_if</g' "/usr/local/icu53/include/unicode/$header"
-                sed -i '' 's/std::is_pointer_v</std::is_pointer</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-                sed -i '' 's/std::remove_reference_t</std::remove_reference</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-                sed -i '' 's/std::is_convertible_v</std::is_convertible</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-                echo "[ ✓ ] Patched $header"
+
+        # 修补所有头文件
+        for header in /usr/local/icu53/include/unicode/*.h; do
+            if [ -f "$header" ]; then
+                
+                # 添加 type_traits（如果缺少）
+                if ! grep -q "#include <type_traits>" "$header" 2>/dev/null; then
+                    sed -i '' -e '1i\
+                #include <type_traits>
+                ' "$header" 2>/dev/null || true
+                fi
+                
+                # 替换 C++14/17 特性
+                sed -i '' \
+                    -e 's/std::enable_if_t</std::enable_if</g' \
+                    -e 's/std::is_pointer_v</std::is_pointer</g' \
+                    -e 's/std::remove_reference_t</std::remove_reference</g' \
+                    -e 's/std::is_convertible_v</std::is_convertible</g' \
+                    -e 's/std::is_same_v</std::is_same</g' \
+                    -e 's/std::is_integral_v</std::is_integral</g' \
+                    -e 's/std::is_constructible_v</std::is_constructible</g' \
+                    -e 's/std::is_assignable_v</std::is_assignable</g' \
+                    "$header" 2>/dev/null || true
+                
+                echo "[ ✓ ] Patched $(basename "$header")"
             fi
         done
     else
