@@ -9,6 +9,8 @@ set -e
 # ============================================================
 PHP_VERSION="7.0.33"
 BUILD_DIR="/tmp/php-build-test"
+PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}" 
+PHP_INSTALL_DIR="$BUILD_DIR/php-${PHP_VERSION}"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
@@ -446,40 +448,30 @@ create_package() {
 		return 1
 	}
 
-    # 验证 ImageMagick 扩展
-    echo "[ * ] Verifying ImageMagick extension..."
-    PHP_SRC_DIR="/tmp/php-build-test/php-src-7.0.33"
-    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
-    DEBUG="no-debug"
-    ZTS="non-zts"
-    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/${DEBUG}-${ZTS}-${ZEND_API_NO}"
+	# 验证 ImageMagick 扩展并运行测试
+	echo "[ * ] Verifying ImageMagick extension and running tests..."
+	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-    if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-        "$php_bin" -d extension_dir="$EXTENSION_DIR" -m 2>/dev/null | grep -i imagick && {
-            echo "✅ ImageMagick extension loaded"
-        } || {
-            echo "⚠️  ImageMagick extension not loaded (file exists but not loaded)"
-        }
-    else
-        echo "⚠️  ImageMagick extension file not found"
-        echo "   Expected: $EXTENSION_DIR/imagick.so"
-    fi
-	
-	echo ""
-	echo "[ * ] Running quick tests..."
-	"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-		echo "PHP Version: " . PHP_VERSION . "\n";
-		echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-		echo "openssl_encrypt(): " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
-		echo "openssl_decrypt(): " . (function_exists("openssl_decrypt") ? "✅" : "❌") . "\n";
-		echo "openssl_sign(): " . (function_exists("openssl_sign") ? "✅" : "❌") . "\n";
-		echo "openssl_verify(): " . (function_exists("openssl_verify") ? "✅" : "❌") . "\n";
-        echo "ImageMagick extension: " . (extension_loaded("imagick") ? "✅" : "❌") . "\n";
-		if (extension_loaded("imagick")) {
-			$formats = Imagick::queryFormats("*");
-			echo "ImageMagick supported formats => " . implode(", ", $formats) . "\n";
-		}
-	'
+	if [ -f "$EXTENSION_DIR/imagick.so" ]; then
+		echo "✅ ImageMagick extension found"
+		
+		# 运行完整测试
+		"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
+			$imagick_loaded = extension_loaded("imagick");
+			echo "PHP Version: " . PHP_VERSION . "\n";
+			echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+			echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
+			echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
+			if ($imagick_loaded) {
+				$formats = Imagick::queryFormats("*");
+				echo "ImageMagick supports " . count($formats) . " formats\n";
+			}
+		'
+	else
+		echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
+	fi
 	
 	# 创建包目录结构
 	PKG_NAME="php${ver_suffix}-openssl4"
