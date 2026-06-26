@@ -454,6 +454,11 @@ EOF
         export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations -fpermissive"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
+        export ICU_CXXFLAGS="-std=c++14"
+        export ICU_PREFIX="/usr/local/icu53"
+        export ICU_LIBS="-licuuc -licui18n -licudata"
+        export ICU_CFLAGS="-I/usr/local/icu53/include"
+        export ICU_LDFLAGS="-L/usr/local/icu53/lib"
         
         # 修复 ICU 53 头文件
         echo "[ * ] Patching ICU 53 headers..."
@@ -461,12 +466,19 @@ EOF
         # 修补所有头文件
         for header in /usr/local/icu53/include/unicode/*.h; do
             if [ -f "$header" ]; then
-                
-                # 添加 type_traits（如果缺少）
+                # 检查是否已经包含了 type_traits
                 if ! grep -q "#include <type_traits>" "$header" 2>/dev/null; then
-                    sed -i '' -e '1i\
-                #include <type_traits>
-                ' "$header" 2>/dev/null || true
+                    # 在第一个 #define 或 #ifndef 后插入
+                    # 先用 sed 在 #define 后插入
+                    sed -i '' -e '/^#define /a\
+        #include <type_traits>
+        ' "$header" 2>/dev/null || true
+                    # 如果没有 #define，就在 #ifndef 后插入
+                    if ! grep -q "#include <type_traits>" "$header" 2>/dev/null; then
+                        sed -i '' -e '/^#ifndef /a\
+        #include <type_traits>
+        ' "$header" 2>/dev/null || true
+                    fi
                 fi
                 
                 # 替换 C++14/17 特性
@@ -477,13 +489,10 @@ EOF
                     -e 's/std::is_convertible_v</std::is_convertible</g' \
                     -e 's/std::is_same_v</std::is_same</g' \
                     -e 's/std::is_integral_v</std::is_integral</g' \
-                    -e 's/std::is_constructible_v</std::is_constructible</g' \
-                    -e 's/std::is_assignable_v</std::is_assignable</g' \
                     "$header" 2>/dev/null || true
-                
-                echo "[ ✓ ] Patched $(basename "$header")"
             fi
         done
+        echo "[ ✓ ] ICU 53 headers patched"
     else
         export CPPFLAGS="-I/usr/local/include"
         export CFLAGS="-I/usr/local/include \
