@@ -1,0 +1,129 @@
+name: Build PHP 7.2 with OpenSSL 4.x
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - mains
+      - release
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+jobs:
+  build-php72-openssl4:
+    name: Build PHP 7.2.34 with OpenSSL 4.x on FreeBSD 14.4
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Build PHP 7.2.34 with OpenSSL 4.x
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.4"
+          usesh: true
+          sync: rsync
+          copyback: true
+          run: |
+            set -e
+
+            export IGNORE_OSVERSION=yes
+            export ASSUME_ALWAYS_YES=yes
+
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
+
+            echo "========================================"
+            echo "Build PHP 7.2.34 with OpenSSL 4.x"
+            echo "========================================"
+
+            # 安装编译依赖
+            echo "[ * ] Installing build dependencies..."
+            pkg update -f
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp python pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7
+
+            # 创建 bash 软链接
+            if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
+                ln -sf /usr/local/bin/bash /bin/bash
+                echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
+            fi
+
+            echo ""
+            echo "OpenSSL version:"
+            /usr/local/bin/openssl version
+            echo ""
+
+            # 设置使用 OpenSSL 4.x
+            export OPENSSL_PREFIX="/usr/local"
+            export OPENSSL_VERSION="4.x"
+            export OPENSSL_INCLUDE="${OPENSSL_PREFIX}/include/openssl"
+            export OPENSSL_LIB="${OPENSSL_PREFIX}/lib"
+            export CFLAGS="-I${OPENSSL_INCLUDE} -I/usr/include -I/usr/local/include -Wno-deprecated-declarations"
+            export LDFLAGS="-L${OPENSSL_LIB} -L/usr/lib -L/usr/local/lib"
+            export PKG_CONFIG_PATH="${OPENSSL_LIB}/pkgconfig:/usr/local/lib/pkgconfig"
+            export OPENSSL_OPT="--with-openssl=${OPENSSL_PREFIX}"
+            export LD_LIBRARY_PATH="${OPENSSL_LIB}:/usr/lib"
+
+            export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+            mkdir -p "$ARTIFACT_DIR"
+
+            chmod +x src/build-php72-openssl4.sh
+
+            echo "[ * ] Starting PHP 7.2.34 build with OpenSSL 4.x..."
+            echo "OPENSSL_OPT: $OPENSSL_OPT"
+            echo "OPENSSL_PREFIX: $OPENSSL_PREFIX"
+            echo "OPENSSL_INCLUDE: $OPENSSL_INCLUDE"
+            echo "OPENSSL_LIB: $OPENSSL_LIB"
+            echo "CFLAGS: $CFLAGS"
+            echo "LDFLAGS: $LDFLAGS"
+            echo ""
+
+            # 运行构建脚本
+            /usr/local/bin/bash src/build-php72-openssl4.sh 2>&1 | tee build-php72-openssl4.log
+            EXIT_CODE=$?
+
+            echo "=== Exit code: $EXIT_CODE ==="
+
+            if [ $EXIT_CODE -ne 0 ]; then
+                echo ""
+                echo "========================================"
+                echo "❌ BUILD FAILED"
+                echo "========================================"
+                echo ""
+                echo "=== All errors ==="
+                grep -E "error:|Error:" build-php72-openssl4.log || echo "No errors found"
+                echo ""
+                echo "========================================"
+                echo "Full build log (last 500 lines):"
+                echo "========================================"
+                tail -500 build-php72-openssl4.log
+                exit 1
+            fi
+
+            echo ""
+            echo "========================================"
+            echo "✅ BUILD AND PACKAGE COMPLETED"
+            echo "========================================"
+            echo ""
+            echo "=== Build artifacts ==="
+            ls -la "$ARTIFACT_DIR/"
+
+      - name: Upload PHP package
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: php72-openssl4-package
+          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/*.pkg
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-php72-openssl4
+          path: build-php72-openssl4.log
+          retention-days: 7
