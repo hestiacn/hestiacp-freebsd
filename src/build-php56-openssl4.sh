@@ -387,11 +387,57 @@ build_php() {
                 "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-53-2"
             tar -xf /tmp/icu-53.tar.gz -C /tmp
             cd /tmp/icu-release-53-2/icu4c/source
-            CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
-            gmake -j${NUM_CPUS}
-            gmake install
+            
+            make distclean
+            
+            export CC=gcc12
+            export CXX=g++12
+            export CFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing"
+            export CXXFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing -std=c++14"
+            
+            export LDFLAGS="-lpthread -lm"
+            
+            ./configure \
+                --prefix=/usr/local/icu53 \
+                --enable-shared=yes \
+                --enable-static=no \
+                --disable-renaming \
+                --disable-debug \
+                --enable-release \
+                --with-library-bits=64
+                
+            find . -name "Makefile" -exec sed -i '' 's/-lpthread -lm/-lm -lpthread/g' {} \;
+            gmake -j1 VERBOSE=1
+            
+            if [ $? -ne 0 ]; then
+                echo "❌ ICU make failed! Trying alternative approach..."
+                gmake -j1 -C stubdata
+                gmake -j1 -C common
+                gmake -j1 -C i18n
+                gmake -j1 install
+            else
+                gmake install
+            fi
+            
             cd -
             rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
+            
+            echo "[ * ] Verifying ICU installation..."
+            if [ -f "/usr/local/icu53/lib/libicuuc.so.53.2" ]; then
+                echo "[ ✓ ] ICU libraries installed correctly"
+                cd /usr/local/icu53/lib
+                for lib in libicuuc libicui18n libicudata; do
+                    if [ -f "${lib}.so.53.2" ]; then
+                        ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
+                        ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+                    fi
+                done
+                cd -
+                ls -la /usr/local/icu53/lib/libicu*.so* | head -10
+            else
+                echo "❌ ICU libraries not found!"
+                return 1
+            fi
         fi
         
         # ✅ 创建或复制 icu-config
