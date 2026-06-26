@@ -9,6 +9,8 @@ set -e
 # ============================================================
 PHP_VERSION="7.2.34"
 BUILD_DIR="/tmp/php-build-test"
+PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}" 
+PHP_INSTALL_DIR="$BUILD_DIR/php-${PHP_VERSION}"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
@@ -46,6 +48,31 @@ download_php() {
 		return 1
 	fi
 	echo "[ ✓ ] Downloaded PHP ${PHP_VERSION}"
+	return 0
+}
+
+# ============================================================
+# 下载 ImageMagick 扩展源码
+# ============================================================
+download_imagick() {
+	local imagick_dir="$1/ext/imagick"
+	
+	[ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
+	
+	echo "[ * ] Downloading ImageMagick 3.8.1..."
+	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
+	
+	echo "[ * ] Extracting..."
+	tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
+	
+	# 找到解压出来的目录并重命名
+	local extracted=$(find "$1/ext" -maxdepth 1 -type d -name "imagick-*" | head -1)
+	[ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
+	
+	mv "$extracted" "$imagick_dir"
+	rm -f "/tmp/imagick.tar.gz"
+	
+	echo "[ ✓ ] ImageMagick extension ready"
 	return 0
 }
 
@@ -102,29 +129,11 @@ get_config_args() {
 		"--with-pdo-pgsql"
 		"--with-iconv=/usr/local"
 		"--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
+        "--with-png-dir=/usr/local"
+        "--with-jpeg-dir=/usr/local"
+        "--with-freetype-dir=/usr/local"
+        #"--with-webp-dir=/usr/local"
 	)
-
-	# PHP 5.6: 没有 --enable-fileinfo
-	if [ "$major" = "5" ]; then
-		local new_args=()
-		for arg in "${args[@]}"; do
-			if [[ "$arg" != "--enable-fileinfo" ]]; then
-				new_args+=("$arg")
-			fi
-		done
-		args=("${new_args[@]}")
-	fi
-
-	# PHP 5.6 和 7.0: 没有 --enable-filter
-	if [ "$major" = "5" ] || { [ "$major" = "7" ] && [ "$minor" = "0" ]; }; then
-		local new_args=()
-		for arg in "${args[@]}"; do
-			if [[ "$arg" != "--enable-filter" ]]; then
-				new_args+=("$arg")
-			fi
-		done
-		args=("${new_args[@]}")
-	fi
 
 	# PHP 7.1 及以下: 没有 Argon2 支持
 	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
@@ -173,24 +182,7 @@ apply_patches() {
 			echo "[ ✓ ] Patch 3: libxml.c xmlGetLastError cast"
 		fi
 	fi
-	if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
-		echo "[ * ] Updating copyright year to 2020..."
-		find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
-			-exec sed -i '' 's/| Copyright (c) The PHP Group.*/| Copyright (c) 1997-2020 The PHP Group                                |/' {} \;
-		
-		find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
-			-exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998-2020 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
-		
-		for file in sapi/cli/php_cli.c sapi/fpm/fpm/fpm_main.c sapi/cgi/cgi_main.c sapi/litespeed/lsapi_main.c sapi/phpdbg/phpdbg.c; do
-			[ -f "$file" ] && sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997-2020 The PHP Group/g' "$file"
-		done
-		
-		sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2020 Zend Technologies\\n"/' ./Zend/zend.c
-		
-		echo "[ ✓ ] Copyright updated to 2020"
-		grep "Copyright" ./main/main.c 2>/dev/null || true
-		grep "Copyright" ./Zend/zend.c 2>/dev/null || true
-	fi
+
 	# 补丁4: ext/openssl/php_openssl.h
 	if [ -f "ext/openssl/php_openssl.h" ]; then
 	sed -i '' -e '/^#define PHP_OPENSSL_H$/a\
@@ -200,7 +192,28 @@ apply_patches() {
 ' "ext/openssl/php_openssl.h"
 	echo "[ ✓ ] Added ERR_NUM_ERRORS definition to php_openssl.h"
 	fi
-
+    if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
+        echo "[ * ] Updating copyright year to 2020..."
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group.*/| Copyright (c) 1997-2020 The PHP Group                                |/' {} \;
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+            -exec sed -i '' 's/| Copyright (c) The PHP Group.*/| Copyright (c) 1997-2020 The PHP Group                                |/' {} \;
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies.*/| Copyright (c) 1998-2020 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+            -exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998-2020 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
+        for file in sapi/cli/php_cli.c sapi/fpm/fpm/fpm_main.c sapi/cgi/cgi_main.c sapi/litespeed/lsapi_main.c sapi/phpdbg/phpdbg.c; do
+        if [ -f "$file" ]; then
+            sed -i '' 's/Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group/Copyright (c) 1997-2020 The PHP Group/g' "$file"
+            sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997-2020 The PHP Group/g' "$file"
+        fi
+        done
+        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2020 Zend Technologies\\n"/' ./Zend/zend.c
+        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2020 Zend Technologies\\n"/' ./Zend/zend.c
+        echo "[ ✓ ] Copyright updated to 2020"
+        grep "Copyright" ./main/main.c 2>/dev/null || true
+        grep "Copyright" ./Zend/zend.c 2>/dev/null || true
+    fi
 	# ============================================================
 	# 补丁5: 替换 OpenSSL 源文件（使用预修改的文件）
 	# ============================================================
@@ -261,14 +274,16 @@ build_php() {
 		fi
 	fi
 
+	# ============================================================
+	# 下载 ImageMagick 扩展到
+	# ============================================================
+	if ! download_imagick "$build_dir"; then
+		echo "⚠️  ImageMagick extension download failed, continuing without it"
+	fi
+    
 	cd "$build_dir" || return 1
 
 	[ -f "Makefile" ] && gmake clean || true
-
-	if [ -f "buildconf" ]; then
-		echo "[ * ] Running buildconf..."
-		./buildconf --force | tee "$LOG_DIR/buildconf-${PHP_VERSION}.log"
-	fi
 
 	apply_patches "$build_dir"
 
@@ -332,6 +347,69 @@ build_php() {
 		return 1
 	fi
 
+	# ============================================================
+	# 编译 ImageMagick 扩展（在 PHP 安装完成后）
+	# ============================================================
+    if [ -d "$build_dir/ext/imagick" ]; then
+        echo "[ * ] Building ImageMagick extension..."
+        
+        local php_prefix="$install_dir/usr/local"
+        local php_config="$php_prefix/bin/php-config"
+        local phpize="$php_prefix/bin/phpize"
+        
+        if [ ! -f "$phpize" ] || [ ! -f "$php_config" ]; then
+            echo "⚠️  phpize or php-config not found, skipping ImageMagick"
+        else
+            cd "$build_dir/ext/imagick"
+            export PHP_PREFIX="$php_prefix"
+            export PHP_CONFIG="$php_config"
+            export PHPIZE="$phpize"
+            ln -sf "$php_prefix/lib/php/build" /usr/local/lib/php/build
+            # 修复头文件路径：将安装目录的 PHP 头文件链接到系统路径
+            if [ -d "$php_prefix/include/php" ] && [ ! -d "/usr/local/include/php" ]; then
+                echo "[ * ] Linking PHP headers to /usr/local/include/php..."
+                # 创建父目录
+                mkdir -p /usr/local/include
+                # 创建软链接
+                ln -sf "$php_prefix/include/php" /usr/local/include/php
+            fi
+            
+            # 如果已经是软链接但指向错误，重新创建
+            if [ -L "/usr/local/include/php" ] && [ ! -d "/usr/local/include/php/main" ]; then
+                rm -f /usr/local/include/php
+                ln -sf "$php_prefix/include/php" /usr/local/include/php
+            fi
+            
+            # 创建 php -> . 的软链接（解决 /usr/local/include/php/php/ 路径问题）
+            if [ -d "/usr/local/include/php" ] && [ ! -L "/usr/local/include/php/php" ]; then
+                echo "[ * ] Creating php -> . symlink..."
+                cd /usr/local/include/php
+                ln -sf . php
+                cd - > /dev/null
+            fi
+            
+            echo "[ * ] Running phpize..."
+            "$phpize"
+            
+            echo "[ * ] Configuring ImageMagick extension..."
+            ./configure --with-php-config="$php_config" --with-imagick=/usr/local
+            
+            echo "[ * ] Compiling ImageMagick extension..."
+            make
+            
+            echo "[ * ] Installing ImageMagick extension..."
+            make install INSTALL_ROOT="$install_dir"
+            
+            # 创建 php.ini 启用 imagick
+            local php_ini_dir="$install_dir/usr/local/etc"
+            mkdir -p "$php_ini_dir"
+
+            echo "extension=imagick.so" >> "$php_ini_dir/php.ini"
+            echo "[ ✓ ] ImageMagick extension installed"
+        fi
+    fi
+
+    # 检查 PHP 二进制文件（标准路径）
 	if [ -f "$install_dir/usr/local/bin/php" ]; then
 		echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
 		"$install_dir/usr/local/bin/php" -v || true
@@ -356,7 +434,7 @@ create_package() {
 	echo "========================================"
 	
 	if [ ! -f "$php_bin" ]; then
-		echo "❌ PHP binary not found at $php_bin"
+		echo "❌ PHP binary not found at $php_bin!"
 		return 1
 	fi
 	
@@ -374,16 +452,30 @@ create_package() {
 		return 1
 	}
 	
-	echo ""
-	echo "[ * ] Running quick tests..."
-	"$php_bin" -r '
-		echo "PHP Version: " . PHP_VERSION . "\n";
-		echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-		echo "openssl_encrypt(): " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
-		echo "openssl_decrypt(): " . (function_exists("openssl_decrypt") ? "✅" : "❌") . "\n";
-		echo "openssl_sign(): " . (function_exists("openssl_sign") ? "✅" : "❌") . "\n";
-		echo "openssl_verify(): " . (function_exists("openssl_verify") ? "✅" : "❌") . "\n";
-	'
+	# 验证 ImageMagick 扩展并运行测试
+	echo "[ * ] Verifying ImageMagick extension and running tests..."
+	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
+
+	if [ -f "$EXTENSION_DIR/imagick.so" ]; then
+		echo "✅ ImageMagick extension found"
+		
+		# 运行完整测试
+		"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
+			$imagick_loaded = extension_loaded("imagick");
+			echo "PHP Version: " . PHP_VERSION . "\n";
+			echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+			echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
+			echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
+			if ($imagick_loaded) {
+				$formats = Imagick::queryFormats("*");
+				echo "ImageMagick supports " . count($formats) . " formats\n";
+			}
+		'
+	else
+		echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
+	fi
 	
 	# 创建包目录结构
 	PKG_NAME="php${ver_suffix}-openssl4"
@@ -407,6 +499,7 @@ create_package() {
 	echo "[ ✓ ] Files copied successfully"
 	
 	# 创建 PLIST（列出所有文件）
+    echo "[ ✓ ] Files copied successfully"
 	echo "[ * ] Creating file list..."
 	cd "${PKG_DIR}"
 	find . -type f | sed 's|^\.||' > +PLIST
@@ -417,7 +510,7 @@ create_package() {
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
 origin: local/php${ver_suffix}-openssl4
-comment: PHP ${PHP_VERSION} with OpenSSL 4.x support
+comment: PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick support
 categories: [www, lang]
 maintainer: build@hestiacp.com
 www: https://github.com/hestiacp/hestiacp-freebsd
@@ -427,8 +520,10 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 
 This is a custom build of PHP 7.2.34 that includes:
 - OpenSSL 4.x compatibility patches
+- ImageMagick extension (imagick)
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
+- GD with JPEG, PNG, FreeType support
 
 IMPORTANT: PHP 7.2 is end-of-life. Use at your own risk.
 EOD
@@ -438,13 +533,16 @@ EOF
 	cat > "+POST_INSTALL" << 'EOF'
 #!/bin/sh
 echo "========================================"
-echo "PHP 7.2.34 with OpenSSL 4.x installed"
+echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"
 echo ""
 echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
+echo ""
+echo "Verify ImageMagick:"
+/usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
 echo "========================================"
 EOF
 	chmod +x "+POST_INSTALL"

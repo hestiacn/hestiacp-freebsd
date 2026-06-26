@@ -295,7 +295,6 @@ build_php() {
 	export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig"
 	export CPPFLAGS="$CFLAGS"
 	export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib"
-    export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
 	
 	echo "[ * ] Configuring PHP ${PHP_VERSION}..."
 	echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
