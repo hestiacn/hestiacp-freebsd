@@ -228,16 +228,17 @@ apply_patches() {
 			echo "[ ✓ ] Patch 5: dom_iterators.c itemHashScanner const fix"
 		fi
 	fi
-	# 修复 collator_sort.c
-	# 1. 修复所有 intl 文件中的 TRUE/FALSE
+
+	# 1. 修复 TRUE/FALSE（必须）
 	echo "[ * ] Fixing TRUE/FALSE in intl files..."
 	for file in ext/intl/collator/collator_sort.c \
 				ext/intl/collator/collator_convert.c \
-				ext/intl/collator/collator_locale.c; do
-		if [ -f "$file" ]; then
-			if ! grep -q "#define TRUE" "$file"; then
-				sed -i '' '/#ifdef HAVE_CONFIG_H/,/#endif/ {
-					/#endif/ a\
+				ext/intl/collator/collator_locale.c \
+				ext/intl/collator/collator_error.c \
+				ext/intl/common/common_error.c; do
+		if [ -f "$file" ] && ! grep -q "#define TRUE" "$file"; then
+			sed -i '' '/#ifdef HAVE_CONFIG_H/,/#endif/ {
+				/#endif/ a\
 \
 #ifndef TRUE\
 #define TRUE 1\
@@ -245,49 +246,18 @@ apply_patches() {
 #ifndef FALSE\
 #define FALSE 0\
 #endif
-				}' "$file"
-				echo "[ ✓ ] Added TRUE/FALSE defines to $(basename $file)"
-			fi
+			}' "$file"
+			echo "[ ✓ ] Added TRUE/FALSE defines to $(basename "$file")"
 		fi
 	done
 
-	# 2. 修复 intl_convertcpp.h 中的 UnicodeString 命名空间
-	if [ -f "ext/intl/intl_convertcpp.h" ]; then
-		if ! grep -q "using namespace icu;" ext/intl/intl_convertcpp.h; then
-			sed -i '' '/#include <unicode\/unistr.h>/a\
+	# 2. 修复 UnicodeString 命名空间（必须）
+	if [ -f "ext/intl/intl_convertcpp.h" ] && ! grep -q "using namespace icu;" ext/intl/intl_convertcpp.h; then
+		sed -i '' '/#include <unicode\/unistr.h>/a\
 \
 using namespace icu;
-' ext/intl/intl_convertcpp.h
-			echo "[ ✓ ] Added 'using namespace icu;' to intl_convertcpp.h"
-		fi
-	fi
-
-	# 3. 移除 C++ 文件中的 register 关键字（C++17 不支持）
-	echo "[ * ] Removing 'register' keyword from C++ files..."
-	for file in ext/intl/intl_convertcpp.cpp; do
-		if [ -f "$file" ]; then
-			sed -i '' 's/register //g' "$file"
-			echo "[ ✓ ] Removed 'register' from $(basename $file)"
-		fi
-	done
-
-	# 4. 修改 PHP 核心头文件，移除 register 关键字
-	echo "[ * ] Removing 'register' keyword from PHP core headers..."
-	for file in Zend/zend_hash.h \
-				Zend/zend_operators.h \
-				main/snprintf.h \
-				main/php.h; do
-		if [ -f "$file" ]; then
-			sed -i '' 's/register //g' "$file"
-			echo "[ ✓ ] Removed 'register' from $(basename $file)"
-		fi
-	done
-
-	# 5. 修改 Makefile 使用 C++11 标准
-	if [ -f "Makefile" ]; then
-		# 在 CXXFLAGS 中添加 -std=c++11
-		sed -i '' 's/^CXXFLAGS =/CXXFLAGS = -std=c++11 -Wno-register/' Makefile
-		echo "[ ✓ ] Added -std=c++11 to CXXFLAGS"
+	' ext/intl/intl_convertcpp.h
+		echo "[ ✓ ] Added 'using namespace icu;' to intl_convertcpp.h"
 	fi
 	# 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
