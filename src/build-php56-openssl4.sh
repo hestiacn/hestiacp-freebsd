@@ -261,6 +261,16 @@ apply_patches() {
 			echo "[ ✓ ] Added TRUE/FALSE defines to collator_convert.c"
 		fi
 	fi
+	# 在 intl_convertcpp.h 中添加
+	if [ -f "ext/intl/intl_convertcpp.h" ]; then
+		if ! grep -q "using namespace icu;" ext/intl/intl_convertcpp.h; then
+        sed -i '' '/#include <unicode\/unistr.h>/a\
+\
+using namespace icu;
+' ext/intl/intl_convertcpp.h
+			echo "[ ✓ ] Added 'using namespace icu;' to intl_convertcpp.h"
+		fi
+	fi
 	# 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2019..."
