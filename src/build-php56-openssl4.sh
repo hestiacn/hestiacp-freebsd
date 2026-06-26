@@ -428,8 +428,8 @@ build_php() {
                 cd /usr/local/icu53/lib
                 for lib in libicuuc libicui18n libicudata; do
                     if [ -f "${lib}.so.53.2" ]; then
-                        ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
-                        ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+                        ln -sf "${lib}.so.53.2" "${lib}.so.53" || true
+                        ln -sf "${lib}.so.53.2" "${lib}.so" || true
                     fi
                 done
                 cd -
@@ -574,25 +574,18 @@ EOF
     # ============================================================
     # ✅ 修复 CGI 链接问题
     # ============================================================
-    echo "[ * ] Fixing CGI link flags..."
+    echo "[ * ] Fixing link flags..."
     if [ -f "Makefile" ]; then
-        # 在 EXTRA_LIBS 中添加 ICU 库
-        if grep -q "^EXTRA_LIBS" Makefile; then
-            sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -licuuc -licui18n -licudata/' Makefile
-            echo "[ ✓ ] Added ICU libraries to EXTRA_LIBS"
-        fi
-        # 也在 LDFLAGS 中添加（双重保险）
-        if grep -q "^LDFLAGS" Makefile; then
-            sed -i '' 's/^LDFLAGS = \(.*\)$/LDFLAGS = \1 -licuuc -licui18n -licudata/' Makefile
-            echo "[ ✓ ] Added ICU libraries to LDFLAGS"
-        fi
-        # 检查修改结果
-        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile)"
-        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile)"
+        sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -licui18n -licuuc -licudata/' Makefile
+        sed -i '' 's/^LDFLAGS = \(.*\)$/LDFLAGS = \1 -licui18n -licuuc -licudata/' Makefile
+        echo "[ ✓ ] Added ICU libraries to Makefile"
+        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile | head -1)"
+        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile | head -1)"
     fi
-
+    export LIBS="-licui18n -licuuc -licudata -lpthread -lm"
+    
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    gmake -j "$NUM_CPUS" LIBS="$LIBS" > "$LOG_DIR/build-${PHP_VERSION}.log"
 
     if [ $? -ne 0 ]; then
         echo ""
