@@ -365,12 +365,14 @@ build_php() {
 			fetch -o /tmp/icu-53.tar.gz \
 				"https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
 			tar -xf /tmp/icu-53.tar.gz -C /tmp
+			ls -la /tmp/icu-release-53-2/
 			cd /tmp/icu-release-53-2/icu4c/source
 			./configure --prefix=/usr/local/icu53
 			gmake -j${NUM_CPUS}
 			gmake install
 			cd -
 			rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
+			ls -la /usr/local/icu53/
 		fi
 		
 		export CC=gcc12
