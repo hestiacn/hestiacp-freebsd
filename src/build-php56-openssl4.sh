@@ -154,15 +154,13 @@ get_config_args() {
         "--with-freetype-dir=/usr/local"
         "--enable-zip"
         #"--with-webp-dir=/usr/local"
-
+		"--with-icu-dir=/usr/local/icu53"
         "--with-ldap=/usr/local"
         "--with-imap=/usr/local"
         "--with-imap-ssl=/usr/local"
         "--with-pspell=/usr/local"
         "--with-libedit"
         "--with-ffi"
-        
-        
 	)
 
     # PHP 7.1 及以下: 没有 Argon2 支持
