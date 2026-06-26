@@ -103,6 +103,7 @@ get_config_args() {
         "--with-freetype=/usr/local"
         "--with-jpeg=/usr/local"
         "--with-webp=/usr/local"
+		"--with-imagick=/usr/local"
 	)
 
 	# PHP 5.6: 没有 --enable-fileinfo

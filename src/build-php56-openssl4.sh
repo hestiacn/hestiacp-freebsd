@@ -9,11 +9,13 @@ set -e
 # ============================================================
 PHP_VERSION="5.6.40"
 BUILD_DIR="/tmp/php-build-test"
+PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}" 
+PHP_INSTALL_DIR="$BUILD_DIR/php-${PHP_VERSION}"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
 ARTIFACT_DIR="${ARTIFACT_DIR:-/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts}"
-NUM_CPUS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 创建所有需要的目录
@@ -23,7 +25,7 @@ echo "========================================"
 echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
 echo "========================================"
 echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-echo "OpenSSL version: $(openssl version 2>/dev/null || echo 'unknown')"
+echo "OpenSSL version: $(openssl version || echo 'unknown')"
 echo "CFLAGS: $CFLAGS"
 echo "LDFLAGS: $LDFLAGS"
 echo "========================================"
@@ -95,7 +97,6 @@ get_config_args() {
 		"--includedir=/usr/local/include/php${ver_suffix}"
 		"--libdir=/usr/local/lib/php${ver_suffix}"
 		"--program-suffix=${ver_suffix}"
-		"--enable-dtrace"
 		"--enable-embed"
 		"--enable-fpm"
 		"--enable-cli"
@@ -113,7 +114,29 @@ get_config_args() {
 		"--enable-static"
 		"--enable-static=yes"
 		"--enable-shared=yes"
-        #"--disable-shared"
+		"--enable-dtrace"
+        "--enable-dom"
+        "--enable-xml"
+        "--enable-xmlreader"
+        "--enable-xmlwriter"
+        "--enable-simplexml"
+        "--enable-xsl"
+        
+        # 性能/工具
+        "--enable-opcache"
+        "--enable-intl"
+        "--enable-soap"
+        "--enable-posix"
+        "--enable-tokenizer"
+        "--enable-readline"
+        "--enable-phar"
+        
+        # IPC/内存
+        "--enable-shmop"
+        "--enable-sysvmsg"
+        "--enable-sysvsem"
+        "--enable-sysvshm"
+        "--enable-calendar"
 		"--with-gettext=/usr/local"
 		"--with-curl=/usr/local"
 		"--with-gmp=/usr/local"
@@ -129,7 +152,17 @@ get_config_args() {
         "--with-png-dir=/usr/local"
         "--with-jpeg-dir=/usr/local"
         "--with-freetype-dir=/usr/local"
+        "--enable-zip"
         #"--with-webp-dir=/usr/local"
+
+        "--with-ldap=/usr/local"
+        "--with-imap=/usr/local"
+        "--with-imap-ssl=/usr/local"
+        "--with-pspell=/usr/local"
+        "--with-libedit"
+        "--with-ffi"
+        
+        
 	)
 
     # PHP 7.1 及以下: 没有 Argon2 支持
@@ -244,6 +277,7 @@ apply_patches() {
 		echo "[ ✓ ] OpenSSL source files replaced"
 	else
 		echo "⚠️  Custom OpenSSL directory not found: $custom_openssl_dir"
+        echo "    Skipping OpenSSL source replacement"
 	fi
     
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
@@ -440,7 +474,7 @@ create_package() {
 	echo "========================================"
 	
 	if [ ! -f "$php_bin" ]; then
-		echo "❌ PHP binary not found at $php_bin"
+		echo "❌ PHP binary not found at $php_bin!"
 		return 1
 	fi
 	
@@ -458,43 +492,33 @@ create_package() {
         return 1
     }
 
-    # 验证 ImageMagick 扩展
-    echo "[ * ] Verifying ImageMagick extension..."
-    PHP_SRC_DIR="/tmp/php-build-test/php-src-7.0.33"
-    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
-    DEBUG="no-debug"
-    ZTS="non-zts"
-    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/${DEBUG}-${ZTS}-${ZEND_API_NO}"
+	# 验证 ImageMagick 扩展并运行测试
+	echo "[ * ] Verifying ImageMagick extension and running tests..."
+	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-    if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-        "$php_bin" -d extension_dir="$EXTENSION_DIR" -m 2>/dev/null | grep -i imagick && {
-            echo "✅ ImageMagick extension loaded"
-        } || {
-            echo "⚠️  ImageMagick extension not loaded (file exists but not loaded)"
-        }
-    else
-        echo "⚠️  ImageMagick extension file not found"
-        echo "   Expected: $EXTENSION_DIR/imagick.so"
-    fi
-
-    echo ""
-    echo "[ * ] Running quick tests..."
-    "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-        echo "PHP Version: " . PHP_VERSION . "\n";
-        echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-        echo "openssl_encrypt(): " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
-        echo "openssl_decrypt(): " . (function_exists("openssl_decrypt") ? "✅" : "❌") . "\n";
-        echo "openssl_sign(): " . (function_exists("openssl_sign") ? "✅" : "❌") . "\n";
-        echo "openssl_verify(): " . (function_exists("openssl_verify") ? "✅" : "❌") . "\n";
-        echo "ImageMagick extension: " . (extension_loaded("imagick") ? "✅" : "❌") . "\n";
-		if (extension_loaded("imagick")) {
-			$formats = Imagick::queryFormats("*");
-			echo "ImageMagick supported formats => " . implode(", ", $formats) . "\n";
-		}
-	'
+	if [ -f "$EXTENSION_DIR/imagick.so" ]; then
+		echo "✅ ImageMagick extension found"
+		
+		# 运行完整测试
+		"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
+			$imagick_loaded = extension_loaded("imagick");
+			echo "PHP Version: " . PHP_VERSION . "\n";
+			echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+			echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
+			echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
+			if ($imagick_loaded) {
+				$formats = Imagick::queryFormats("*");
+				echo "ImageMagick supports " . count($formats) . " formats\n";
+			}
+		'
+	else
+		echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
+	fi
 
     # 创建包目录结构
-    PKG_NAME="php56-openssl4"
+	PKG_NAME="php${ver_suffix}-openssl4"
 	
 	rm -rf "${PKG_DIR}"
 	mkdir -p "${PKG_DIR}/usr/local"
@@ -505,11 +529,16 @@ create_package() {
 	
 	if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
 		echo "❌ PHP binary not found after copy!"
+		echo "  Expected: ${PKG_DIR}/usr/local/bin/php"
+		echo "  Files in PKG_DIR:"
+		find "${PKG_DIR}" -type f | head -10
 		return 1
 	fi
 	
 	echo "[ ✓ ] Files copied successfully"
 	
+	# 创建 PLIST（列出所有文件）
+    echo "[ ✓ ] Files copied successfully"
 	echo "[ * ] Creating file list..."
 	cd "${PKG_DIR}"
 	find . -type f | sed 's|^\.||' > +PLIST
@@ -518,7 +547,7 @@ create_package() {
 	cat > "+MANIFEST" << EOF
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
-origin: local/php56-openssl4
+origin: local/php${ver_suffix}-openssl4
 comment: PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick support
 categories: [www, lang]
 maintainer: build@hestiacp.com
@@ -538,10 +567,10 @@ IMPORTANT: PHP 5.6 is end-of-life. Use at your own risk.
 EOD
 EOF
 	
-	cat > "+POST_INSTALL" << 'EOF'
+	cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
-echo "PHP 5.6.40 with OpenSSL 4.x installed"
+echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"
@@ -590,7 +619,7 @@ EOF
 		echo "Location: ${PKG_FILE}"
 		echo ""
 		echo "--- Files in package ---"
-		pkg info -l "${PKG_FILE}" 2>/dev/null || tar -tf "${PKG_FILE}" 2>/dev/null || {
+		pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
 			echo "⚠️  Cannot list package contents (pkg info not available)"
 			echo "Files in ${PKG_DIR}:"
 			find "${PKG_DIR}" -type f | sort
@@ -612,7 +641,7 @@ EOF
 main() {
 	echo ""
 	echo "========================================"
-	echo "Build PHP 5.6.40 with OpenSSL 4.x and ImageMagick"
+	echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
 	echo "========================================"
 	echo "Start time: $(date)"
 	echo ""
@@ -630,7 +659,8 @@ main() {
 			echo "========================================"
 			echo "✅ ALL COMPLETED"
 			echo "========================================"
-			echo "Package: ${ARTIFACT_DIR}/php56-openssl4-${PHP_VERSION}.pkg"
+			local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
+			echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
 			echo "========================================"
 			exit 0
 		else

@@ -80,73 +80,190 @@ download_imagick() {
 # 获取配置参数
 # ============================================================
 get_config_args() {
-	local version="$1"
-	local major=$(echo "$version" | cut -d. -f1)
-	local minor=$(echo "$version" | cut -d. -f2)
-	local ver_suffix="${major}${minor}"
-	
-	local args=(
-		"--prefix=/usr/local"
-		"--exec-prefix=/usr/local"
-		"--bindir=/usr/local/bin"
-		"--sbindir=/usr/local/sbin"
-		"--libexecdir=/usr/local/libexec"
-		"--sysconfdir=/usr/local/etc/php${ver_suffix}"
-		"--localstatedir=/usr/local/var"
-		"--mandir=/usr/local/share/php${ver_suffix}/man"
-		"--includedir=/usr/local/include/php${ver_suffix}"
-		"--libdir=/usr/local/lib/php${ver_suffix}"
-		"--program-suffix=${ver_suffix}"
-		"--enable-dtrace"
-		"--enable-embed"
-		"--enable-fpm"
-		"--enable-cli"
-		"--enable-cgi"
-		"--enable-mbstring"
-		"--enable-bcmath"
-		"--enable-session"
-		"--enable-ctype"
-		"--enable-filter"
-		"--enable-fileinfo"
-		"--enable-sockets"
-		"--enable-pcntl"
-		"--enable-exif"
-		"--enable-ftp"
-		"--enable-static"
-		"--enable-static=yes"
-		"--enable-shared=yes"
-		#"--disable-shared"
-		"--with-password-argon2=/usr/local"
-		"--with-gettext=/usr/local"
-		"--with-curl=/usr/local"
-		"--with-gmp=/usr/local"
-		"--with-zlib=/usr"
-		"--with-bz2=/usr"
-		"--with-gettext"
-		"--with-mysqli=mysqlnd"
-		"--with-pdo-mysql=mysqlnd"
-		"--with-pgsql"
-		"--with-pdo-pgsql"
-		"--with-iconv=/usr/local"
-		"--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
-        "--with-png-dir=/usr/local"
-        "--with-jpeg-dir=/usr/local"
-        "--with-freetype-dir=/usr/local"
-        #"--with-webp-dir=/usr/local"
-	)
+    local version="$1"
+    local major=$(echo "$version" | cut -d. -f1)
+    local minor=$(echo "$version" | cut -d. -f2)
+    local ver_suffix="${major}${minor}"
+    
+    local args=(
+        "--prefix=/usr/local"
+        "--exec-prefix=/usr/local"
+        "--bindir=/usr/local/bin"
+        "--sbindir=/usr/local/sbin"
+        "--libexecdir=/usr/local/libexec"
+        "--sysconfdir=/usr/local/etc/php${ver_suffix}"
+        "--localstatedir=/usr/local/var"
+        "--mandir=/usr/local/share/php${ver_suffix}/man"
+        "--includedir=/usr/local/include/php${ver_suffix}"
+        "--libdir=/usr/local/lib/php${ver_suffix}"
+        "--program-suffix=${ver_suffix}"
+        
+        # SAPI
+        "--enable-embed"
+        "--enable-fpm"
+        "--enable-cli"
+        "--enable-cgi"
+        
+        # 基础扩展
+        "--enable-mbstring"
+        "--enable-bcmath"
+        "--enable-session"
+        "--enable-ctype"
+        "--enable-filter"
+        "--enable-fileinfo"
+        "--enable-sockets"
+        "--enable-pcntl"
+        "--enable-exif"
+        "--enable-ftp"
+        "--enable-static"
+        "--enable-static=yes"
+        "--enable-shared=yes"
+        "--enable-dtrace"
+        
+        # XML 扩展
+        "--enable-dom"
+        "--enable-xml"
+        "--enable-xmlreader"
+        "--enable-xmlwriter"
+        "--enable-simplexml"
+        "--enable-xsl"
+        
+        # 性能/工具
+        "--enable-opcache"
+        "--enable-intl"
+        "--enable-soap"
+        "--enable-posix"
+        "--enable-tokenizer"
+        "--enable-readline"
+        "--enable-phar"
+        
+        # IPC/内存
+        "--enable-shmop"
+        "--enable-sysvmsg"
+        "--enable-sysvsem"
+        "--enable-sysvshm"
+        "--enable-calendar"
+        
+        # 外部库
+        "--with-gettext=/usr/local"
+        "--with-curl=/usr/local"
+        "--with-gmp=/usr/local"
+        "--with-zlib=/usr"
+        "--with-bz2=/usr"
+        "--with-gettext"
+        "--with-mysqli=mysqlnd"
+        "--with-pdo-mysql=mysqlnd"
+        "--with-pgsql"
+        "--with-pdo-pgsql"
+        "--with-iconv=/usr/local"
+        "--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
+        
+        # 加密
+        "--with-sodium"
+        "--with-password-argon2=/usr/local"
+        
+        # GD 图像
+        "--enable-gd"
+        "--with-freetype=/usr/local"
+        "--with-jpeg=/usr/local"
+        "--with-webp=/usr/local"
+        
+        # 压缩
+        "--enable-zip"
+        
+        "--with-ldap=/usr/local"
+        "--with-imap=/usr/local"
+        "--with-imap-ssl=/usr/local"
+        "--with-pspell=/usr/local"
+        "--with-libedit"
+        "--with-ffi"
+    )
+    if [ "$major" = "5" ]; then
+        local new_args=()
+        for arg in "${args[@]}"; do
+            case "$arg" in
+                "--enable-filter"|"--enable-fileinfo"|"--enable-opcache"|"--enable-intl"|"--enable-soap"|"--enable-xsl"|"--enable-sysvmsg"|"--enable-sysvsem"|"--enable-sysvshm"|"--enable-readline"|"--enable-phar")
+                    # PHP 5.6 不支持这些，跳过
+                    ;;
+                "--with-password-argon2="*|"--with-sodium"|"--enable-zip")
+                    # PHP 5.6 不支持，跳过
+                    ;;
+                "--with-imap="*|"--with-ldap="*|"--with-pspell="*)
+                    # 可选，跳过
+                    ;;
+                "--enable-zip")
+                    # PHP 5.6 用 --with-zip-dir
+                    new_args+=("--with-zip-dir=/usr/local")
+                    ;;
+                *)
+                    new_args+=("$arg")
+                    ;;
+            esac
+        done
+        args=("${new_args[@]}")
+    fi
 
-	# PHP 7.1 及以下: 没有 Argon2 支持
-	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
-		local new_args=()
-		for arg in "${args[@]}"; do
-			if [[ "$arg" != "--with-password-argon2="* ]]; then
-				new_args+=("$arg")
-			fi
-		done
-		args=("${new_args[@]}")
-	fi
+    # PHP 7.0 特殊处理
+    if [ "$major" = "7" ] && [ "$minor" = "0" ]; then
+        local new_args=()
+        for arg in "${args[@]}"; do
+            case "$arg" in
+                "--enable-filter"|"--enable-opcache"|"--enable-intl"|"--enable-soap"|"--enable-xsl"|"--enable-sysvmsg"|"--enable-sysvsem"|"--enable-sysvshm"|"--enable-readline"|"--enable-phar")
+                    # PHP 7.0 不支持这些，跳过
+                    ;;
+                "--with-password-argon2="*|"--with-sodium")
+                    # PHP 7.0 不支持，跳过
+                    ;;
+                *)
+                    new_args+=("$arg")
+                    ;;
+            esac
+        done
+        args=("${new_args[@]}")
+    fi
 
-	printf "%s\n" "${args[@]}"
+    # PHP 7.1 特殊处理
+    if [ "$major" = "7" ] && [ "$minor" = "1" ]; then
+        local new_args=()
+        for arg in "${args[@]}"; do
+            case "$arg" in
+                "--with-password-argon2="*|"--with-sodium")
+                    # PHP 7.1 不支持，跳过
+                    ;;
+                *)
+                    new_args+=("$arg")
+                    ;;
+            esac
+        done
+        args=("${new_args[@]}")
+    fi
+
+    # PHP 7.2-7.3 使用旧版 GD 参数（-dir 后缀）
+    if [ "$major" = "7" ] && [ "$minor" -ge "2" ] && [ "$minor" -le "3" ]; then
+        local new_args=()
+        for arg in "${args[@]}"; do
+            case "$arg" in
+                "--with-freetype=/usr/local")
+                    new_args+=("--with-freetype-dir=/usr/local")
+                    ;;
+                "--with-jpeg=/usr/local")
+                    new_args+=("--with-jpeg-dir=/usr/local")
+                    ;;
+                "--with-webp=/usr/local")
+                    # PHP 7.2-7.3 不支持 WebP 编译进 GD，跳过
+                    ;;
+                "--enable-zip")
+                    new_args+=("--enable-zip")
+                    ;;
+                *)
+                    new_args+=("$arg")
+                    ;;
+            esac
+        done
+        args=("${new_args[@]}")
+    fi
+
+    printf "%s\n" "${args[@]}"
 }
 
 # ============================================================
@@ -530,7 +647,7 @@ EOD
 EOF
 	
 	# 创建安装后脚本
-	cat > "+POST_INSTALL" << 'EOF'
+	cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
 echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
@@ -547,7 +664,7 @@ echo "========================================"
 EOF
 	chmod +x "+POST_INSTALL"
 	
-	# 创建包（使用正确的参数）
+	# 创建包
 	echo "[ * ] Creating package..."
 	echo "  Metadata dir: ${PKG_DIR}"
 	echo "  PLIST: ${PKG_DIR}/+PLIST"
