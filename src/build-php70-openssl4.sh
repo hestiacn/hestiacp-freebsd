@@ -448,7 +448,12 @@ create_package() {
 
     # 验证 ImageMagick 扩展
     echo "[ * ] Verifying ImageMagick extension..."
-    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-20131226"
+    PHP_SRC_DIR="/tmp/php-build-test/php-src-7.0.33"
+    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+    DEBUG="no-debug"
+    ZTS="non-zts"
+    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/${DEBUG}-${ZTS}-${ZEND_API_NO}"
+
     if [ -f "$EXTENSION_DIR/imagick.so" ]; then
         "$php_bin" -d extension_dir="$EXTENSION_DIR" -m 2>/dev/null | grep -i imagick && {
             echo "✅ ImageMagick extension loaded"
@@ -457,6 +462,7 @@ create_package() {
         }
     else
         echo "⚠️  ImageMagick extension file not found"
+        echo "   Expected: $EXTENSION_DIR/imagick.so"
     fi
 	
 	echo ""
@@ -537,7 +543,7 @@ echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
 echo "Verify ImageMagick:"
-/usr/local/bin/php56 -m | grep imagick || echo "imagick not loaded"
+/usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
 echo "========================================"
 EOF
 	chmod +x "+POST_INSTALL"
