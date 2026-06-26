@@ -261,7 +261,7 @@ using namespace icu;
     # 补丁6: 更新 config.sub 以支持 FreeBSD 14
     if [ -f "config.sub" ]; then
         echo "[ * ] Updating config.sub for FreeBSD 14..."
-        fetch -o "config.sub.new" "https://git.savannah.gnu.org/cgit/config.git/plain/config.sub"
+        fetch -o "config.sub.new" "https://cgit.git.savannah.gnu.org/cgit/config.git/plain/config.sub"
         if [ -f "config.sub.new" ] && [ -s "config.sub.new" ]; then
             mv "config.sub.new" "config.sub"
             chmod +x "config.sub"
@@ -271,6 +271,7 @@ using namespace icu;
             rm -f "config.sub.new"
         fi
     fi
+    
 	# 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2019..."
@@ -362,7 +363,7 @@ build_php() {
         echo "⚠️  ImageMagick extension download failed, continuing without it"
     fi
 
-    cd "$build_dir" || return 1
+    cd "$build_dir"
 
     [ -f "Makefile" ] && gmake clean || true
 
@@ -383,7 +384,7 @@ build_php() {
         if [ ! -d "/usr/local/icu53" ]; then
             echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
             fetch -o /tmp/icu-53.tar.gz \
-                "https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
+                "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-53-2"
             tar -xf /tmp/icu-53.tar.gz -C /tmp
             cd /tmp/icu-release-53-2/icu4c/source
             CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
@@ -509,7 +510,7 @@ EOF
     echo "LDFLAGS: $LDFLAGS"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "CXXFLAGS: $CXXFLAGS"
-    
+
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
 
@@ -519,10 +520,30 @@ EOF
         tail -50 "$LOG_DIR/configure-${PHP_VERSION}.log"
         return 1
     fi
-    
+
     # 验证使用的 ICU
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
+
+    # ============================================================
+    # ✅ 修复 CGI 链接问题
+    # ============================================================
+    echo "[ * ] Fixing CGI link flags..."
+    if [ -f "Makefile" ]; then
+        # 在 EXTRA_LIBS 中添加 ICU 库
+        if grep -q "^EXTRA_LIBS" Makefile; then
+            sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -licuuc -licui18n -licudata/' Makefile
+            echo "[ ✓ ] Added ICU libraries to EXTRA_LIBS"
+        fi
+        # 也在 LDFLAGS 中添加（双重保险）
+        if grep -q "^LDFLAGS" Makefile; then
+            sed -i '' 's/^LDFLAGS = \(.*\)$/LDFLAGS = \1 -licuuc -licui18n -licudata/' Makefile
+            echo "[ ✓ ] Added ICU libraries to LDFLAGS"
+        fi
+        # 检查修改结果
+        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile)"
+        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile)"
+    fi
 
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
     gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
@@ -554,6 +575,12 @@ EOF
 		tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
 		return 1
 	fi
+    
+    if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
+        echo "[ * ] Creating php-cgi symlink from php binary..."
+        ln -sf php "$install_dir/usr/local/bin/php-cgi"
+        echo "[ ✓ ] php-cgi -> php symlink created"
+    fi
 
 	# ============================================================
 	# 编译 ImageMagick 扩展（在 PHP 安装完成后）
