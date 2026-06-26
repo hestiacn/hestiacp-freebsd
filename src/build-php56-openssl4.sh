@@ -379,7 +379,51 @@ build_php() {
             rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
         fi
         
-        # ✅ ICU 53 路径优先
+        # ✅ 查找并设置 icu-config
+        mkdir -p /usr/local/icu53/bin
+        
+        # 先尝试从源码目录复制（如果还存在）
+        ICU_CONFIG_SRC=$(find /tmp -path "*/icu-release-53-2/*/icu-config" -type f 2>/dev/null | head -1)
+        if [ -n "$ICU_CONFIG_SRC" ]; then
+            cp "$ICU_CONFIG_SRC" /usr/local/icu53/bin/icu-config
+            chmod +x /usr/local/icu53/bin/icu-config
+            echo "[ ✓ ] Copied icu-config from source"
+        elif [ -f "/usr/local/icu53/bin/icu-config" ]; then
+            echo "[ ✓ ] icu-config already exists"
+        else
+            # 如果都没有，手动创建
+            echo "[ * ] Creating manual icu-config..."
+            cat > /usr/local/icu53/bin/icu-config << 'EOF'
+#!/bin/sh
+prefix=/usr/local/icu53
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+case "$1" in
+    --version) echo "53.2" ;;
+    --cppflags|--cflags) echo "-I${includedir}" ;;
+    --ldflags|--ldflags-lib) echo "-L${libdir} -Wl,-rpath,${libdir}" ;;
+    --libs) echo "-licuuc -licui18n -licudata -lpthread -lm" ;;
+    --libs-icuuc) echo "-licuuc -licudata -lpthread -lm" ;;
+    --libs-icui18n) echo "-licui18n -licuuc -licudata -lpthread -lm" ;;
+    --prefix|--exec-prefix) echo "${prefix}" ;;
+    --includedir) echo "${includedir}" ;;
+    --libdir) echo "${libdir}" ;;
+    *) exit 1 ;;
+esac
+EOF
+            chmod +x /usr/local/icu53/bin/icu-config
+            echo "[ ✓ ] Created manual icu-config"
+        fi
+        
+        # ✅ 将 ICU 53 的 bin 放在 PATH 最前面
+        export PATH="/usr/local/icu53/bin:$PATH"
+        
+        # 验证
+        echo "[ * ] ICU config version: $(icu-config --version 2>/dev/null || echo 'unknown')"
+        
+        # ✅ 继续其他环境变量设置...
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
         export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
             -Wno-deprecated-declarations \
@@ -392,9 +436,13 @@ build_php() {
         export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         export ICU_CXXFLAGS="-std=c++14"
+        export ICU_PREFIX="/usr/local/icu53"
+        export ICU_LIBS="-licuuc -licui18n -licudata"
+        export ICU_CFLAGS="-I/usr/local/icu53/include"
+        export ICU_LDFLAGS="-L/usr/local/icu53/lib"
         
         # 修复 ICU 53 头文件
-        echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
+        echo "[ * ] Patching ICU 53 headers..."
         for header in char16ptr.h stringpiece.h unistr.h; do
             if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
                 sed -i '' 's/std::enable_if_t</std::enable_if</g' "/usr/local/icu53/include/unicode/$header"
@@ -416,6 +464,7 @@ build_php() {
         export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
         export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
+
     fi
 
     # ============================================================
