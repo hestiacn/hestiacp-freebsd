@@ -318,141 +318,153 @@ using namespace icu;
 # 构建 PHP
 # ============================================================
 build_php() {
-	local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
-	local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
+    local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
+    local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
     local major=$(echo "$PHP_VERSION" | cut -d. -f1)
     local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
-	echo ""
-	echo "========================================"
-	echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
-	echo "========================================"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "========================================"
 
-	if ! download_php; then
-		echo "❌ Failed to download PHP ${PHP_VERSION}"
-		return 1
-	fi
+    if ! download_php; then
+        echo "❌ Failed to download PHP ${PHP_VERSION}"
+        return 1
+    fi
 
-	if [ ! -d "$build_dir" ]; then
-		echo "[ * ] Extracting PHP ${PHP_VERSION}..."
-		tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
-		if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
-		elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
-		elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
-		fi
-	fi
+    if [ ! -d "$build_dir" ]; then
+        echo "[ * ] Extracting PHP ${PHP_VERSION}..."
+        tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
+        if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
+        fi
+    fi
 
-	# ============================================================
-	# 下载 ImageMagick 扩展到
-	# ============================================================
-	if ! download_imagick "$build_dir"; then
-		echo "⚠️  ImageMagick extension download failed, continuing without it"
-	fi
+    # 下载 ImageMagick 扩展
+    if ! download_imagick "$build_dir"; then
+        echo "⚠️  ImageMagick extension download failed, continuing without it"
+    fi
 
-	cd "$build_dir" || return 1
+    cd "$build_dir" || return 1
 
-	[ -f "Makefile" ] && gmake clean || true
+    [ -f "Makefile" ] && gmake clean || true
 
-	apply_patches "$build_dir"
-	# 如果是 PHP 5.6
-	if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
-		# 编译 ICU 53（如果不存在）
-		if [ ! -d "/usr/local/icu53" ]; then
-			echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
-			fetch -o /tmp/icu-53.tar.gz \
-				"https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
-			tar -xf /tmp/icu-53.tar.gz -C /tmp
-			cd /tmp/icu-release-53-2/icu4c/source
-			CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
-			gmake -j${NUM_CPUS}
-			gmake install || true  # 即使 makeconv 失败，库也已经安装好了
-			cd -
-			rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
-		fi
-		
-		export CC=gcc12
-		export CXX=g++12
-		
-		# ✅ 关键：将 ICU 53 路径放在最前面，覆盖系统 ICU
-		export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
-		export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
-			-Wno-deprecated-declarations \
-			-Wno-incompatible-pointer-types-discards-qualifiers \
-			-Wno-pointer-bool-conversion \
-			-Wno-implicit-function-declaration \
-			-Wno-pointer-sign \
-			-Wno-implicit-const-int-float-conversion"
-		export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
-		export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
-		export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
-		export ICU_CXXFLAGS="-std=c++14"
-		
-		# 修复 ICU 53 头文件（移除 C++14 依赖）
-		echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
-		for header in char16ptr.h stringpiece.h unistr.h; do
-			if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
-				sed -i '' 's/std::enable_if_t</std::enable_if</g' "/usr/local/icu53/include/unicode/$header"
-				sed -i '' 's/std::is_pointer_v</std::is_pointer</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-				sed -i '' 's/std::remove_reference_t</std::remove_reference</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-				sed -i '' 's/std::is_convertible_v</std::is_convertible</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
-				echo "[ ✓ ] Patched $header"
-			fi
-		done
-	fi
+    apply_patches "$build_dir"
 
-	# 设置 OpenSSL 4.x 环境变量
-	export CFLAGS="-I/usr/local/include -I/usr/local/include \
-		-Wno-deprecated-declarations \
-		-Wno-incompatible-pointer-types-discards-qualifiers \
-		-Wno-pointer-bool-conversion \
-		-Wno-implicit-function-declaration \
-		-Wno-pointer-sign \
-		-Wno-implicit-const-int-float-conversion"
-	export CFLAGS="$CFLAGS"
-	export LDFLAGS="-L/usr/local/lib -L/usr/local/lib"
-	export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig"
-	export CPPFLAGS="$CFLAGS"
-	export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib"
-	export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
+    # ============================================================
+    # ✅ 设置环境变量（所有 PHP 版本共用）
+    # ============================================================
+    export CC=gcc12
+    export CXX=g++12
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig"
+    
+    # ============================================================
+    # ✅ PHP 5.6 特殊处理：使用 ICU 53
+    # ============================================================
+    if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
+        # 编译 ICU 53（如果不存在）
+        if [ ! -d "/usr/local/icu53" ]; then
+            echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
+            fetch -o /tmp/icu-53.tar.gz \
+                "https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
+            tar -xf /tmp/icu-53.tar.gz -C /tmp
+            cd /tmp/icu-release-53-2/icu4c/source
+            CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
+            gmake -j${NUM_CPUS}
+            gmake install || true
+            cd -
+            rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
+        fi
+        
+        # ✅ ICU 53 路径优先
+        export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
+        export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
+            -Wno-deprecated-declarations \
+            -Wno-incompatible-pointer-types-discards-qualifiers \
+            -Wno-pointer-bool-conversion \
+            -Wno-implicit-function-declaration \
+            -Wno-pointer-sign \
+            -Wno-implicit-const-int-float-conversion"
+        export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
+        export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
+        export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
+        export ICU_CXXFLAGS="-std=c++14"
+        
+        # 修复 ICU 53 头文件
+        echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
+        for header in char16ptr.h stringpiece.h unistr.h; do
+            if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
+                sed -i '' 's/std::enable_if_t</std::enable_if</g' "/usr/local/icu53/include/unicode/$header"
+                sed -i '' 's/std::is_pointer_v</std::is_pointer</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+                sed -i '' 's/std::remove_reference_t</std::remove_reference</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+                sed -i '' 's/std::is_convertible_v</std::is_convertible</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+                echo "[ ✓ ] Patched $header"
+            fi
+        done
+    else
+        export CPPFLAGS="-I/usr/local/include"
+        export CFLAGS="-I/usr/local/include \
+            -Wno-deprecated-declarations \
+            -Wno-incompatible-pointer-types-discards-qualifiers \
+            -Wno-pointer-bool-conversion \
+            -Wno-implicit-function-declaration \
+            -Wno-pointer-sign \
+            -Wno-implicit-const-int-float-conversion"
+        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
+        export CXXFLAGS=""
+        export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
+    fi
 
-	echo "[ * ] Configuring PHP ${PHP_VERSION}..."
-	echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-	echo "CFLAGS: $CFLAGS"
-	echo "LDFLAGS: $LDFLAGS"
-	
-	mapfile -t CONFIG_ARGS < <(get_config_args)
-	echo "Config args: ${CONFIG_ARGS[*]}"
+    # ============================================================
+    # ✅ 配置 PHP（环境变量已经设置好）
+    # ============================================================
+    echo "[ * ] Configuring PHP ${PHP_VERSION}..."
+    echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
+    echo "CFLAGS: $CFLAGS"
+    echo "LDFLAGS: $LDFLAGS"
+    echo "CPPFLAGS: $CPPFLAGS"
+    echo "CXXFLAGS: $CXXFLAGS"
+    
+    mapfile -t CONFIG_ARGS < <(get_config_args)
+    echo "Config args: ${CONFIG_ARGS[*]}"
 
-	./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
-	if [ $? -ne 0 ]; then
-		echo "❌ Configure failed"
-		tail -50 "$LOG_DIR/configure-${PHP_VERSION}.log"
-		return 1
-	fi
+    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
+    if [ $? -ne 0 ]; then
+        echo "❌ Configure failed"
+        tail -50 "$LOG_DIR/configure-${PHP_VERSION}.log"
+        return 1
+    fi
+    
+    # 验证使用的 ICU
+    echo "[ * ] Checking ICU used:"
+    grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
-	echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-	gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
+    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
 
-	if [ $? -ne 0 ]; then
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "=== OpenSSL related errors ==="
-		grep -E "openssl.*error:|Error.*openssl" "$LOG_DIR/build-${PHP_VERSION}.log" | head -30
-		echo ""
-		echo "=== All errors ==="
-		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-		echo ""
-		echo "========================================"
-		echo "Last 100 lines:"
-		echo "========================================"
-		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
-		return 1
-	fi
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "=== OpenSSL related errors ==="
+        grep -E "openssl.*error:|Error.*openssl" "$LOG_DIR/build-${PHP_VERSION}.log" | head -30
+        echo ""
+        echo "=== All errors ==="
+        grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
+        echo ""
+        echo "========================================"
+        echo "Last 100 lines:"
+        echo "========================================"
+        tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+        return 1
+    fi
 
 	echo "[ * ] Installing PHP ${PHP_VERSION}..."
 	mkdir -p "$install_dir"
