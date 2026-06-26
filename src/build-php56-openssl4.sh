@@ -154,7 +154,8 @@ get_config_args() {
         "--with-freetype-dir=/usr/local"
         "--enable-zip"
         #"--with-webp-dir=/usr/local"
-		"--with-icu-dir=/usr/local/icu53"
+        "--with-icu=/usr/local/icu53"
+        "--with-icu-dir=/usr/local/icu53"
         "--with-ldap=/usr/local"
         "--with-imap=/usr/local"
         "--with-imap-ssl=/usr/local"
@@ -257,6 +258,19 @@ using namespace icu;
 	' ext/intl/intl_convertcpp.h
 		echo "[ ✓ ] Added 'using namespace icu;' to intl_convertcpp.h"
 	fi
+    # 补丁6: 更新 config.sub 以支持 FreeBSD 14
+    if [ -f "config.sub" ]; then
+        echo "[ * ] Updating config.sub for FreeBSD 14..."
+        fetch -o "config.sub.new" "https://git.savannah.gnu.org/cgit/config.git/plain/config.sub"
+        if [ -f "config.sub.new" ] && [ -s "config.sub.new" ]; then
+            mv "config.sub.new" "config.sub"
+            chmod +x "config.sub"
+            echo "[ ✓ ] config.sub updated"
+        else
+            echo "⚠️  Failed to update config.sub, using existing"
+            rm -f "config.sub.new"
+        fi
+    fi
 	# 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2019..."
@@ -360,7 +374,7 @@ build_php() {
     export CC=gcc12
     export CXX=g++12
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig"
-    
+    find . -name "config.cache" -delete
     # ============================================================
     # ✅ PHP 5.6 特殊处理：使用 ICU 53
     # ============================================================
@@ -374,12 +388,12 @@ build_php() {
             cd /tmp/icu-release-53-2/icu4c/source
             CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
             gmake -j${NUM_CPUS}
-            gmake install || true
+            gmake install
             cd -
             rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
         fi
         
-        # ✅ 查找并设置 icu-config
+        # ✅ 创建或复制 icu-config
         mkdir -p /usr/local/icu53/bin
         
         # 先尝试从源码目录复制（如果还存在）
@@ -388,9 +402,7 @@ build_php() {
             cp "$ICU_CONFIG_SRC" /usr/local/icu53/bin/icu-config
             chmod +x /usr/local/icu53/bin/icu-config
             echo "[ ✓ ] Copied icu-config from source"
-        elif [ -f "/usr/local/icu53/bin/icu-config" ]; then
-            echo "[ ✓ ] icu-config already exists"
-        else
+        elif [ ! -f "/usr/local/icu53/bin/icu-config" ]; then
             # 如果都没有，手动创建
             echo "[ * ] Creating manual icu-config..."
             cat > /usr/local/icu53/bin/icu-config << 'EOF'
@@ -420,10 +432,16 @@ EOF
         # ✅ 将 ICU 53 的 bin 放在 PATH 最前面
         export PATH="/usr/local/icu53/bin:$PATH"
         
-        # 验证
-        echo "[ * ] ICU config version: $(icu-config --version 2>/dev/null || echo 'unknown')"
+        # ✅ 验证 icu-config 可用
+        if ! command -v icu-config &>/dev/null; then
+            echo "❌ icu-config not found in PATH!"
+            echo "PATH: $PATH"
+            ls -la /usr/local/icu53/bin/ || true
+            return 1
+        fi
+        echo "[ ✓ ] ICU config version: $(icu-config --version 2>/dev/null || echo 'unknown')"
         
-        # ✅ 继续其他环境变量设置...
+        # ✅ 设置环境变量
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
         export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
             -Wno-deprecated-declarations \
@@ -435,11 +453,7 @@ EOF
         export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
         export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
-        export ICU_CXXFLAGS="-std=c++14"
-        export ICU_PREFIX="/usr/local/icu53"
-        export ICU_LIBS="-licuuc -licui18n -licudata"
-        export ICU_CFLAGS="-I/usr/local/icu53/include"
-        export ICU_LDFLAGS="-L/usr/local/icu53/lib"
+        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         
         # 修复 ICU 53 头文件
         echo "[ * ] Patching ICU 53 headers..."
@@ -464,7 +478,6 @@ EOF
         export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
         export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
-
     fi
 
     # ============================================================
@@ -671,7 +684,13 @@ create_package() {
 	fi
 	
 	echo "[ ✓ ] Files copied successfully"
-	
+
+    echo "[ * ] Copying ICU 53 libraries..."
+    mkdir -p "${PKG_DIR}/usr/local/icu53/lib"
+    if [ -d "/usr/local/icu53/lib" ]; then
+        cp -r /usr/local/icu53/lib/libicu*.so* "${PKG_DIR}/usr/local/icu53/lib/" 2>/dev/null || true
+        echo "[ ✓ ] ICU libraries copied"
+    fi
 	# 创建 PLIST（列出所有文件）
     echo "[ ✓ ] Files copied successfully"
 	echo "[ * ] Creating file list..."
