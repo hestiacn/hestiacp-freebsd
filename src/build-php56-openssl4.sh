@@ -320,7 +320,8 @@ using namespace icu;
 build_php() {
 	local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
 	local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
-
+    local major=$(echo "$PHP_VERSION" | cut -d. -f1)
+    local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
 	echo ""
 	echo "========================================"
 	echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
@@ -355,6 +356,19 @@ build_php() {
 	[ -f "Makefile" ] && gmake clean || true
 
 	apply_patches "$build_dir"
+
+    if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
+        echo "[ * ] Using gcc12 for PHP 5.6 compatibility..."
+        export CC=gcc12
+        export CXX=g++12
+        export CPP=cpp12
+        # 验证
+        if command -v gcc12; then
+            echo "✅ Using $(gcc12 --version)"
+        else
+            echo "⚠️  gcc12 not found, using default compiler"
+        fi
+    fi
 
 	# 设置 OpenSSL 4.x 环境变量
 	export CFLAGS="-I/usr/local/include -I/usr/local/include \
