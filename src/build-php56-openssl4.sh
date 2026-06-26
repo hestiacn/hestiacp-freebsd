@@ -228,7 +228,39 @@ apply_patches() {
 			echo "[ ✓ ] Patch 5: dom_iterators.c itemHashScanner const fix"
 		fi
 	fi
+	# 修复 collator_sort.c
+	if [ -f "ext/intl/collator/collator_sort.c" ]; then
+		if ! grep -q "#define TRUE" ext/intl/collator/collator_sort.c; then
+			sed -i '' '/#ifdef HAVE_CONFIG_H/,/#endif/ {
+            /#endif/ a\
+\
+#ifndef TRUE\
+#define TRUE 1\
+#endif\
+#ifndef FALSE\
+#define FALSE 0\
+#endif
+			}' ext/intl/collator/collator_sort.c
+			echo "[ ✓ ] Added TRUE/FALSE defines to collator_sort.c"
+		fi
+	fi
 
+	# 修复 collator_convert.c（同样的代码，不同的文件）
+	if [ -f "ext/intl/collator/collator_convert.c" ]; then
+		if ! grep -q "#define TRUE" ext/intl/collator/collator_convert.c; then
+			sed -i '' '/#ifdef HAVE_CONFIG_H/,/#endif/ {
+            /#endif/ a\
+\
+#ifndef TRUE\
+#define TRUE 1\
+#endif\
+#ifndef FALSE\
+#define FALSE 0\
+#endif
+			}' ext/intl/collator/collator_convert.c
+			echo "[ ✓ ] Added TRUE/FALSE defines to collator_convert.c"
+		fi
+	fi
 	# 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2019..."
