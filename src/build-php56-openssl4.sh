@@ -356,53 +356,51 @@ build_php() {
 	[ -f "Makefile" ] && gmake clean || true
 
 	apply_patches "$build_dir"
-    if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
-        # 编译 ICU 53（如果不存在）
-        if [ ! -d "/usr/local/icu53" ]; then
-            echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
-            fetch -o /tmp/icu-53.tar.gz \
-                "https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
-            tar -xf /tmp/icu-53.tar.gz -C /tmp
-            cd /tmp/icu-release-53-2/icu4c/source
-            
-            echo "[ * ] Configuring ICU 53 with C++14..."
-            CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
-            
-            echo "[ * ] Building ICU 53..."
-            gmake -j${NUM_CPUS}
-            gmake install
-            cd -
-            rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
-            ls -la /usr/local/icu53/
-        fi
-        
-        export CC=gcc12
-        export CXX=g++12
-        
-        export ICU_CFLAGS="-I/usr/local/icu53/include"
-        export CPPFLAGS="-I/usr/local/icu53/include"
-        export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
-        export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
-        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/usr/local/icu53/lib"
-        export ICU_CXXFLAGS="-std=c++14"
-        
-        # 修复 ICU 头文件
-        echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
-        if [ -f "/usr/local/icu53/include/unicode/char16ptr.h" ]; then
-            sed -i '' 's/std::enable_if_t</std::enable_if</g' /usr/local/icu53/include/unicode/char16ptr.h
-            sed -i '' 's/std::is_pointer_v</std::is_pointer</g' /usr/local/icu53/include/unicode/char16ptr.h
-            sed -i '' 's/std::remove_reference_t</std::remove_reference</g' /usr/local/icu53/include/unicode/char16ptr.h
-            echo "[ ✓ ] Patched char16ptr.h"
-        fi
-        if [ -f "/usr/local/icu53/include/unicode/stringpiece.h" ]; then
-            sed -i '' 's/std::enable_if_t</std::enable_if</g' /usr/local/icu53/include/unicode/stringpiece.h
-            echo "[ ✓ ] Patched stringpiece.h"
-        fi
-        if [ -f "/usr/local/icu53/include/unicode/unistr.h" ]; then
-            sed -i '' 's/std::enable_if_t</std::enable_if</g' /usr/local/icu53/include/unicode/unistr.h
-            echo "[ ✓ ] Patched unistr.h"
-        fi
-    fi 
+	# 如果是 PHP 5.6
+	if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
+		# 编译 ICU 53（如果不存在）
+		if [ ! -d "/usr/local/icu53" ]; then
+			echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
+			fetch -o /tmp/icu-53.tar.gz \
+				"https://github.com/unicode-org/icu/archive/refs/tags/release-53-2.tar.gz"
+			tar -xf /tmp/icu-53.tar.gz -C /tmp
+			cd /tmp/icu-release-53-2/icu4c/source
+			CXXFLAGS="-std=c++14" ./configure --prefix=/usr/local/icu53
+			gmake -j${NUM_CPUS}
+			gmake install || true  # 即使 makeconv 失败，库也已经安装好了
+			cd -
+			rm -rf /tmp/icu-53.tar.gz /tmp/icu-release-53-2
+		fi
+		
+		export CC=gcc12
+		export CXX=g++12
+		
+		# ✅ 关键：将 ICU 53 路径放在最前面，覆盖系统 ICU
+		export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
+		export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
+			-Wno-deprecated-declarations \
+			-Wno-incompatible-pointer-types-discards-qualifiers \
+			-Wno-pointer-bool-conversion \
+			-Wno-implicit-function-declaration \
+			-Wno-pointer-sign \
+			-Wno-implicit-const-int-float-conversion"
+		export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
+		export CXXFLAGS="-std=c++14 -Wno-register -Wno-deprecated-declarations"
+		export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
+		export ICU_CXXFLAGS="-std=c++14"
+		
+		# 修复 ICU 53 头文件（移除 C++14 依赖）
+		echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
+		for header in char16ptr.h stringpiece.h unistr.h; do
+			if [ -f "/usr/local/icu53/include/unicode/$header" ]; then
+				sed -i '' 's/std::enable_if_t</std::enable_if</g' "/usr/local/icu53/include/unicode/$header"
+				sed -i '' 's/std::is_pointer_v</std::is_pointer</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+				sed -i '' 's/std::remove_reference_t</std::remove_reference</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+				sed -i '' 's/std::is_convertible_v</std::is_convertible</g' "/usr/local/icu53/include/unicode/$header" 2>/dev/null || true
+				echo "[ ✓ ] Patched $header"
+			fi
+		done
+	fi
 
 	# 设置 OpenSSL 4.x 环境变量
 	export CFLAGS="-I/usr/local/include -I/usr/local/include \
