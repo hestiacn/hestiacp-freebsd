@@ -518,7 +518,11 @@ build_php() {
             echo "❌ Failed to build ICU 53"
             return 1
         fi
-        
+        cd "$build_dir" || {
+            echo "❌ Failed to return to PHP source directory"
+            return 1
+        }
+        echo "[ * ] Current directory: $(pwd)"
         # 修复 ICU 头文件
         patch_icu_headers
         mkdir -p /usr/local/icu53/bin
@@ -553,7 +557,7 @@ build_php() {
         export ICU_LDFLAGS="-L/usr/local/icu53/lib"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
-        echo "[ ✓ ] ICU libs: $(icu-config --libs || echo 'unknown')"
+        echo "[ ✓ ] ICU libs: $(icu-config --ldflags || echo 'unknown')"
         echo "[ * ] Debugging ICU libraries..."
         echo "ICU libs:"
         find /usr/local/icu53/lib -name "*.so*" -exec ls -la {} \; | head -10
