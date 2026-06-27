@@ -587,17 +587,16 @@ build_php() {
     echo "[ * ] Fixing link flags in Makefile..."
 
     if [ -f "Makefile" ]; then
-        echo "[ * ] Before modification:"
-        grep -E "^(EXTRA_LIBS|LDFLAGS|LIBS) =" Makefile | head -3 || echo "No variables found"
-        sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = & -lc++/' Makefile
+        echo "[ * ] Checking Makefile..."
+
         if ! grep -q "\-lc++" Makefile; then
-            sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = & -lc++/' Makefile
+            sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -lc++/' Makefile
+            echo "[ ✓ ] Added -lc++ to EXTRA_LIBS"
+        else
+            echo "[ ✓ ] -lc++ already present"
         fi
         
-        echo "[ * ] After modification:"
-        grep -E "^(EXTRA_LIBS|LDFLAGS|LIBS) =" Makefile | tail -3
-        
-        echo "[ ✓ ] Makefile fixed"
+        echo "[ ✓ ] Makefile OK"
     else
         echo "❌ Makefile not found!"
         return 1
