@@ -153,7 +153,6 @@ get_config_args() {
         "--with-jpeg-dir=/usr/local"
         "--with-freetype-dir=/usr/local"
         "--enable-zip"
-        "--with-icu=/usr/local/icu53"
         "--with-icu-dir=/usr/local/icu53"
         "--with-ldap=/usr/local"
         "--with-imap=/usr/local"
@@ -577,7 +576,6 @@ build_php() {
         export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
     fi
-
     # ============================================================
     # 配置 PHP（让 configure 自动检测所有库）
     # ============================================================
@@ -585,25 +583,11 @@ build_php() {
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-    echo "LDFLAGS: $LDFLAGS"
-    echo "LIBS: $LIBS"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
-
     export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
-
-    ./configure \
-        "${CONFIG_ARGS[@]}" \
-        CPPFLAGS="$CPPFLAGS" \
-        CFLAGS="$CFLAGS" \
-        CXXFLAGS="$CXXFLAGS" \
-        LDFLAGS="$LDFLAGS" \
-        LIBS="$LIBS" \
-        ICU_CFLAGS="$ICU_CFLAGS" \
-        ICU_LIBS="$ICU_LIBS" \
-        > "$LOG_DIR/configure-${PHP_VERSION}.log"
-
+    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
         tail -100 "$LOG_DIR/configure-${PHP_VERSION}.log"
