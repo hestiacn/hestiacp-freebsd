@@ -548,7 +548,7 @@ build_php() {
             -Wno-pointer-sign \
             -Wno-implicit-const-int-float-conversion"
         export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq"
+        export LDFLAGS="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl"
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
         export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         export ICU_PREFIX="/usr/local/icu53"
@@ -592,7 +592,7 @@ build_php() {
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
 
-    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lpthread -lm"
+    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lpthread -lm"
     ./configure "${CONFIG_ARGS[@]}" LIBS="$LIBS" > "$LOG_DIR/configure-${PHP_VERSION}.log"
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
@@ -612,8 +612,8 @@ build_php() {
     if [ -f "Makefile" ]; then
         echo "[ * ] Before modification:"
         grep -E "^(EXTRA_LIBS|LDFLAGS|LIBS) =" Makefile | head -3 || echo "No variables found"
-        sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = -licuuc -licui18n -licudata -lc++ -lpq -lpthread -lm/' Makefile
-        sed -i '' 's|^LDFLAGS = .*|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq|' Makefile
+        sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = -licuuc -licui18n -licudata -lc++ -lpq -lintl -lpthread -lm/' Makefile
+        sed -i '' 's|^LDFLAGS = .*|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl|' Makefile
         if ! grep -q "libicuuc.*libicui18n" Makefile; then
             echo 'LIBS = -licui18n -licuuc -licudata -lpthread -lm' >> Makefile
         fi
