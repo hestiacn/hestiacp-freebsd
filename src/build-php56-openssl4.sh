@@ -114,64 +114,59 @@ get_config_args() {
 		"--enable-static"
 		"--enable-static=yes"
 		"--enable-shared=yes"
-		#"--enable-dtrace"
-        "--enable-dom"
-        "--enable-xml"
-        "--enable-xmlreader"
-        "--enable-xmlwriter"
-        "--enable-simplexml"
-        "--enable-xsl"
-        
-        # 性能/工具
-        "--enable-opcache"
-        "--enable-intl"
-        "--enable-soap"
-        "--enable-posix"
-        "--enable-tokenizer"
-        "--enable-readline"
-        "--enable-phar"
-        
-        # IPC/内存
-        "--enable-shmop"
-        "--enable-sysvmsg"
-        "--enable-sysvsem"
-        "--enable-sysvshm"
-        "--enable-calendar"
+		"--enable-dom"
+		"--enable-xml"
+		"--enable-xmlreader"
+		"--enable-xmlwriter"
+		"--enable-simplexml"
+		"--enable-opcache"
+		"--enable-intl"
+		"--enable-soap"
+		"--enable-posix"
+		"--enable-tokenizer"
+		"--enable-phar"
+		"--enable-shmop"
+		"--enable-sysvmsg"
+		"--enable-sysvsem"
+		"--enable-sysvshm"
+		"--enable-calendar"
 		"--with-gettext=/usr/local"
 		"--with-curl=/usr/local"
 		"--with-gmp=/usr/local"
 		"--with-zlib=/usr"
 		"--with-bz2=/usr"
 		"--with-gettext"
+		"--with-xsl"
+		"--with-readline"
 		"--with-mysqli=mysqlnd"
 		"--with-pdo-mysql=mysqlnd"
 		"--with-pgsql"
 		"--with-pdo-pgsql"
 		"--with-iconv=/usr/local"
 		"--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
-        "--with-png-dir=/usr/local"
-        "--with-jpeg-dir=/usr/local"
-        "--with-freetype-dir=/usr/local"
-        "--enable-zip"
-        "--with-icu-dir=/usr/local/icu53"
-        "--with-ldap=/usr/local"
-        "--with-imap=/usr/local"
-        "--with-imap-ssl=/usr/local"
-        "--with-pspell=/usr/local"
-        "--with-libedit"
-        "--with-ffi"
+		"--with-png-dir=/usr/local"
+		"--with-jpeg-dir=/usr/local"
+		"--with-freetype-dir=/usr/local"
+		"--enable-zip"
+		"--with-icu-dir=/usr/local/icu53"
+		"--with-ldap=/usr/local"
+		"--with-imap=/usr/local"
+		"--with-imap-ssl=/usr/local"
+		"--with-pspell=/usr/local"
+		"--with-libedit"
+		#"--with-ffi"
 	)
 
-    # PHP 7.1 及以下: 没有 Argon2 支持
-    if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
-        local new_args=()
-        for arg in "${args[@]}"; do
-            if [[ "$arg" != "--with-password-argon2="* ]]; then
-                new_args+=("$arg")
-            fi
-        done
-        args=("${new_args[@]}")
-    fi
+	# PHP 7.1 及以下: 没有 Argon2 支持
+	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
+		local new_args=()
+		for arg in "${args[@]}"; do
+			if [[ "$arg" != "--with-password-argon2="* ]]; then
+				new_args+=("$arg")
+			fi
+		done
+		args=("${new_args[@]}")
+	fi
 
 	printf "%s\n" "${args[@]}"
 }
@@ -620,7 +615,7 @@ build_php() {
             -Wno-pointer-sign \
             -Wno-implicit-const-int-float-conversion"
         export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/lib -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl -lssl -lcrypto"
+        export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib"
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
         export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         export ICU_PREFIX="/usr/local/icu53"
