@@ -506,7 +506,8 @@ build_php() {
     # ============================================================
     export CC=gcc12
     export CXX=g++12
-    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/lib/pkgconfig"
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
+    export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
     find . -name "config.cache" -delete
     
     # ============================================================
@@ -539,22 +540,10 @@ build_php() {
         export PATH="/usr/local/icu53/bin:$PATH"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         
-        # ✅ CFLAGS 包含 ICU 头文件
-        export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
-            -Wno-deprecated-declarations \
-            -Wno-incompatible-pointer-types-discards-qualifiers \
-            -Wno-pointer-bool-conversion \
-            -Wno-implicit-function-declaration \
-            -Wno-pointer-sign \
-            -Wno-implicit-const-int-float-conversion"
-        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/lib -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl -lssl -lcrypto"
-        export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
-        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
-        export ICU_PREFIX="/usr/local/icu53"
-        export ICU_LIBS="-licuuc -licui18n -licudata"
         export ICU_CFLAGS="-I/usr/local/icu53/include"
-        export ICU_LDFLAGS="-L/usr/local/icu53/lib"
+        export ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata"
+        export ICU_PREFIX="/usr/local/icu53"
+        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
         echo "[ ✓ ] ICU libs: $(icu-config --ldflags || echo 'unknown')"
@@ -567,36 +556,24 @@ build_php() {
         
     else
         export CPPFLAGS="-I/usr/local/include"
-        export CFLAGS="-I/usr/local/include \
-            -Wno-deprecated-declarations \
-            -Wno-incompatible-pointer-types-discards-qualifiers \
-            -Wno-pointer-bool-conversion \
-            -Wno-implicit-function-declaration \
-            -Wno-pointer-sign \
-            -Wno-implicit-const-int-float-conversion"
-        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
-        export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
     fi
 
     # ============================================================
-    # 配置 PHP
+    # 配置 PHP（让 configure 自动检测所有库）
     # ============================================================
     echo "[ * ] Configuring PHP ${PHP_VERSION}..."
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-    echo "CFLAGS: $CFLAGS"
-    echo "LDFLAGS: $LDFLAGS"
     echo "CPPFLAGS: $CPPFLAGS"
-    echo "CXXFLAGS: $CXXFLAGS"
+    echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
 
-    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
-    ./configure "${CONFIG_ARGS[@]}" LIBS="$LIBS" > "$LOG_DIR/configure-${PHP_VERSION}.log"
+    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
-        tail -50 "$LOG_DIR/configure-${PHP_VERSION}.log"
+        tail -100 "$LOG_DIR/configure-${PHP_VERSION}.log"
         return 1
     fi
 
@@ -612,16 +589,15 @@ build_php() {
     if [ -f "Makefile" ]; then
         echo "[ * ] Before modification:"
         grep -E "^(EXTRA_LIBS|LDFLAGS|LIBS) =" Makefile | head -3 || echo "No variables found"
-        sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = -licuuc -licui18n -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm/' Makefile
-        sed -i '' 's|^LDFLAGS = .*|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl -lssl -lcrypto|' Makefile
-        if ! grep -q "libicuuc.*libicui18n" Makefile; then
-            echo 'LIBS = -licui18n -licuuc -licudata -lpthread -lm' >> Makefile
+        sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = & -lc++/' Makefile
+        if ! grep -q "\-lc++" Makefile; then
+            sed -i '' 's/^EXTRA_LIBS = .*/EXTRA_LIBS = & -lc++/' Makefile
         fi
         
         echo "[ * ] After modification:"
         grep -E "^(EXTRA_LIBS|LDFLAGS|LIBS) =" Makefile | tail -3
         
-        echo "[ ✓ ] ICU libraries successfully added to Makefile"
+        echo "[ ✓ ] Makefile fixed"
     else
         echo "❌ Makefile not found!"
         return 1
@@ -631,7 +607,7 @@ build_php() {
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    gmake -j "$NUM_CPUS" LIBS="$LIBS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
 
     if [ $? -ne 0 ]; then
         echo ""
@@ -652,7 +628,7 @@ build_php() {
         echo ""
         echo "[ * ] Retrying with single core..."
         gmake clean
-        if gmake -j1 LIBS="$LIBS" >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+        if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
             return 1
@@ -677,9 +653,9 @@ build_php() {
         echo "[ ✓ ] php-cgi -> php symlink created"
     fi
 
-	# ============================================================
-	# 编译 ImageMagick 扩展
-	# ============================================================
+    # ============================================================
+    # 编译 ImageMagick 扩展
+    # ============================================================
     if [ -d "$build_dir/ext/imagick" ]; then
         echo "[ * ] Building ImageMagick extension..."
         
@@ -734,41 +710,41 @@ build_php() {
     fi
 
     # 检查 PHP 二进制文件
-	if [ -f "$install_dir/usr/local/bin/php" ]; then
-		echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
-		"$install_dir/usr/local/bin/php" -v || true
-		return 0
-	else
-		echo "❌ PHP binary not found!"
-		return 1
-	fi
+    if [ -f "$install_dir/usr/local/bin/php" ]; then
+        echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
+        "$install_dir/usr/local/bin/php" -v || true
+        return 0
+    else
+        echo "❌ PHP binary not found!"
+        return 1
+    fi
 }
 
 # ============================================================
 # 创建 FreeBSD 包
 # ============================================================
 create_package() {
-	local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
-	local php_bin="$install_dir/usr/local/bin/php"
-	local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
+    local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
+    local php_bin="$install_dir/usr/local/bin/php"
+    local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
 
-	echo ""
-	echo "========================================"
-	echo "[ * ] Creating FreeBSD package..."
-	echo "========================================"
-	
-	if [ ! -f "$php_bin" ]; then
-		echo "❌ PHP binary not found at $php_bin!"
-		return 1
-	fi
-	
+    echo ""
+    echo "========================================"
+    echo "[ * ] Creating FreeBSD package..."
+    echo "========================================"
+    
+    if [ ! -f "$php_bin" ]; then
+        echo "❌ PHP binary not found at $php_bin!"
+        return 1
+    fi
+    
     # 验证 PHP
-	echo "[ * ] Verifying PHP binary..."
-	"$php_bin" -v || {
-		echo "❌ PHP binary verification failed!"
-		return 1
-	}
-	
+    echo "[ * ] Verifying PHP binary..."
+    "$php_bin" -v || {
+        echo "❌ PHP binary verification failed!"
+        return 1
+    }
+    
     # 验证 OpenSSL 扩展
     echo "[ * ] Verifying OpenSSL extension..."
     "$php_bin" -m | grep -i openssl || {
@@ -776,46 +752,46 @@ create_package() {
         return 1
     }
 
-	# 验证 ImageMagick 扩展
-	echo "[ * ] Verifying ImageMagick extension..."
-	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
-	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
-	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
+    # 验证 ImageMagick 扩展
+    echo "[ * ] Verifying ImageMagick extension..."
+    PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-	if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-		echo "✅ ImageMagick extension found"
-		"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-			$imagick_loaded = extension_loaded("imagick");
-			echo "PHP Version: " . PHP_VERSION . "\n";
-			echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-			echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
-			if ($imagick_loaded) {
-				$formats = Imagick::queryFormats("*");
-				echo "ImageMagick supports " . count($formats) . " formats\n";
-			}
-		'
-	else
-		echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
-	fi
+    if [ -f "$EXTENSION_DIR/imagick.so" ]; then
+        echo "✅ ImageMagick extension found"
+        "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
+            $imagick_loaded = extension_loaded("imagick");
+            echo "PHP Version: " . PHP_VERSION . "\n";
+            echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+            echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
+            if ($imagick_loaded) {
+                $formats = Imagick::queryFormats("*");
+                echo "ImageMagick supports " . count($formats) . " formats\n";
+            }
+        '
+    else
+        echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
+    fi
 
     # 创建包目录结构
-	PKG_NAME="php${ver_suffix}-openssl4"
-	
-	rm -rf "${PKG_DIR}"
-	mkdir -p "${PKG_DIR}/usr/local"
-	mkdir -p "${ARTIFACT_DIR}"
-	
-	echo "[ * ] Copying PHP files to ${PKG_DIR}..."
-	cp -r "${install_dir}/usr/local/"* "${PKG_DIR}/usr/local/"
-	
-	if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
-		echo "❌ PHP binary not found after copy!"
-		echo "  Files in PKG_DIR:"
-		find "${PKG_DIR}" -type f | head -10
-		return 1
-	fi
-	
-	echo "[ ✓ ] Files copied successfully"
+    PKG_NAME="php${ver_suffix}-openssl4"
+    
+    rm -rf "${PKG_DIR}"
+    mkdir -p "${PKG_DIR}/usr/local"
+    mkdir -p "${ARTIFACT_DIR}"
+    
+    echo "[ * ] Copying PHP files to ${PKG_DIR}..."
+    cp -r "${install_dir}/usr/local/"* "${PKG_DIR}/usr/local/"
+    
+    if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
+        echo "❌ PHP binary not found after copy!"
+        echo "  Files in PKG_DIR:"
+        find "${PKG_DIR}" -type f | head -10
+        return 1
+    fi
+    
+    echo "[ ✓ ] Files copied successfully"
 
     echo "[ * ] Copying ICU 53 libraries..."
     mkdir -p "${PKG_DIR}/usr/local/icu53/lib"
@@ -823,14 +799,14 @@ create_package() {
         cp -r /usr/local/icu53/lib/libicu*.so* "${PKG_DIR}/usr/local/icu53/lib/" || true
         echo "[ ✓ ] ICU libraries copied"
     fi
-	
-	# 创建 PLIST
+    
+    # 创建 PLIST
     echo "[ * ] Creating file list..."
-	cd "${PKG_DIR}"
-	find . -type f | sed 's|^\.||' > +PLIST
-	
-	echo "[ * ] Creating package metadata..."
-	cat > "+MANIFEST" << EOF
+    cd "${PKG_DIR}"
+    find . -type f | sed 's|^\.||' > +PLIST
+    
+    echo "[ * ] Creating package metadata..."
+    cat > "+MANIFEST" << EOF
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
 origin: local/php${ver_suffix}-openssl4
@@ -852,8 +828,8 @@ This is a custom build of PHP 5.6.40 that includes:
 IMPORTANT: PHP 5.6 is end-of-life. Use at your own risk.
 EOD
 EOF
-	
-	cat > "+POST_INSTALL" << EOF
+    
+    cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
 echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
@@ -868,102 +844,102 @@ echo "Verify ImageMagick:"
 /usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
 echo "========================================"
 EOF
-	chmod +x "+POST_INSTALL"
-	
-	echo "[ * ] Creating package..."
-	echo "  Metadata dir: ${PKG_DIR}"
-	echo "  PLIST: ${PKG_DIR}/+PLIST"
-	echo "  Root dir: ${PKG_DIR}"
-	echo "  Output: ${ARTIFACT_DIR}"
+    chmod +x "+POST_INSTALL"
+    
+    echo "[ * ] Creating package..."
+    echo "  Metadata dir: ${PKG_DIR}"
+    echo "  PLIST: ${PKG_DIR}/+PLIST"
+    echo "  Root dir: ${PKG_DIR}"
+    echo "  Output: ${ARTIFACT_DIR}"
 
-	pkg create \
-		-m "${PKG_DIR}" \
-		-p "${PKG_DIR}/+PLIST" \
-		-r "${PKG_DIR}" \
-		-o "${ARTIFACT_DIR}"
-	
-	PKG_FILE="${ARTIFACT_DIR}/${PKG_NAME}-${PHP_VERSION}.pkg"
-	
-	if [ -f "${PKG_FILE}" ]; then
-		FILE_SIZE=$(du -h "${PKG_FILE}" | cut -f1)
-		echo ""
-		echo "========================================"
-		echo "✅ Package created successfully!"
-		echo "========================================"
-		echo "Package: ${PKG_FILE}"
-		echo "Size: ${FILE_SIZE}"
-		echo "========================================"		
-		echo ""
-		echo "========================================"
-		echo "📦 Package Contents (${PKG_FILE})"
-		echo "========================================"
-		echo ""
-		echo "Package Name: ${PKG_NAME}"
-		echo "Version: ${PHP_VERSION}"
-		echo "Size: ${FILE_SIZE}"
-		echo "Location: ${PKG_FILE}"
-		echo ""
-		echo "--- Files in package ---"
-		pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
-			echo "⚠️  Cannot list package contents (pkg info not available)"
-			echo "Files in ${PKG_DIR}:"
-			find "${PKG_DIR}" -type f | sort
-		}
-		echo "========================================"
-		
-		return 0
-	else
-		echo "❌ Failed to create package!"
-		echo "Files in ${ARTIFACT_DIR}:"
-		ls -la "${ARTIFACT_DIR}/"
-		return 1
-	fi
+    pkg create \
+        -m "${PKG_DIR}" \
+        -p "${PKG_DIR}/+PLIST" \
+        -r "${PKG_DIR}" \
+        -o "${ARTIFACT_DIR}"
+    
+    PKG_FILE="${ARTIFACT_DIR}/${PKG_NAME}-${PHP_VERSION}.pkg"
+    
+    if [ -f "${PKG_FILE}" ]; then
+        FILE_SIZE=$(du -h "${PKG_FILE}" | cut -f1)
+        echo ""
+        echo "========================================"
+        echo "✅ Package created successfully!"
+        echo "========================================"
+        echo "Package: ${PKG_FILE}"
+        echo "Size: ${FILE_SIZE}"
+        echo "========================================"        
+        echo ""
+        echo "========================================"
+        echo "📦 Package Contents (${PKG_FILE})"
+        echo "========================================"
+        echo ""
+        echo "Package Name: ${PKG_NAME}"
+        echo "Version: ${PHP_VERSION}"
+        echo "Size: ${FILE_SIZE}"
+        echo "Location: ${PKG_FILE}"
+        echo ""
+        echo "--- Files in package ---"
+        pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
+            echo "⚠️  Cannot list package contents (pkg info not available)"
+            echo "Files in ${PKG_DIR}:"
+            find "${PKG_DIR}" -type f | sort
+        }
+        echo "========================================"
+        
+        return 0
+    else
+        echo "❌ Failed to create package!"
+        echo "Files in ${ARTIFACT_DIR}:"
+        ls -la "${ARTIFACT_DIR}/"
+        return 1
+    fi
 }
 
 # ============================================================
 # 主函数
 # ============================================================
 main() {
-	echo ""
-	echo "========================================"
-	echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
-	echo "========================================"
-	echo "Start time: $(date)"
-	echo ""
+    echo ""
+    echo "========================================"
+    echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "========================================"
+    echo "Start time: $(date)"
+    echo ""
 
-	if build_php; then
-		echo ""
-		echo "========================================"
-		echo "✅ BUILD SUCCESSFUL"
-		echo "========================================"
-		echo ""
-		echo "PHP binary: $BUILD_DIR/php-${PHP_VERSION}/usr/local/bin/php"
-		
-		if create_package; then
-			echo ""
-			echo "========================================"
-			echo "✅ ALL COMPLETED"
-			echo "========================================"
-			local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
-			echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
-			echo "========================================"
-			exit 0
-		else
-			echo ""
-			echo "========================================"
-			echo "❌ PACKAGE CREATION FAILED"
-			echo "========================================"
-			exit 1
-		fi
-	else
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "Check the build log: $LOG_DIR/build-${PHP_VERSION}.log"
-		exit 1
-	fi
+    if build_php; then
+        echo ""
+        echo "========================================"
+        echo "✅ BUILD SUCCESSFUL"
+        echo "========================================"
+        echo ""
+        echo "PHP binary: $BUILD_DIR/php-${PHP_VERSION}/usr/local/bin/php"
+        
+        if create_package; then
+            echo ""
+            echo "========================================"
+            echo "✅ ALL COMPLETED"
+            echo "========================================"
+            local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
+            echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
+            echo "========================================"
+            exit 0
+        else
+            echo ""
+            echo "========================================"
+            echo "❌ PACKAGE CREATION FAILED"
+            echo "========================================"
+            exit 1
+        fi
+    else
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "Check the build log: $LOG_DIR/build-${PHP_VERSION}.log"
+        exit 1
+    fi
 }
 
 main "$@"
