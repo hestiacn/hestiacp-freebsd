@@ -540,10 +540,20 @@ build_php() {
         export PATH="/usr/local/icu53/bin:$PATH"
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         
+        export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
+            -Wno-deprecated-declarations \
+            -Wno-incompatible-pointer-types-discards-qualifiers \
+            -Wno-pointer-bool-conversion \
+            -Wno-implicit-function-declaration \
+            -Wno-pointer-sign \
+            -Wno-implicit-const-int-float-conversion"
+        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
+        export LDFLAGS="-L/usr/local/lib -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata -lc++ -lpq -lintl -lssl -lcrypto"
+        export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
+        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
+        export ICU_PREFIX="/usr/local/icu53"
         export ICU_CFLAGS="-I/usr/local/icu53/include"
         export ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata"
-        export ICU_PREFIX="/usr/local/icu53"
-        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
         echo "[ ✓ ] ICU libs: $(icu-config --ldflags || echo 'unknown')"
@@ -556,6 +566,15 @@ build_php() {
         
     else
         export CPPFLAGS="-I/usr/local/include"
+        export CFLAGS="-I/usr/local/include \
+            -Wno-deprecated-declarations \
+            -Wno-incompatible-pointer-types-discards-qualifiers \
+            -Wno-pointer-bool-conversion \
+            -Wno-implicit-function-declaration \
+            -Wno-pointer-sign \
+            -Wno-implicit-const-int-float-conversion"
+        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
+        export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
     fi
 
@@ -566,11 +585,25 @@ build_php() {
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+    echo "LDFLAGS: $LDFLAGS"
+    echo "LIBS: $LIBS"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
 
-    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
+    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
+
+    ./configure \
+        "${CONFIG_ARGS[@]}" \
+        CPPFLAGS="$CPPFLAGS" \
+        CFLAGS="$CFLAGS" \
+        CXXFLAGS="$CXXFLAGS" \
+        LDFLAGS="$LDFLAGS" \
+        LIBS="$LIBS" \
+        ICU_CFLAGS="$ICU_CFLAGS" \
+        ICU_LIBS="$ICU_LIBS" \
+        > "$LOG_DIR/configure-${PHP_VERSION}.log"
+
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
         tail -100 "$LOG_DIR/configure-${PHP_VERSION}.log"
