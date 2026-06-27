@@ -681,8 +681,6 @@ build_php() {
     echo "[ * ] Fixing link flags in Makefile..."
 
     if [ -f "Makefile" ]; then
-        echo "[ * ] Checking Makefile..."
-
         if ! grep -q "\-lc++" Makefile; then
             sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -lc++/' Makefile
             echo "[ ✓ ] Added -lc++ to EXTRA_LIBS"
@@ -690,7 +688,17 @@ build_php() {
             echo "[ ✓ ] -lc++ already present"
         fi
         
-        echo "[ ✓ ] Makefile OK"
+        echo "[ * ] Forcing ICU 53 library paths..."
+        sed -i '' 's|-licui18n|/usr/local/icu53/lib/libicui18n.so.53.2|g' Makefile
+        sed -i '' 's|-licuuc|/usr/local/icu53/lib/libicuuc.so.53.2|g' Makefile
+        sed -i '' 's|-licudata|/usr/local/icu53/lib/libicudata.so.53.2|g' Makefile
+
+        if ! grep -q "/usr/local/icu53/lib" Makefile; then
+            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib \1|' Makefile
+            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -Wl,-rpath,/usr/local/icu53/lib|' Makefile
+        fi
+        
+        echo "[ ✓ ] Makefile updated to use ICU 53 full paths"
     else
         echo "❌ Makefile not found!"
         return 1
