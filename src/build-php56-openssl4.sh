@@ -9,7 +9,7 @@ set -e
 # ============================================================
 PHP_VERSION="5.6.40"
 BUILD_DIR="/tmp/php-build-test"
-PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}" 
+PHP_SRC_DIR="$BUILD_DIR/php-${PHP_VERSION}" 
 PHP_INSTALL_DIR="$BUILD_DIR/php-${PHP_VERSION}"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
@@ -448,7 +448,7 @@ patch_icu_headers() {
 # 构建 PHP
 # ============================================================
 build_php() {
-    local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
+    local build_dir="$BUILD_DIR/php-${PHP_VERSION}"
     local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
     local major=$(echo "$PHP_VERSION" | cut -d. -f1)
     local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
@@ -463,16 +463,33 @@ build_php() {
         return 1
     fi
 
+    # 在 build_php() 函数中，替换整个解压逻辑
     if [ ! -d "$build_dir" ]; then
         echo "[ * ] Extracting PHP ${PHP_VERSION}..."
         tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
-        if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
-        elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
-        elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
+        
+        # 查找解压出的目录
+        EXTRACTED_DIR=$(find "$BUILD_DIR" -maxdepth 1 -type d -name "php-${PHP_VERSION}" -o -name "php-src-php-${PHP_VERSION}" | head -1)
+        
+        if [ -z "$EXTRACTED_DIR" ]; then
+            echo "❌ Could not find extracted PHP source directory!"
+            echo "Directories in $BUILD_DIR:"
+            find "$BUILD_DIR" -maxdepth 1 -type d
+            return 1
         fi
+        
+        if [ "$EXTRACTED_DIR" != "$build_dir" ]; then
+            echo "[ * ] Moving $EXTRACTED_DIR to $build_dir"
+            mv "$EXTRACTED_DIR" "$build_dir"
+        fi
+    fi
+
+    # 验证 configure 存在
+    if [ ! -f "$build_dir/configure" ]; then
+        echo "❌ configure not found in $build_dir"
+        echo "Contents:"
+        ls -la "$build_dir"
+        return 1
     fi
 
     # 下载 ImageMagick 扩展
@@ -538,7 +555,7 @@ build_php() {
         export ICU_LDFLAGS="-L/usr/local/icu53/lib"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
-        echo "[ ✓ ] ICU libs: $(icu-config --libs || echo 'unknown')"
+        echo "[ ✓ ] ICU libs: $(icu-config --ldflags || echo 'unknown')"
         echo "[ * ] Debugging ICU libraries..."
         echo "ICU libs:"
         find /usr/local/icu53/lib -name "*.so*" -exec ls -la {} \; | head -10
@@ -759,7 +776,7 @@ create_package() {
 
 	# 验证 ImageMagick 扩展
 	echo "[ * ] Verifying ImageMagick extension..."
-	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+	PHP_SRC_DIR="$BUILD_DIR/php-${PHP_VERSION}"
 	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
 	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
