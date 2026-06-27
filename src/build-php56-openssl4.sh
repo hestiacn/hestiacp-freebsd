@@ -227,53 +227,21 @@ build_icu53() {
     # 修复 Makefile 中的链接顺序
     find . -name "Makefile" -exec sed -i '' 's/-lpthread -lm/-lm -lpthread/g' {} \;
     
-    # ✅ 关键修复：正确顺序编译
-    echo "[ * ] Building ICU in correct order..."
+    # ✅ 简单方法：直接 make（让 make 自己处理依赖）
+    echo "[ * ] Building ICU with parallel make..."
+    mkdir -p ../lib
     
-    # 1. 先编译 stubdata（最简单）
-    echo "[ * ] Building stubdata..."
-    (cd stubdata && gmake -j1) || return 1
+    # 尝试并行编译
+    if ! gmake -j"$NUM_CPUS" 2>&1 | tee /tmp/icu-build.log; then
+        echo "⚠️  Parallel build failed, trying single core..."
+        if ! gmake -j1 2>&1 | tee -a /tmp/icu-build.log; then
+            echo "❌ ICU build failed"
+            tail -100 /tmp/icu-build.log
+            return 1
+        fi
+    fi
     
-    # 2. 编译 common（基础库）
-    echo "[ * ] Building common..."
-    (cd common && gmake -j1) || return 1
-    
-    # 3. 编译 i18n（国际化库）
-    echo "[ * ] Building i18n..."
-    (cd i18n && gmake -j1) || return 1
-    
-    # 4. 编译 layout 和 layoutex
-    echo "[ * ] Building layout..."
-    (cd layout && gmake -j1) || return 1
-    echo "[ * ] Building layoutex..."
-    (cd layoutex && gmake -j1) || return 1
-    
-    # 5. 编译 io
-    echo "[ * ] Building io..."
-    (cd io && gmake -j1) || return 1
-    
-    # 6. 编译 tools（包括 makeconv）- 这里可能还需要依赖
-    echo "[ * ] Building tools..."
-    (cd tools && gmake -j1) || {
-        echo "⚠️  Tools build failed, trying with explicit library path..."
-        # 设置库路径重试
-        export LD_LIBRARY_PATH="$icu_prefix/lib:$LD_LIBRARY_PATH"
-        (cd tools && gmake -j1) || return 1
-    }
-    
-    # 7. 编译 data（需要 makeconv）
-    echo "[ * ] Building data..."
-    (cd data && gmake -j1) || {
-        echo "⚠️  Data build failed, trying with explicit library path..."
-        export LD_LIBRARY_PATH="$icu_prefix/lib:$LD_LIBRARY_PATH"
-        (cd data && gmake -j1) || return 1
-    }
-    
-    # 8. 编译 extra（uconv 等）
-    echo "[ * ] Building extra..."
-    (cd extra && gmake -j1) || return 1
-    
-    # 9. 全部安装
+    # 安装
     echo "[ * ] Installing ICU 53..."
     gmake install
     
@@ -297,13 +265,9 @@ build_icu53() {
        [ -f "$icu_prefix/lib/libicui18n.so.53.2" ] && \
        [ -f "$icu_prefix/lib/libicudata.so.53.2" ]; then
         echo "[ ✓ ] ICU 53 installed successfully"
-        echo "ICU libraries:"
-        ls -la "$icu_prefix/lib/libicu".*.so* | head -5
         return 0
     else
         echo "❌ ICU 53 installation verification failed!"
-        echo "Files in $icu_prefix/lib:"
-        find "$icu_prefix" -name "*.so*" || echo "No libraries found"
         return 1
     fi
 }
