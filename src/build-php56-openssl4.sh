@@ -267,7 +267,6 @@ build_icu53() {
         return 1
     fi
     
-    # ✅ 确保符号链接存在（icu-config 需要）
     echo "[ * ] Ensuring ICU library symlinks exist..."
     cd "$icu_prefix/lib"
     for lib in libicuuc libicui18n libicudata; do
@@ -282,9 +281,15 @@ build_icu53() {
             fi
         fi
     done
+
+    if [ -f "libicui18n.so.53.2" ] && [ ! -f "libicuio.so.53.2" ]; then
+        ln -sf libicui18n.so.53.2 libicuio.so.53.2
+        ln -sf libicuio.so.53.2 libicuio.so.53
+        ln -sf libicuio.so.53.2 libicuio.so
+        echo "  ✓ Created libicuio.so.53.2 -> libicui18n.so.53.2"
+    fi
     cd -
     
-    # ✅ 如果安装没有复制 icu-config，使用之前保存的
     if [ ! -f "$icu_prefix/bin/icu-config" ]; then
         echo "[ * ] icu-config not installed, copying from build dir..."
         if [ -f "config/icu-config" ]; then
@@ -689,6 +694,7 @@ build_php() {
         fi
         
         echo "[ * ] Forcing ICU 53 library paths..."
+        sed -i '' 's|-licuio|/usr/local/icu53/lib/libicuio.so.53.2|g' Makefile
         sed -i '' 's|-licui18n|/usr/local/icu53/lib/libicui18n.so.53.2|g' Makefile
         sed -i '' 's|-licuuc|/usr/local/icu53/lib/libicuuc.so.53.2|g' Makefile
         sed -i '' 's|-licudata|/usr/local/icu53/lib/libicudata.so.53.2|g' Makefile
