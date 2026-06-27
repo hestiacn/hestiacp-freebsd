@@ -428,8 +428,8 @@ build_php() {
                 cd /usr/local/icu53/lib
                 for lib in libicuuc libicui18n libicudata; do
                     if [ -f "${lib}.so.53.2" ]; then
-                        ln -sf "${lib}.so.53.2" "${lib}.so.53" || true
-                        ln -sf "${lib}.so.53.2" "${lib}.so" || true
+                        ln -sf "${lib}.so.53.2" "${lib}.so.53"
+                        ln -sf "${lib}.so.53.2" "${lib}.so"
                     fi
                 done
                 cd -
@@ -443,37 +443,14 @@ build_php() {
         # ✅ 创建或复制 icu-config
         mkdir -p /usr/local/icu53/bin
         
-        # 先尝试从源码目录复制（如果还存在）
+        # 从源码目录复制 icu-config
         ICU_CONFIG_SRC=$(find /tmp -path "*/icu-release-53-2/*/icu-config" -type f 2>/dev/null | head -1)
         if [ -n "$ICU_CONFIG_SRC" ]; then
             cp "$ICU_CONFIG_SRC" /usr/local/icu53/bin/icu-config
             chmod +x /usr/local/icu53/bin/icu-config
             echo "[ ✓ ] Copied icu-config from source"
-        elif [ ! -f "/usr/local/icu53/bin/icu-config" ]; then
-            # 如果都没有，手动创建
-            echo "[ * ] Creating manual icu-config..."
-            cat > /usr/local/icu53/bin/icu-config << 'EOF'
-#!/bin/sh
-prefix=/usr/local/icu53
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-
-case "$1" in
-    --version) echo "53.2" ;;
-    --cppflags|--cflags) echo "-I${includedir}" ;;
-    --ldflags|--ldflags-lib) echo "-L${libdir} -Wl,-rpath,${libdir}" ;;
-    --libs) echo "-licuuc -licui18n -licudata -lpthread -lm" ;;
-    --libs-icuuc) echo "-licuuc -licudata -lpthread -lm" ;;
-    --libs-icui18n) echo "-licui18n -licuuc -licudata -lpthread -lm" ;;
-    --prefix|--exec-prefix) echo "${prefix}" ;;
-    --includedir) echo "${includedir}" ;;
-    --libdir) echo "${libdir}" ;;
-    *) exit 1 ;;
-esac
-EOF
-            chmod +x /usr/local/icu53/bin/icu-config
-            echo "[ ✓ ] Created manual icu-config"
+        else
+            echo "⚠️  icu-config not found in source, skipping"
         fi
 
         # ✅ 将 ICU 53 的 bin 放在 PATH 最前面
@@ -560,7 +537,8 @@ EOF
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
 
-    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
+    export LIBS="-licui18n -licuuc -licudata -lpthread -lm"
+    ./configure "${CONFIG_ARGS[@]}" LIBS="$LIBS" > "$LOG_DIR/configure-${PHP_VERSION}.log"
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
         tail -50 "$LOG_DIR/configure-${PHP_VERSION}.log"
@@ -572,17 +550,34 @@ EOF
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
     # ============================================================
-    # ✅ 修复 CGI 链接问题
+    # ✅ 修复链接问题
     # ============================================================
     echo "[ * ] Fixing link flags..."
     if [ -f "Makefile" ]; then
-        sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -licui18n -licuuc -licudata/' Makefile
-        sed -i '' 's/^LDFLAGS = \(.*\)$/LDFLAGS = \1 -licui18n -licuuc -licudata/' Makefile
-        echo "[ ✓ ] Added ICU libraries to Makefile"
-        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile | head -1)"
-        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile | head -1)"
+        echo "[ * ] Before modification:"
+        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile | head -1 || echo '(not found)')"
+        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile | head -1 || echo '(not found)')"
+        echo "  LIBS: $(grep '^LIBS' Makefile | head -1 || echo '(not found)')"
+        
+        echo 'EXTRA_LIBS += -licui18n -licuuc -licudata' >> Makefile
+        echo 'LDFLAGS += -licui18n -licuuc -licudata' >> Makefile
+        echo 'LIBS += -licui18n -licuuc -licudata' >> Makefile
+        
+        echo "[ * ] After modification:"
+        echo "  EXTRA_LIBS: $(grep 'EXTRA_LIBS' Makefile | tail -1)"
+        echo "  LDFLAGS: $(grep 'LDFLAGS' Makefile | tail -1)"
+        echo "  LIBS: $(grep 'LIBS' Makefile | tail -1)"
+        
+        if grep -q "licui18n" Makefile; then
+            echo "[ ✓ ] ICU libraries successfully added to Makefile"
+        else
+            echo "❌ Failed to add ICU libraries to Makefile!"
+            return 1
+        fi
+    else
+        echo "❌ Makefile not found!"
+        return 1
     fi
-    export LIBS="-licui18n -licuuc -licudata -lpthread -lm"
     
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
     gmake -j "$NUM_CPUS" LIBS="$LIBS" > "$LOG_DIR/build-${PHP_VERSION}.log"
@@ -593,8 +588,8 @@ EOF
         echo "❌ BUILD FAILED"
         echo "========================================"
         echo ""
-        echo "=== OpenSSL related errors ==="
-        grep -E "openssl.*error:|Error.*openssl" "$LOG_DIR/build-${PHP_VERSION}.log" | head -30
+        echo "=== ICU related errors ==="
+        grep -E "undefined reference.*icu|undefined reference.*ucol|undefined reference.*unum|undefined reference.*udat" "$LOG_DIR/build-${PHP_VERSION}.log" | head -30
         echo ""
         echo "=== All errors ==="
         grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
@@ -606,14 +601,14 @@ EOF
         return 1
     fi
 
-	echo "[ * ] Installing PHP ${PHP_VERSION}..."
-	mkdir -p "$install_dir"
-	gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log"
-	if [ $? -ne 0 ]; then
-		echo "❌ Install failed"
-		tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
-		return 1
-	fi
+    echo "[ * ] Installing PHP ${PHP_VERSION}..."
+    mkdir -p "$install_dir"
+    gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log"
+    if [ $? -ne 0 ]; then
+        echo "❌ Install failed"
+        tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
+        return 1
+    fi
     
     if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
         echo "[ * ] Creating php-cgi symlink from php binary..."
