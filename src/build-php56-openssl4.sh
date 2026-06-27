@@ -652,11 +652,19 @@ build_php() {
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
+    export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-rpath-link,/usr/local/icu53/lib"
+    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
-    export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
-    ./configure "${CONFIG_ARGS[@]}" > "$LOG_DIR/configure-${PHP_VERSION}.log"
+    ./configure \
+        "${CONFIG_ARGS[@]}" \
+        --with-icu-dir=/usr/local/icu53 \
+        ICU_CFLAGS="-I/usr/local/icu53/include" \
+        ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata" \
+        > "$LOG_DIR/configure-${PHP_VERSION}.log"
+
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
         tail -100 "$LOG_DIR/configure-${PHP_VERSION}.log"
