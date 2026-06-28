@@ -527,35 +527,68 @@ fix_icu_linking() {
     
     echo "[ * ] Fixing ICU library linking..."
     
-    # 1. 修改 Makefile，移除 -licuio 并确保 ICU 53 优先
+    # 1. 修改主 Makefile
     if [ -f "Makefile" ]; then
+        # 备份原 Makefile
+        cp Makefile Makefile.bak
+        
         # 移除所有 -licuio 引用
         sed -i '' 's|-licuio||g' Makefile
         
-        # 确保 ICU 53 库在链接顺序中优先
+        # 在 EXTRA_LIBS 最前面添加 ICU 53 库
         sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
+        
+        # 在 LDFLAGS 最前面添加 ICU 53 路径
         sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib \1|' Makefile
+        
+        # 在 LIBS 最前面添加 ICU 53 库
         sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
+        
+        # 直接修改链接命令
+        sed -i '' 's|^LINK = \(.*\)$|LINK = \1 -L/usr/local/icu53/lib -licui18n -licuuc -licudata -Wl,-rpath,/usr/local/icu53/lib|' Makefile
+        
+        # 修改 CCLD 变量
+        sed -i '' 's|^CCLD = \(.*\)$|CCLD = \1 -L/usr/local/icu53/lib -licui18n -licuuc -licudata|' Makefile
         
         echo "[ ✓ ] Makefile updated"
     fi
     
-    # 2. 修改 ext/intl/Makefile
+    # 2. 修改 ext/intl/Makefile（最重要！）
     if [ -f "ext/intl/Makefile" ]; then
+        # 备份
+        cp ext/intl/Makefile ext/intl/Makefile.bak
+        
+        # 移除 -licuio
         sed -i '' 's|-licuio||g' ext/intl/Makefile
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        
+        # 在 LDFLAGS 最前面添加 ICU 53 路径
         sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib \1|' ext/intl/Makefile
+        
+        # 在 EXTRA_LIBS 最前面添加 ICU 53 库
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        
+        # 在 LIBS 最前面添加 ICU 53 库
+        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        
         echo "[ ✓ ] ext/intl/Makefile updated"
     fi
     
-    # 3. 修改其他可能包含 ICU 链接的 Makefile
+    # 3. 修改其他子目录的 Makefile
     for subdir in ext/date ext/standard main Zend; do
         if [ -f "$subdir/Makefile" ]; then
             sed -i '' 's|-licuio||g' "$subdir/Makefile" 2>/dev/null || true
+            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib \1|' "$subdir/Makefile" 2>/dev/null || true
+            sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' "$subdir/Makefile" 2>/dev/null || true
         fi
     done
     
-    # 4. 创建 wrapper 脚本强制使用正确的库
+    # 4. 修改 libtool 链接参数
+    if [ -f "libtool" ]; then
+        sed -i '' 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib"|' libtool
+        sed -i '' 's|^library_names_spec=.*|library_names_spec="libicuuc.so.53.2 libicui18n.so.53.2 libicudata.so.53.2"|' libtool
+    fi
+    
+    # 5. 创建 wrapper 脚本强制使用正确的库
     cat > /tmp/php-build-wrapper.sh << 'EOF'
 #!/bin/sh
 # 强制使用 ICU 53
@@ -714,16 +747,19 @@ build_php() {
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-    export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
-    export LDFLAGS="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib $LDFLAGS"
-    export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-rpath-link,/usr/local/icu53/lib"
+    
+    # 设置强制 ICU 53 的环境变量
+    export LDFLAGS="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/lib"
     export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
+    export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
     ./configure \
         "${CONFIG_ARGS[@]}" \
         --with-icu-dir=/usr/local/icu53 \
+        LDFLAGS="$LDFLAGS" \
+        LIBS="$LIBS" \
         ICU_CFLAGS="-I/usr/local/icu53/include" \
         ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata" \
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
@@ -763,6 +799,9 @@ build_php() {
     export LIBRARY_PATH="/usr/local/icu53/lib:$LIBRARY_PATH"
     export C_INCLUDE_PATH="/usr/local/icu53/include:$C_INCLUDE_PATH"
     export CPLUS_INCLUDE_PATH="/usr/local/icu53/include:$CPLUS_INCLUDE_PATH"
+    
+    # 5. 设置 ICU 数据路径
+    export ICU_DATA="/usr/local/icu53/share/icu/53.2"
 
     echo "[ ✓ ] ICU linking fixes applied"
     
