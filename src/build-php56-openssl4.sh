@@ -154,7 +154,7 @@ get_config_args() {
 		"--with-imap-ssl=/usr/local"
 		"--with-pspell=/usr/local"
 		"--with-libedit"
-        #"--with-ffi"
+		#"--with-ffi"
 	)
 
 	# PHP 7.1 及以下: 没有 Argon2 支持
@@ -179,6 +179,7 @@ build_icu53() {
     
     if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.53.2" ]; then
         echo "[ ✓ ] ICU 53 already installed at $icu_prefix"
+        override_system_icu "$icu_prefix"
         return 0
     fi
     
@@ -263,32 +264,34 @@ build_icu53() {
         return 1
     fi
     
-    # 创建符号链接
-    echo "[ * ] Ensuring ICU library symlinks exist..."
+    # ============================================================
+    # 创建 ICU 53 库的符号链接
+    # ============================================================
+    echo "[ * ] Creating ICU 53 library symlinks..."
+    
+    # 1. 在 ICU 53 目录中创建符号链接
     cd "$icu_prefix/lib"
     for lib in libicuuc libicui18n libicudata; do
         if [ -f "${lib}.so.53.2" ]; then
-            if [ ! -f "${lib}.so" ]; then
-                ln -sf "${lib}.so.53.2" "${lib}.so"
-                echo "  ✓ Created ${lib}.so -> ${lib}.so.53.2"
-            fi
-            if [ ! -f "${lib}.so.53" ]; then
-                ln -sf "${lib}.so.53.2" "${lib}.so.53"
-                echo "  ✓ Created ${lib}.so.53 -> ${lib}.so.53.2"
-            fi
+            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.53.2" "${lib}.so"
+            [ ! -f "${lib}.so.53" ] && ln -sf "${lib}.so.53.2" "${lib}.so.53"
+            echo "  ✓ Created ${lib} links"
         fi
     done
-
-    # 创建 libicuio 符号链接（PHP intl 需要）
+    
+    # 创建 libicuio 符号链接（ICU 53 没有单独的 libicuio）
     if [ -f "libicui18n.so.53.2" ] && [ ! -f "libicuio.so.53.2" ]; then
         ln -sf libicui18n.so.53.2 libicuio.so.53.2
         ln -sf libicuio.so.53.2 libicuio.so.53
         ln -sf libicuio.so.53.2 libicuio.so
-        echo "  ✓ Created libicuio.so.53.2 -> libicui18n.so.53.2"
+        echo "  ✓ Created libicuio -> libicui18n.so.53.2"
     fi
     cd -
     
-    # 如果安装没有复制 icu-config，使用之前保存的
+    # 2. 覆盖系统路径中的 ICU 库（关键步骤！）
+    override_system_icu "$icu_prefix"
+    
+    # 3. 如果安装没有复制 icu-config，使用之前保存的
     if [ ! -f "$icu_prefix/bin/icu-config" ]; then
         echo "[ * ] icu-config not installed, copying from build dir..."
         if [ -f "config/icu-config" ]; then
@@ -299,52 +302,80 @@ build_icu53() {
         chmod +x "$icu_prefix/bin/icu-config" || true
     fi
     
-    # 修改 icu-config 中的 libdir 检查
-    echo "[ * ] Fixing icu-config library path check..."
+    # 4. 修改 icu-config
     if [ -f "$icu_prefix/bin/icu-config" ]; then
         sed -i '' 's/libicuuc.so/libicuuc.so.53.2/g' "$icu_prefix/bin/icu-config" || true
         sed -i '' 's/libicui18n.so/libicui18n.so.53.2/g' "$icu_prefix/bin/icu-config" || true
         sed -i '' 's/libicudata.so/libicudata.so.53.2/g' "$icu_prefix/bin/icu-config" || true
     fi
     
-    # 验证 icu-config
-    echo "[ * ] Testing generated icu-config:"
+    # 5. 验证
+    echo "[ * ] Verifying ICU 53 installation..."
     if ! "$icu_prefix/bin/icu-config" --version > /dev/null 2>&1; then
         echo "❌ icu-config validation failed"
         return 1
     fi
     echo "  Version: $($icu_prefix/bin/icu-config --version)"
-    echo "  Cflags: $($icu_prefix/bin/icu-config --cflags)"
-    echo "  Ldflags: $($icu_prefix/bin/icu-config --ldflags)"
-    
-    # 验证安装
-    if [ ! -f "$icu_prefix/lib/libicuuc.so.53.2" ] || \
-       [ ! -f "$icu_prefix/lib/libicui18n.so.53.2" ] || \
-       [ ! -f "$icu_prefix/lib/libicudata.so.53.2" ] || \
-       [ ! -f "$icu_prefix/bin/icu-config" ]; then
-        echo "❌ ICU installation verification failed"
-        return 1
-    fi
-    
-    # 创建额外的符号链接到 /usr/local/lib 以确保兼容性
-    echo "[ * ] Creating ICU symlinks in /usr/local/lib..."
-    cd /usr/local/lib
-    for lib in libicuuc libicui18n libicudata; do
-        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
-            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
-            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
-            echo "  Created symlink for ${lib}"
-        fi
-    done
-    cd -
     
     # 清理
     cd /
     rm -rf /tmp/icu-release-53-2 /tmp/icu-53.tar.gz
     
     echo "[ ✓ ] ICU 53 installed successfully"
-    echo "[ ✓ ] icu-config: $($icu_prefix/bin/icu-config --version)"
     return 0
+}
+
+# ============================================================
+# 覆盖系统 ICU 库（关键函数）
+# ============================================================
+override_system_icu() {
+    local icu_prefix="$1"
+    
+    echo "[ * ] Overriding system ICU libraries with ICU 53..."
+    
+    cd /usr/local/lib
+    
+    # 备份并移除 ICU 76 的库
+    for lib in libicuuc libicudata libicui18n libicuio; do
+        # 备份现有的库
+        if [ -f "${lib}.so.76" ]; then
+            mv "${lib}.so.76" "${lib}.so.76.bak" 2>/dev/null || true
+            echo "  Backed up ${lib}.so.76"
+        fi
+        if [ -L "${lib}.so.76" ]; then
+            rm -f "${lib}.so.76"
+            echo "  Removed symlink ${lib}.so.76"
+        fi
+        
+        # 移除旧的符号链接
+        rm -f "${lib}.so" "${lib}.so.53" 2>/dev/null || true
+    done
+    
+    # 创建指向 ICU 53 的符号链接
+    for lib in libicuuc libicudata libicui18n; do
+        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
+            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2"
+            ln -sf "${lib}.so.53.2" "${lib}.so.53"
+            ln -sf "${lib}.so.53.2" "${lib}.so"
+            echo "  ✓ ${lib}.so -> ICU 53"
+        fi
+    done
+    
+    # libicuio 指向 libicui18n
+    if [ -f "$icu_prefix/lib/libicui18n.so.53.2" ]; then
+        ln -sf "$icu_prefix/lib/libicui18n.so.53.2" libicuio.so.53.2
+        ln -sf libicuio.so.53.2 libicuio.so.53
+        ln -sf libicuio.so.53.2 libicuio.so
+        echo "  ✓ libicuio.so -> ICU 53 (libicui18n)"
+    fi
+    
+    cd -
+    
+    # 验证
+    echo "[ * ] Verifying ICU 53 override:"
+    ls -la /usr/local/lib/libicu*.so* | grep -E "libicu(uc|i18n|data|io)\.so" | head -10
+    
+    echo "[ ✓ ] System ICU libraries overridden with ICU 53"
 }
 
 # ============================================================
@@ -520,50 +551,6 @@ patch_icu_headers() {
 }
 
 # ============================================================
-# 修复 ICU 链接问题
-# ============================================================
-fix_icu_linking() {
-    local build_dir="$1"
-    cd "$build_dir" || return 1
-    
-    echo "[ * ] Fixing ICU library linking..."
-    
-    # 1. 直接修改 Makefile 中的链接顺序
-    if [ -f "Makefile" ]; then
-        # 确保 ICU 53 库路径在最前面
-        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib \1|' Makefile
-        
-        # 在 EXTRA_LIBS 中添加 ICU 库，放在最前面
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
-        
-        # 修改 LIBS 变量
-        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
-        
-        echo "[ ✓ ] Makefile updated"
-    fi
-    
-    # 2. 修改 ext/intl 的 Makefile
-    if [ -f "ext/intl/Makefile" ]; then
-        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib \1|' ext/intl/Makefile
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
-        echo "[ ✓ ] ext/intl/Makefile updated"
-    fi
-    
-    # 3. 创建 wrapper 脚本来强制使用正确的库
-    cat > /tmp/php-build-wrapper.sh << 'EOF'
-#!/bin/sh
-LD_LIBRARY_PATH=/usr/local/icu53/lib:$LD_LIBRARY_PATH
-LIBRARY_PATH=/usr/local/icu53/lib:$LIBRARY_PATH
-export LD_LIBRARY_PATH LIBRARY_PATH
-exec "$@"
-EOF
-    chmod +x /tmp/php-build-wrapper.sh
-    
-    echo "[ ✓ ] ICU linking fixes applied"
-    return 0
-}
-
-# ============================================================
 # 构建 PHP
 # ============================================================
 build_php() {
@@ -694,7 +681,6 @@ build_php() {
         export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
     fi
-    
     # ============================================================
     # 配置 PHP（让 configure 自动检测所有库）
     # ============================================================
@@ -727,17 +713,62 @@ build_php() {
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
     # ============================================================
-    # 修复 ICU 链接问题
+    # ✅ 修复 ICU 链接问题
     # ============================================================
-    fix_icu_linking "$build_dir"
+    echo "[ * ] Fixing ICU library linking for PHP 5.6..."
+
+    # 1. 验证 ICU 库
+    if [ -f "/usr/local/icu53/lib/libicuuc.so.53.2" ]; then
+        echo "[ ✓ ] ICU libraries found at /usr/local/icu53/lib"
+    else
+        echo "❌ ICU libraries not found!"
+        return 1
+    fi
+
+    # 2. 修复 Makefile
+    if [ -f "Makefile" ]; then
+        
+        # 添加 ICU 库到 EXTRA_LIBS
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = \1 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata|' Makefile
+        
+        # 添加到 LDFLAGS
+        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib|' Makefile
+        
+        # 添加到 CFLAGS
+        sed -i '' 's|^CFLAGS = \(.*\)$|CFLAGS = \1 -I/usr/local/icu53/include|' Makefile
+        
+        echo "[ ✓ ] Makefile updated"
+        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile)"
+        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile)"
+    fi
+
+    # 3. 设置环境变量
+    export LD_LIBRARY_PATH="/usr/local/icu53/lib:/usr/local/lib:$LD_LIBRARY_PATH"
+    export LIBRARY_PATH="/usr/local/icu53/lib:$LIBRARY_PATH"
+    export C_INCLUDE_PATH="/usr/local/icu53/include:$C_INCLUDE_PATH"
+    export CPLUS_INCLUDE_PATH="/usr/local/icu53/include:$CPLUS_INCLUDE_PATH"
+
+    # 4. 创建必要的符号链接（如果不存在）
+    if [ ! -L "/usr/local/lib/libicuuc.so.53" ]; then
+        echo "[ * ] Creating ICU symlinks in /usr/local/lib..."
+        cd /usr/local/lib
+        for lib in libicuuc libicui18n libicudata; do
+            if [ -f "/usr/local/icu53/lib/${lib}.so.53.2" ]; then
+                ln -sf "/usr/local/icu53/lib/${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
+                ln -sf "/usr/local/icu53/lib/${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+                echo "  Created symlink for ${lib}"
+            fi
+        done
+        cd -
+    fi
+
+    echo "[ ✓ ] ICU linking fixes applied"
     
     # ============================================================
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    
-    # 使用 wrapper 运行 make 确保环境变量正确
-    /tmp/php-build-wrapper.sh gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
 
     if [ $? -ne 0 ]; then
         echo ""
@@ -757,8 +788,8 @@ build_php() {
         tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
-        /tmp/php-build-wrapper.sh gmake clean
-        if /tmp/php-build-wrapper.sh gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+        gmake clean
+        if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
             return 1
@@ -770,7 +801,7 @@ build_php() {
     # ============================================================
     echo "[ * ] Installing PHP ${PHP_VERSION}..."
     mkdir -p "$install_dir"
-    /tmp/php-build-wrapper.sh gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log"
+    gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log"
     if [ $? -ne 0 ]; then
         echo "❌ Install failed"
         tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
