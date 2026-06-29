@@ -435,13 +435,12 @@ using namespace icu;
     # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
     echo "[ * ] Fixing ICU namespace in intl extension..."
 
-    # 在 .cpp 文件中添加 using namespace icu;
-    find ext/intl -name "*.cpp" | while read file; do
-        if ! grep -q "using namespace icu;" "$file"; then
-            sed -i '' '1i\
-using namespace icu;
-' "$file"
-            echo "[ ✓ ] Added using namespace icu; to $(basename "$file")"
+    # 移除之前可能添加的 using namespace icu;
+    for file in ext/intl/intl_convertcpp.cpp \
+                ext/intl/common/common_enum.h \
+                ext/intl/calendar/calendar_class.h; do
+        if [ -f "$file" ]; then
+            sed -i '' '/^using namespace icu;/d' "$file"
         fi
     done
 
@@ -450,7 +449,7 @@ using namespace icu;
                 ext/intl/common/common_enum.h; do
         if [ -f "$header" ]; then
             if ! grep -q "using namespace icu;" "$header"; then
-                sed -i '' '1i\
+            sed -i '' '1i\
 #ifdef __cplusplus\
 using namespace icu;\
 #endif
@@ -459,6 +458,17 @@ using namespace icu;\
             fi
         fi
     done
+
+    # 对于 intl_convertcpp.cpp，直接添加 ICU 头文件包含
+    if [ -f "ext/intl/intl_convertcpp.cpp" ]; then
+        # 确保包含 unicode/unistr.h
+        if ! grep -q "#include <unicode/unistr.h>" ext/intl/intl_convertcpp.cpp; then
+            sed -i '' '1i\
+#include <unicode/unistr.h>
+' ext/intl/intl_convertcpp.cpp
+            echo "[ ✓ ] Added unistr.h include to intl_convertcpp.cpp"
+        fi
+    fi
 
     echo "[ ✓ ] ICU namespace fixes applied"
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
@@ -743,7 +753,7 @@ build_php() {
 		echo ""
 		echo "[ * ] Retrying with single core..."
 		gmake clean
-		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log" 2>&1; then
 			echo "[ ✓ ] Single core build succeeded!"
 		else
 			return 1
