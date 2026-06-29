@@ -432,35 +432,66 @@ using namespace icu;
 		echo "⚠️  Custom OpenSSL directory not found: $custom_openssl_dir"
 		echo "    Skipping OpenSSL source replacement"
 	fi
-    # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
+    
+    # 补丁10: 修复 readdir_r 函数
+    if [ -f "main/reentrancy.c" ]; then
+        echo "[ * ] Fixing readdir_r for FreeBSD 14..."
+        sed -i '' 's/readdir_r(dirp, entry);/readdir_r(dirp, entry, \&entry);/' main/reentrancy.c
+        echo "[ ✓ ] Fixed readdir_r in reentrancy.c"
+    fi
+
+    # 补丁11: 修复 intl 扩展的 ICU 命名空间问题
     echo "[ * ] Fixing ICU namespace in intl extension..."
     
-    # 将 icu::Calendar* 替换为 void* (C 兼容)
+    # 11a: 修复 calendar_class.h
     if [ -f "ext/intl/calendar/calendar_class.h" ]; then
         sed -i '' 's/icu::Calendar\*/void*/g' ext/intl/calendar/calendar_class.h
         sed -i '' 's/icu::TimeZone\*/void*/g' ext/intl/calendar/calendar_class.h
-        echo "[ ✓ ] Fixed Calendar/TimeZone namespace in calendar_class.h"
+        sed -i '' '/^using namespace icu;/d' ext/intl/calendar/calendar_class.h
+        echo "[ ✓ ] Fixed calendar_class.h"
     fi
     
-    # 修复所有使用 icu:: 的 .cpp 文件
-    for file in $(find ext/intl -name "*.cpp" -o -name "*.c"); do
+    # 11b: 修复所有 intl 源文件
+    for file in $(find ext/intl -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.h" \)); do
         if [ -f "$file" ]; then
             sed -i '' 's/icu::Calendar\*/void*/g' "$file"
             sed -i '' 's/icu::TimeZone\*/void*/g' "$file"
-            sed -i '' 's/icu::/void*/g' "$file" 2>/dev/null || true
-        fi
-    done
-    
-    # 移除 using namespace icu; 语句
-    for file in $(find ext/intl -name "*.h" -o -name "*.cpp"); do
-        if [ -f "$file" ]; then
+            sed -i '' 's/icu::StringEnumeration\*/void*/g' "$file"
+            sed -i '' 's/icu::/void /g' "$file" || true
             sed -i '' '/^using namespace icu;/d' "$file"
         fi
     done
-    
     echo "[ ✓ ] ICU namespace fixes applied"
-	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
-	cd - > /dev/null || return 1
+
+    # 补丁12: 修复 grapheme_util.h 的内联函数声明
+    if [ -f "ext/intl/grapheme/grapheme_util.h" ]; then
+        echo "[ * ] Fixing grapheme_util.h..."
+        cat >> "ext/intl/grapheme/grapheme_util.h" << 'EOF'
+
+/* Workaround for missing grapheme_memrchr_grapheme implementation */
+static inline void *grapheme_memrchr_grapheme(const void *s, int c, int32_t n) {
+    const unsigned char *p = (const unsigned char *)s;
+    const unsigned char *end = p + n;
+    while (end > p) {
+        end--;
+        if (*end == (unsigned char)c) {
+            return (void *)end;
+        }
+    }
+    return NULL;
+}
+EOF
+        echo "[ ✓ ] Fixed grapheme_util.h"
+    fi
+
+    # 补丁13: 修复 soap 扩展中的 const 警告
+    if [ -f "ext/soap/php_sdl.c" ]; then
+        sed -i '' 's/xmlErrorPtr xmlErrorPtr = xmlGetLastError();/const xmlError *xmlErrorPtr = xmlGetLastError();/' ext/soap/php_sdl.c
+        echo "[ ✓ ] Fixed soap const warning"
+    fi
+
+    echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
+    cd - > /dev/null || return 1
 }
 
 # ============================================================
