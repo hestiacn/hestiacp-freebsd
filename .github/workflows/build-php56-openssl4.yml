@@ -44,7 +44,7 @@ jobs:
             # 安装编译依赖（openssl40 替代 openssl）
             echo "[ * ] Installing build dependencies..."
             pkg update -f
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp python pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png ImageMagick6 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc12
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp python pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png ImageMagick6 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14
             # 创建 bash 软链接
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
