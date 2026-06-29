@@ -15,7 +15,7 @@ ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
 ARTIFACT_DIR="${ARTIFACT_DIR:-/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts}"
-NUM_CPUS=$(sysctl -n hw.ncpu 2>/dev/null || echo 4)
+NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 创建所有需要的目录
@@ -25,7 +25,7 @@ echo "========================================"
 echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
 echo "========================================"
 echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-echo "OpenSSL version: $(openssl version 2>/dev/null || echo 'unknown')"
+echo "OpenSSL version: $(openssl version || echo 'unknown')"
 echo "CFLAGS: $CFLAGS"
 echo "LDFLAGS: $LDFLAGS"
 echo "========================================"
@@ -115,23 +115,47 @@ get_config_args() {
 		"--enable-static"
 		"--enable-static=yes"
 		"--enable-shared=yes"
-		#"--disable-shared"
+		"--enable-dom"
+		"--enable-xml"
+		"--enable-xmlreader"
+		"--enable-xmlwriter"
+		"--enable-simplexml"
+		"--enable-opcache"
+		"--enable-intl"
+		"--enable-soap"
+		"--enable-posix"
+		"--enable-tokenizer"
+		"--enable-phar"
+		"--enable-shmop"
+		"--enable-sysvmsg"
+		"--enable-sysvsem"
+		"--enable-sysvshm"
+		"--enable-calendar"
 		"--with-gettext=/usr/local"
 		"--with-curl=/usr/local"
 		"--with-gmp=/usr/local"
 		"--with-zlib=/usr"
 		"--with-bz2=/usr"
 		"--with-gettext"
+		"--with-xsl"
+		"--with-readline"
 		"--with-mysqli=mysqlnd"
 		"--with-pdo-mysql=mysqlnd"
 		"--with-pgsql"
 		"--with-pdo-pgsql"
 		"--with-iconv=/usr/local"
 		"--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
-        "--with-png-dir=/usr/local"
-        "--with-jpeg-dir=/usr/local"
-        "--with-freetype-dir=/usr/local"
-        #"--with-webp-dir=/usr/local"
+		"--with-png-dir=/usr/local"
+		"--with-jpeg-dir=/usr/local"
+		"--with-freetype-dir=/usr/local"
+		"--enable-zip"
+		"--with-icu-dir=/usr/local/icu67"
+		"--with-ldap=/usr/local"
+		"--with-imap=/usr/local"
+		"--with-imap-ssl=/usr/local"
+		"--with-pspell=/usr/local"
+		"--with-libedit"
+		#"--with-ffi"
 	)
 
 	# PHP 7.1 及以下: 没有 Argon2 支持
@@ -189,13 +213,13 @@ apply_patches() {
 	fi
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2018..."
-        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group.*/| Copyright (c) 1997-2018 The PHP Group                                |/' {} \;
-        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) The PHP Group.*/| Copyright (c) 1997-2018 The PHP Group                                |/' {} \;
-        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies.*/| Copyright (c) 1998-2018 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
-        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) 2>/dev/null \
+        find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998-2018 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
         for file in sapi/cli/php_cli.c sapi/fpm/fpm/fpm_main.c sapi/cgi/cgi_main.c sapi/litespeed/lsapi_main.c sapi/phpdbg/phpdbg.c; do
         if [ -f "$file" ]; then
