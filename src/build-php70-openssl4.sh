@@ -434,12 +434,8 @@ using namespace icu;
 	fi
     # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
     echo "[ * ] Fixing ICU namespace in intl extension..."
-    for file in ext/intl/calendar/calendar_class.h \
-                ext/intl/common/common_enum.h; do
-        if [ -f "$file" ]; then
-            sed -i '' '/^using namespace icu;/d' "$file"
-        fi
-    done
+
+    # 在 .cpp 文件中添加 using namespace icu;
     find ext/intl -name "*.cpp" | while read file; do
         if ! grep -q "using namespace icu;" "$file"; then
             sed -i '' '1i\
@@ -449,14 +445,20 @@ using namespace icu;
         fi
     done
 
-    if [ -f "ext/intl/calendar/calendar_class.h" ]; then
-        sed -i '' 's/\([^a-zA-Z]\)Calendar\([^a-zA-Z]\)/\1icu::Calendar\2/g' ext/intl/calendar/calendar_class.h
-        sed -i '' 's/\([^a-zA-Z]\)TimeZone\([^a-zA-Z]\)/\1icu::TimeZone\2/g' ext/intl/calendar/calendar_class.h
-    fi
-
-    if [ -f "ext/intl/common/common_enum.h" ]; then
-        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.h
-    fi
+    # 在头文件中添加 using namespace icu;（用 C++ 保护）
+    for header in ext/intl/calendar/calendar_class.h \
+                ext/intl/common/common_enum.h; do
+        if [ -f "$header" ]; then
+            if ! grep -q "using namespace icu;" "$header"; then
+                sed -i '' '1i\
+#ifdef __cplusplus\
+using namespace icu;\
+#endif
+' "$header"
+                echo "[ ✓ ] Fixed $(basename "$header")"
+            fi
+        fi
+    done
 
     echo "[ ✓ ] ICU namespace fixes applied"
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
