@@ -743,7 +743,7 @@ build_php() {
 		echo ""
 		echo "[ * ] Retrying with single core..."
 		gmake clean
-		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log" 2>&1; then
+		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
 			echo "[ ✓ ] Single core build succeeded!"
 		else
 			return 1
