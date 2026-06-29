@@ -288,7 +288,7 @@ EOF
     # 验证
     echo "[ * ] Verifying ICU 67 installation..."
     if [ -f "$icu_prefix/bin/icu-config" ]; then
-        echo "  Version: $($icu_prefix/bin/icu-config --version 2>/dev/null || echo '67.1')"
+        echo "  Version: $($icu_prefix/bin/icu-config --version || echo '67.1')"
     fi
     
     cd /
@@ -371,8 +371,8 @@ apply_patches() {
 		sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2018 Zend Technologies\\n"/' ./Zend/zend.c
 		sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2018 Zend Technologies\\n"/' ./Zend/zend.c
 		echo "[ ✓ ] Copyright updated to 2018"
-        grep "Copyright" ./main/main.c 2>/dev/null || true
-        grep "Copyright" ./Zend/zend.c 2>/dev/null || true
+        grep "Copyright" ./main/main.c || true
+        grep "Copyright" ./Zend/zend.c || true
     fi
 
 	# 补丁7: 修复 intl 头文件中的 UnicodeString 命名空间问题
@@ -549,7 +549,7 @@ build_imagick() {
         fi
     else
         echo "⚠️  ImageMagick extension not found in expected location"
-        find "$install_dir" -name "imagick.so" 2>/dev/null || echo "  Not found anywhere"
+        find "$install_dir" -name "imagick.so" || echo "  Not found anywhere"
     fi
     
     cd - > /dev/null
@@ -646,7 +646,7 @@ build_php() {
 		export ICU_CFLAGS="-I/usr/local/icu67/include"
 		export ICU_LIBS="-L/usr/local/icu67/lib -licui18n -licuuc -licudata"
 		
-		echo "[ ✓ ] ICU config version: $(icu-config --version 2>/dev/null || echo '67.1')"
+		echo "[ ✓ ] ICU config version: $(icu-config --version || echo '67.1')"
 	fi
 	
 	# ============================================================
@@ -921,7 +921,7 @@ EOF
 		echo "Location: ${PKG_FILE}"
 		echo ""
 		echo "--- Files in package ---"
-		pkg info -l "${PKG_FILE}" 2>/dev/null || tar -tf "${PKG_FILE}" 2>/dev/null || {
+		pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
 			echo "⚠️  Cannot list package contents (pkg info not available)"
 			echo "Files in ${PKG_DIR}:"
 			find "${PKG_DIR}" -type f | sort
