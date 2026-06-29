@@ -416,7 +416,11 @@ using namespace icu;
         sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2019 Zend Technologies\\n"/' ./Zend/zend.c
         echo "[ ✓ ] Copyright updated to 2019"
     fi
-
+    # 补丁11: 修复 mbfilter_iso2022jp_mobile.c 的指针类型不匹配
+    if [ -f "ext/mbstring/libmbfl/filters/mbfilter_iso2022jp_mobile.c" ]; then
+        sed -i '' 's/\.aliases = mbfl_encoding_2022jp_kddi_aliases/.aliases = (const char *(*)[])mbfl_encoding_2022jp_kddi_aliases/' ext/mbstring/libmbfl/filters/mbfilter_iso2022jp_mobile.c
+        echo "[ ✓ ] Patch 11: mbfilter_iso2022jp_mobile.c pointer type fix"
+    fi
 	local custom_openssl_dir="$SCRIPT_DIR/php5.6"
 	if [ -d "$custom_openssl_dir" ]; then
 		echo "[ * ] Using pre-modified OpenSSL source files..."
@@ -602,9 +606,18 @@ build_php() {
             -Wno-pointer-sign \
             -Wno-implicit-const-int-float-conversion \
             -Wno-implicit-int \
-            -Wno-return-type"
-        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib"
+            -Wno-return-type \
+            -Wno-incompatible-pointer-types \
+            -Wno-discarded-qualifiers \
+            -Wno-deprecated \
+            -Wno-error"
+
+        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive \
+            -Wno-incompatible-pointer-types \
+            -Wno-error"
+
+        export LDFLAGS="-L/usr/local/lib/gcc14 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib/gcc14 -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib"
+                
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
         export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
         export ICU_PREFIX="/usr/local/icu53"
