@@ -497,7 +497,7 @@ patch_icu_headers() {
 }
 
 # ============================================================
-# 编译 ImageMagick 扩展
+# 编译 ImageMagick 扩展（改进版）
 # ============================================================
 build_imagick() {
     local build_dir="$1"
@@ -551,7 +551,8 @@ build_imagick() {
     make
     
     echo "[ * ] Installing ImageMagick extension..."
-    make install INSTALL_ROOT="$install_dir"
+    # 使用 DESTDIR 而不是 INSTALL_ROOT（更标准）
+    make install DESTDIR="$install_dir"
     
     # 获取扩展目录
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
@@ -564,8 +565,18 @@ build_imagick() {
         # 创建 php.ini 启用 imagick
         local php_ini_dir="$install_dir/usr/local/etc"
         mkdir -p "$php_ini_dir"
-        echo "extension=imagick.so" >> "$php_ini_dir/php.ini"
-        echo "[ ✓ ] ImageMagick extension enabled in php.ini"
+        if [ -f "$php_ini_dir/php.ini" ]; then
+            # 检查是否已存在 extension=imagick.so
+            if ! grep -q "^extension=imagick.so" "$php_ini_dir/php.ini"; then
+                echo "extension=imagick.so" >> "$php_ini_dir/php.ini"
+                echo "[ ✓ ] ImageMagick extension enabled in php.ini"
+            else
+                echo "[ ✓ ] ImageMagick already enabled in php.ini"
+            fi
+        else
+            echo "extension=imagick.so" > "$php_ini_dir/php.ini"
+            echo "[ ✓ ] Created php.ini with ImageMagick extension"
+        fi
     else
         echo "⚠️  ImageMagick extension not found in expected location"
         find "$install_dir" -name "imagick.so" 2>/dev/null || echo "  Not found anywhere"
