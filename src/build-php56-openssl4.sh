@@ -203,8 +203,8 @@ build_icu53() {
     
     make distclean || true
     
-    export CC=gcc12
-    export CXX=g++12
+    export CC=gcc14
+    export CXX=g++14
     
     # 配置 ICU
     echo "[ * ] Configuring ICU 53..."
@@ -531,8 +531,8 @@ build_php() {
     # ============================================================
     # 设置编译环境
     # ============================================================
-    export CC=gcc12
-    export CXX=g++12
+    export CC=gcc14
+    export CXX=g++14
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
     export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
     find . -name "config.cache" -delete
