@@ -491,14 +491,21 @@ EOF
     fi
 	
 	# 补丁14: 修复 main/streams/cast.c 中的函数指针类型
-	if [ -f "main/streams/cast.c" ]; then
-		echo "[ * ] Fixing stream_cookie_seeker function signature..."
-		# 将 zend_off_t 改为 off64_t，并改为指针传递
-		sed -i '' 's/static int stream_cookie_seeker(void \*cookie, zend_off_t position, int whence)/static int stream_cookie_seeker(void *cookie, off64_t *position, int whence)/' main/streams/cast.c
-		# 修改函数体，使用指针间接访问
-		sed -i '' 's/return php_stream_seek\(((php_stream \*\)cookie), position, whence);/return php_stream_seek(((php_stream *)cookie), *position, whence);/' main/streams/cast.c
-		echo "[ ✓ ] Fixed stream_cookie_seeker in cast.c"
-	fi
+    if [ -f "main/streams/cast.c" ]; then
+        echo "[ * ] Fixing stream_cookie_seeker for FreeBSD 14..."
+        cp main/streams/cast.c main/streams/cast.c.bak
+        perl -pi -e 's/static int stream_cookie_seeker\(void \*cookie, zend_off_t position, int whence\)/static int stream_cookie_seeker(void *cookie, off64_t *position, int whence)/' main/streams/cast.c
+        perl -pi -e 's/return php_stream_seek\(\(php_stream \*\)cookie, position, whence\);/return php_stream_seek((php_stream *)cookie, *position, whence);/' main/streams/cast.c
+        if grep -q "off64_t \*position" main/streams/cast.c; then
+            echo "[ ✓ ] Fixed stream_cookie_seeker in cast.c"
+        else
+            echo "⚠️  Patch may not have applied correctly"
+            mv main/streams/cast.c.bak main/streams/cast.c
+            return 1
+        fi
+        rm -f main/streams/cast.c.bak
+    fi
+
     echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
     cd - > /dev/null || return 1
 }
