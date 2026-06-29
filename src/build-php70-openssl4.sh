@@ -688,12 +688,16 @@ build_php() {
 		
 		echo "[ ✓ ] Makefile updated to use ICU 67"
 	fi
-	
+    echo "[ * ] Fixing zend_sprintf linkage issue..."
+    if [ -f "main/php_config.h" ]; then
+        sed -i '' 's/^int zend_sprintf(/\/\/ int zend_sprintf(/' main/php_config.h
+        echo "[ ✓ ] Fixed zend_sprintf in php_config.h"
+    fi
 	# ============================================================
 	# 编译 PHP
 	# ============================================================
 	echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-	gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log" 2>&1
+	gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
 
 	if [ $? -ne 0 ]; then
 		echo ""
