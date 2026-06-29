@@ -432,30 +432,33 @@ using namespace icu;
 		echo "⚠️  Custom OpenSSL directory not found: $custom_openssl_dir"
 		echo "    Skipping OpenSSL source replacement"
 	fi
-    # 补丁10: 在所有 intl C++ 文件中添加 using namespace icu;
-    echo "[ * ] Adding using namespace icu; to intl C++ files..."
-
-    # 在 common_enum.h 开头添加
-    if [ -f "ext/intl/common/common_enum.h" ]; then
-        if ! grep -q "using namespace icu;" ext/intl/common/common_enum.h; then
-            sed -i '' '1i\
-using namespace icu;
-' ext/intl/common/common_enum.h
-            echo "[ ✓ ] Added using namespace icu; to common_enum.h"
+    # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
+    echo "[ * ] Fixing ICU namespace in intl extension..."
+    for file in ext/intl/calendar/calendar_class.h \
+                ext/intl/common/common_enum.h; do
+        if [ -f "$file" ]; then
+            sed -i '' '/^using namespace icu;/d' "$file"
         fi
-    fi
-
-    # 在其他 intl 文件中添加
-    for file in ext/intl/common/common_enum.cpp \
-                ext/intl/calendar/calendar_class.h \
-                ext/intl/common/common_date.cpp; do
-        if [ -f "$file" ] && ! grep -q "using namespace icu;" "$file"; then
+    done
+    find ext/intl -name "*.cpp" | while read file; do
+        if ! grep -q "using namespace icu;" "$file"; then
             sed -i '' '1i\
 using namespace icu;
 ' "$file"
             echo "[ ✓ ] Added using namespace icu; to $(basename "$file")"
         fi
     done
+
+    if [ -f "ext/intl/calendar/calendar_class.h" ]; then
+        sed -i '' 's/\([^a-zA-Z]\)Calendar\([^a-zA-Z]\)/\1icu::Calendar\2/g' ext/intl/calendar/calendar_class.h
+        sed -i '' 's/\([^a-zA-Z]\)TimeZone\([^a-zA-Z]\)/\1icu::TimeZone\2/g' ext/intl/calendar/calendar_class.h
+    fi
+
+    if [ -f "ext/intl/common/common_enum.h" ]; then
+        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.h
+    fi
+
+    echo "[ ✓ ] ICU namespace fixes applied"
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
 	cd - > /dev/null || return 1
 }
