@@ -1,6 +1,6 @@
 #!/bin/bash
 # src/build-php56-openssl4.sh
-# Build PHP 5.6.40 with OpenSSL 4.x and ImageMagick and create package
+# Build PHP 5.6.40 with OpenSSL 4.x and create package
 
 set -e
 
@@ -52,28 +52,12 @@ download_php() {
 }
 
 # ============================================================
-# 下载 ImageMagick 扩展源码
+# 下载 ImageMagick 扩展源码（完全禁用）
 # ============================================================
 download_imagick() {
-	local imagick_dir="$1/ext/imagick"
-	
-	[ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
-	
-	echo "[ * ] Downloading ImageMagick 3.8.1..."
-	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
-	
-	echo "[ * ] Extracting..."
-	tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
-	
-	# 找到解压出来的目录并重命名
-	local extracted=$(find "$1/ext" -maxdepth 1 -type d -name "imagick-*" | head -1)
-	[ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
-	
-	mv "$extracted" "$imagick_dir"
-	rm -f "/tmp/imagick.tar.gz"
-	
-	echo "[ ✓ ] ImageMagick extension ready"
-	return 0
+    echo "⚠️  ImageMagick extension is DISABLED to avoid ICU conflicts"
+    echo "   PHP will be built with GD support instead"
+    return 0
 }
 
 # ============================================================
@@ -154,21 +138,46 @@ get_config_args() {
 		"--with-imap-ssl=/usr/local"
 		"--with-pspell=/usr/local"
 		"--with-libedit"
-		#"--with-ffi"
 	)
 
-	# PHP 7.1 及以下: 没有 Argon2 支持
-	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
-		local new_args=()
-		for arg in "${args[@]}"; do
-			if [[ "$arg" != "--with-password-argon2="* ]]; then
-				new_args+=("$arg")
-			fi
-		done
-		args=("${new_args[@]}")
-	fi
-
 	printf "%s\n" "${args[@]}"
+}
+
+# ============================================================
+# 覆盖系统 ICU 库（关键函数）
+# ============================================================
+override_system_icu() {
+    local icu_prefix="$1"
+    
+    echo "[ * ] Overriding system ICU libraries with ICU 53..."
+    
+    cd /usr/local/lib || return 1
+    
+    # 1. 彻底移除 ICU 76 的库和符号链接
+    for lib in libicuuc libicudata libicui18n libicuio; do
+        # 移除所有相关的 .so 文件（但保留 .bak）
+        rm -f "${lib}.so" "${lib}.so.53" "${lib}.so.76" 2>/dev/null || true
+        
+        if [ -f "${lib}.so.76.1" ]; then
+            mv "${lib}.so.76.1" "${lib}.so.76.1.bak" 2>/dev/null || true
+            echo "  Backed up ${lib}.so.76.1"
+        fi
+    done
+    
+    # 2. 创建指向 ICU 53 的符号链接
+    for lib in libicuuc libicudata libicui18n libicuio; do
+        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
+            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2" 2>/dev/null || true
+            ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+            echo "  ✓ ${lib}.so -> ICU 53"
+        fi
+    done
+    
+    cd -
+    
+    echo "[ ✓ ] System ICU libraries overridden with ICU 53"
+    return 0
 }
 
 # ============================================================
@@ -186,7 +195,6 @@ build_icu53() {
     echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
     rm -rf "$icu_prefix"
     
-    # 下载和解压
     echo "[ * ] Downloading ICU 53..."
     fetch -o /tmp/icu-53.tar.gz \
         "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-53-2" || return 1
@@ -196,10 +204,9 @@ build_icu53() {
     
     make distclean || true
     
-    export CC=gcc12
-    export CXX=g++12
+    export CC=gcc14
+    export CXX=g++14
     
-    # 配置 ICU
     echo "[ * ] Configuring ICU 53..."
     ./configure \
         --prefix="$icu_prefix" \
@@ -219,18 +226,15 @@ build_icu53() {
         return 1
     fi
     
-    # 构建 ICU
     echo "[ * ] Building ICU..."
     mkdir -p ../lib
     
     if ! gmake -j"$NUM_CPUS" 2>&1 | tee /tmp/icu-build.log; then
         echo "❌ ICU build failed"
-        echo "Last 50 lines of build log:"
         tail -50 /tmp/icu-build.log
         return 1
     fi
     
-    # 检查 icu-config
     echo "[ * ] Checking for generated icu-config..."
     if [ -f "config/icu-config" ]; then
         echo "[ ✓ ] icu-config generated at config/icu-config"
@@ -247,7 +251,6 @@ build_icu53() {
         return 1
     fi
     
-    # 验证库文件
     if [ ! -f "lib/libicuuc.so.53.2" ] || \
        [ ! -f "lib/libicui18n.so.53.2" ] || \
        [ ! -f "lib/libicudata.so.53.2" ]; then
@@ -255,43 +258,26 @@ build_icu53() {
         return 1
     fi
     
-    # 安装 ICU
     echo "[ * ] Installing ICU 53..."
     if ! gmake install 2>&1 | tee /tmp/icu-install.log; then
         echo "❌ ICU install failed"
-        echo "Last 50 lines of install log:"
         tail -50 /tmp/icu-install.log
         return 1
     fi
     
-    # ============================================================
-    # 创建 ICU 53 库的符号链接
-    # ============================================================
     echo "[ * ] Creating ICU 53 library symlinks..."
-    
-    # 1. 在 ICU 53 目录中创建符号链接
     cd "$icu_prefix/lib"
-    for lib in libicuuc libicui18n libicudata; do
+    for lib in libicuuc libicui18n libicudata libicuio; do
         if [ -f "${lib}.so.53.2" ]; then
             [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.53.2" "${lib}.so"
             [ ! -f "${lib}.so.53" ] && ln -sf "${lib}.so.53.2" "${lib}.so.53"
             echo "  ✓ Created ${lib} links"
         fi
     done
-    
-    # 创建 libicuio 符号链接（ICU 53 没有单独的 libicuio）
-    if [ -f "libicui18n.so.53.2" ] && [ ! -f "libicuio.so.53.2" ]; then
-        ln -sf libicui18n.so.53.2 libicuio.so.53.2
-        ln -sf libicuio.so.53.2 libicuio.so.53
-        ln -sf libicuio.so.53.2 libicuio.so
-        echo "  ✓ Created libicuio -> libicui18n.so.53.2"
-    fi
     cd -
     
-    # 2. 覆盖系统路径中的 ICU 库（关键步骤！）
     override_system_icu "$icu_prefix"
     
-    # 3. 如果安装没有复制 icu-config，使用之前保存的
     if [ ! -f "$icu_prefix/bin/icu-config" ]; then
         echo "[ * ] icu-config not installed, copying from build dir..."
         if [ -f "config/icu-config" ]; then
@@ -302,14 +288,13 @@ build_icu53() {
         chmod +x "$icu_prefix/bin/icu-config" || true
     fi
     
-    # 4. 修改 icu-config
     if [ -f "$icu_prefix/bin/icu-config" ]; then
         sed -i '' 's/libicuuc.so/libicuuc.so.53.2/g' "$icu_prefix/bin/icu-config" || true
         sed -i '' 's/libicui18n.so/libicui18n.so.53.2/g' "$icu_prefix/bin/icu-config" || true
         sed -i '' 's/libicudata.so/libicudata.so.53.2/g' "$icu_prefix/bin/icu-config" || true
+        sed -i '' 's/libicuio.so/libicuio.so.53.2/g' "$icu_prefix/bin/icu-config" || true
     fi
     
-    # 5. 验证
     echo "[ * ] Verifying ICU 53 installation..."
     if ! "$icu_prefix/bin/icu-config" --version > /dev/null 2>&1; then
         echo "❌ icu-config validation failed"
@@ -317,65 +302,11 @@ build_icu53() {
     fi
     echo "  Version: $($icu_prefix/bin/icu-config --version)"
     
-    # 清理
     cd /
     rm -rf /tmp/icu-release-53-2 /tmp/icu-53.tar.gz
     
     echo "[ ✓ ] ICU 53 installed successfully"
     return 0
-}
-
-# ============================================================
-# 覆盖系统 ICU 库（关键函数）
-# ============================================================
-override_system_icu() {
-    local icu_prefix="$1"
-    
-    echo "[ * ] Overriding system ICU libraries with ICU 53..."
-    
-    cd /usr/local/lib
-    
-    # 备份并移除 ICU 76 的库
-    for lib in libicuuc libicudata libicui18n libicuio; do
-        # 备份现有的库
-        if [ -f "${lib}.so.76" ]; then
-            mv "${lib}.so.76" "${lib}.so.76.bak" 2>/dev/null || true
-            echo "  Backed up ${lib}.so.76"
-        fi
-        if [ -L "${lib}.so.76" ]; then
-            rm -f "${lib}.so.76"
-            echo "  Removed symlink ${lib}.so.76"
-        fi
-        
-        # 移除旧的符号链接
-        rm -f "${lib}.so" "${lib}.so.53" 2>/dev/null || true
-    done
-    
-    # 创建指向 ICU 53 的符号链接
-    for lib in libicuuc libicudata libicui18n; do
-        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
-            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2"
-            ln -sf "${lib}.so.53.2" "${lib}.so.53"
-            ln -sf "${lib}.so.53.2" "${lib}.so"
-            echo "  ✓ ${lib}.so -> ICU 53"
-        fi
-    done
-    
-    # libicuio 指向 libicui18n
-    if [ -f "$icu_prefix/lib/libicui18n.so.53.2" ]; then
-        ln -sf "$icu_prefix/lib/libicui18n.so.53.2" libicuio.so.53.2
-        ln -sf libicuio.so.53.2 libicuio.so.53
-        ln -sf libicuio.so.53.2 libicuio.so
-        echo "  ✓ libicuio.so -> ICU 53 (libicui18n)"
-    fi
-    
-    cd -
-    
-    # 验证
-    echo "[ * ] Verifying ICU 53 override:"
-    ls -la /usr/local/lib/libicu*.so* | grep -E "libicu(uc|i18n|data|io)\.so" | head -10
-    
-    echo "[ ✓ ] System ICU libraries overridden with ICU 53"
 }
 
 # ============================================================
@@ -388,7 +319,6 @@ apply_patches() {
 
 	echo "[ * ] Applying patches for PHP ${PHP_VERSION}..."
 
-	# 补丁1: libxml2 ATTRIBUTE_UNUSED
 	if [ -f "ext/libxml/libxml.c" ]; then
 		if grep -q "int compression ATTRIBUTE_UNUSED)" ext/libxml/libxml.c 2>/dev/null; then
 			sed -i '' 's/int compression ATTRIBUTE_UNUSED)/int compression)/' ext/libxml/libxml.c
@@ -396,7 +326,6 @@ apply_patches() {
 		fi
 	fi
 
-	# 补丁2: libxml2 xmlSetStructuredErrorFunc
 	if [ -f "ext/libxml/libxml.c" ]; then
 		if grep -q "xmlSetStructuredErrorFunc(NULL, php_libxml_structured_error_handler);" ext/libxml/libxml.c 2>/dev/null; then
 			sed -i '' 's/xmlSetStructuredErrorFunc(NULL, php_libxml_structured_error_handler);/xmlSetStructuredErrorFunc(NULL, (xmlStructuredErrorFunc)php_libxml_structured_error_handler);/' ext/libxml/libxml.c
@@ -404,7 +333,6 @@ apply_patches() {
 		fi
 	fi
 
-	# 补丁3: libxml2 xmlGetLastError
 	if [ -f "ext/libxml/libxml.c" ]; then
 		if grep -q "error = xmlGetLastError();" ext/libxml/libxml.c 2>/dev/null; then
 			sed -i '' 's/error = xmlGetLastError();/error = (xmlErrorPtr)xmlGetLastError();/' ext/libxml/libxml.c
@@ -412,7 +340,6 @@ apply_patches() {
 		fi
 	fi
 
-	# 补丁4: 修复 zlib 函数指针类型不匹配
 	if [ -f "ext/zlib/zlib.c" ]; then
 		if grep -q "ZEND_MODULE_GLOBALS_CTOR_N(zlib)" ext/zlib/zlib.c 2>/dev/null; then
 			sed -i '' 's/ZEND_MODULE_GLOBALS_CTOR_N(zlib),/NULL,/' ext/zlib/zlib.c
@@ -420,7 +347,6 @@ apply_patches() {
 		fi
 	fi
 
-	# 补丁5: dom_iterators.c const fix
 	if [ -f "ext/dom/dom_iterators.c" ]; then
 		if grep -q "itemHashScanner (void \*payload, void \*data, xmlChar \*name)" ext/dom/dom_iterators.c 2>/dev/null; then
 			sed -i '' 's/itemHashScanner (void \*payload, void \*data, xmlChar \*name)/itemHashScanner (void *payload, void *data, const xmlChar *name)/' ext/dom/dom_iterators.c
@@ -428,7 +354,6 @@ apply_patches() {
 		fi
 	fi
 
-	# 补丁6: 修复 TRUE/FALSE 在 intl 文件中
 	echo "[ * ] Fixing TRUE/FALSE in intl files..."
 	for file in ext/intl/collator/collator_sort.c \
 				ext/intl/collator/collator_convert.c \
@@ -450,7 +375,6 @@ apply_patches() {
 		fi
 	done
 
-	# 补丁7: 修复 UnicodeString 命名空间
 	if [ -f "ext/intl/intl_convertcpp.h" ] && ! grep -q "using namespace icu;" ext/intl/intl_convertcpp.h; then
 		sed -i '' '/#include <unicode\/unistr.h>/a\
 \
@@ -459,7 +383,6 @@ using namespace icu;
 		echo "[ ✓ ] Added 'using namespace icu;' to intl_convertcpp.h"
 	fi
     
-    # 补丁8: 更新 config.sub 以支持 FreeBSD 14
     if [ -f "config.sub" ]; then
         echo "[ * ] Updating config.sub for FreeBSD 14..."
         fetch -o "config.sub.new" "https://cgit.git.savannah.gnu.org/cgit/config.git/plain/config.sub"
@@ -473,7 +396,6 @@ using namespace icu;
         fi
     fi
     
-	# 补丁9: 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
         echo "[ * ] Updating copyright year to 2019..."
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
@@ -495,7 +417,6 @@ using namespace icu;
         echo "[ ✓ ] Copyright updated to 2019"
     fi
 
-	# 补丁10: 使用预修改的 OpenSSL 源文件
 	local custom_openssl_dir="$SCRIPT_DIR/php5.6"
 	if [ -d "$custom_openssl_dir" ]; then
 		echo "[ * ] Using pre-modified OpenSSL source files..."
@@ -551,6 +472,49 @@ patch_icu_headers() {
 }
 
 # ============================================================
+# 修复 ICU 链接问题
+# ============================================================
+fix_icu_linking() {
+    local build_dir="$1"
+    cd "$build_dir" || return 1
+    
+    echo "[ * ] Fixing ICU library linking..."
+    
+    if [ -f "Makefile" ]; then
+        cp Makefile Makefile.bak
+        sed -i '' 's|-licuio||g' Makefile
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
+        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib \1|' Makefile
+        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
+        echo "[ ✓ ] Makefile updated"
+    fi
+    
+    if [ -f "ext/intl/Makefile" ]; then
+        cp ext/intl/Makefile ext/intl/Makefile.bak
+        sed -i '' 's|-licuio||g' ext/intl/Makefile
+        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib \1|' ext/intl/Makefile
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        echo "[ ✓ ] ext/intl/Makefile updated"
+    fi
+    
+    cat > /tmp/php-build-wrapper.sh << 'EOF'
+#!/bin/sh
+LD_LIBRARY_PATH=/usr/local/icu53/lib:$LD_LIBRARY_PATH
+LIBRARY_PATH=/usr/local/icu53/lib:$LIBRARY_PATH
+CPATH=/usr/local/icu53/include:$CPATH
+C_INCLUDE_PATH=/usr/local/icu53/include:$C_INCLUDE_PATH
+CPLUS_INCLUDE_PATH=/usr/local/icu53/include:$CPLUS_INCLUDE_PATH
+export LD_LIBRARY_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH
+exec "$@"
+EOF
+    chmod +x /tmp/php-build-wrapper.sh
+    
+    echo "[ ✓ ] ICU linking fixes applied"
+    return 0
+}
+
+# ============================================================
 # 构建 PHP
 # ============================================================
 build_php() {
@@ -581,25 +545,18 @@ build_php() {
         fi
     fi
 
-    # 下载 ImageMagick 扩展
     if ! download_imagick "$build_dir"; then
-        echo "⚠️  ImageMagick extension download failed, continuing without it"
+        echo "⚠️  ImageMagick extension disabled"
     fi
 
     cd "$build_dir"
     
     echo "[ DEBUG ] Current directory: $(pwd)"
-    echo "[ DEBUG ] Build directory: $build_dir"
-    echo "[ DEBUG ] Directory contents:"
-    ls -la 
     
-    # 检查 configure 是否存在
     if [ -f "configure" ]; then
         echo "[ ✓ ] configure found"
     else
         echo "❌ configure NOT found in $(pwd)"
-        echo "Looking for configure in subdirectories..."
-        find . -name "configure" -type f
         return 1
     fi
 
@@ -608,19 +565,15 @@ build_php() {
     apply_patches "$build_dir"
 
     # ============================================================
-    # 设置编译环境
+    # 设置编译环境 - 使用 gcc14
     # ============================================================
-    export CC=gcc12
-    export CXX=g++12
+    export CC=gcc14
+    export CXX=g++14
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
     export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
     find . -name "config.cache" -delete
     
-    # ============================================================
-    # PHP 5.6 特殊处理：使用 ICU 53
-    # ============================================================
     if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
-        # 编译 ICU 53
         if ! build_icu53; then
             echo "❌ Failed to build ICU 53"
             return 1
@@ -631,11 +584,9 @@ build_php() {
         }
         echo "[ * ] Current directory: $(pwd)"
         
-        # 修复 ICU 头文件
         patch_icu_headers
         if [ ! -f "/usr/local/icu53/bin/icu-config" ]; then
             echo "❌ icu-config not found at /usr/local/icu53/bin/icu-config"
-            echo "   This should have been generated by build_icu53()"
             return 1
         fi
         echo "[ ✓ ] icu-config found at /usr/local/icu53/bin/icu-config"
@@ -650,7 +601,8 @@ build_php() {
             -Wno-implicit-function-declaration \
             -Wno-pointer-sign \
             -Wno-implicit-const-int-float-conversion \
-            -Wno-implicit-int"
+            -Wno-implicit-int \
+            -Wno-return-type"
         export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
         export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib"
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
@@ -660,16 +612,8 @@ build_php() {
         export ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
-        echo "[ ✓ ] ICU libs: $(icu-config --ldflags || echo 'unknown')"
-        echo "[ * ] Debugging ICU libraries..."
-        echo "ICU libs:"
-        find /usr/local/icu53/lib -name "*.so*" -exec ls -la {} \; | head -10
-        
-        echo "ICU symbols in libicuuc:"
-        nm -D /usr/local/icu53/lib/libicuuc.so.53.2 | grep -E "uloc_getDefault|u_cleanup" | head -5 || echo "Cannot check symbols"
         
     else
-        # 非 PHP 5.6 的配置
         export CPPFLAGS="-I/usr/local/include"
         export CFLAGS="-I/usr/local/include \
             -Wno-deprecated-declarations \
@@ -677,13 +621,16 @@ build_php() {
             -Wno-pointer-bool-conversion \
             -Wno-implicit-function-declaration \
             -Wno-pointer-sign \
-            -Wno-implicit-const-int-float-conversion"
+            -Wno-implicit-const-int-float-conversion \
+            -Wno-implicit-int \
+            -Wno-return-type"
         export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,-zmuldefs"
         export CXXFLAGS=""
         export LD_LIBRARY_PATH="${OPENSSL_PREFIX:-/usr/local}/lib:$LD_LIBRARY_PATH"
     fi
+    
     # ============================================================
-    # 配置 PHP（让 configure 自动检测所有库）
+    # 配置 PHP
     # ============================================================
     echo "[ * ] Configuring PHP ${PHP_VERSION}..."
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
@@ -699,9 +646,11 @@ build_php() {
     ./configure \
         "${CONFIG_ARGS[@]}" \
         --with-icu-dir=/usr/local/icu53 \
+        LDFLAGS="$LDFLAGS" \
+        LIBS="$LIBS" \
         ICU_CFLAGS="-I/usr/local/icu53/include" \
         ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata" \
-        > "$LOG_DIR/configure-${PHP_VERSION}.log"
+        > "$LOG_DIR/configure-${PHP_VERSION}.log" 2>&1
 
     if [ $? -ne 0 ]; then
         echo "❌ Configure failed"
@@ -709,16 +658,14 @@ build_php() {
         return 1
     fi
 
-    # 验证使用的 ICU
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
     # ============================================================
-    # ✅ 修复 ICU 链接问题
+    # 修复 ICU 链接问题
     # ============================================================
     echo "[ * ] Fixing ICU library linking for PHP 5.6..."
 
-    # 1. 验证 ICU 库
     if [ -f "/usr/local/icu53/lib/libicuuc.so.53.2" ]; then
         echo "[ ✓ ] ICU libraries found at /usr/local/icu53/lib"
     else
@@ -726,42 +673,16 @@ build_php() {
         return 1
     fi
 
-    # 2. 修复 Makefile
-    if [ -f "Makefile" ]; then
-        
-        # 添加 ICU 库到 EXTRA_LIBS
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = \1 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -licuuc -licui18n -licudata|' Makefile
-        
-        # 添加到 LDFLAGS
-        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib|' Makefile
-        
-        # 添加到 CFLAGS
-        sed -i '' 's|^CFLAGS = \(.*\)$|CFLAGS = \1 -I/usr/local/icu53/include|' Makefile
-        
-        echo "[ ✓ ] Makefile updated"
-        echo "  EXTRA_LIBS: $(grep '^EXTRA_LIBS' Makefile)"
-        echo "  LDFLAGS: $(grep '^LDFLAGS' Makefile)"
-    fi
+    echo "[ * ] Verifying system ICU libraries:"
+    ls -la /usr/local/lib/libicu*.so* | grep -E "libicu(uc|i18n|data|io)\.so" | head -5
 
-    # 3. 设置环境变量
+    fix_icu_linking "$build_dir"
+
     export LD_LIBRARY_PATH="/usr/local/icu53/lib:/usr/local/lib:$LD_LIBRARY_PATH"
     export LIBRARY_PATH="/usr/local/icu53/lib:$LIBRARY_PATH"
     export C_INCLUDE_PATH="/usr/local/icu53/include:$C_INCLUDE_PATH"
     export CPLUS_INCLUDE_PATH="/usr/local/icu53/include:$CPLUS_INCLUDE_PATH"
-
-    # 4. 创建必要的符号链接（如果不存在）
-    if [ ! -L "/usr/local/lib/libicuuc.so.53" ]; then
-        echo "[ * ] Creating ICU symlinks in /usr/local/lib..."
-        cd /usr/local/lib
-        for lib in libicuuc libicui18n libicudata; do
-            if [ -f "/usr/local/icu53/lib/${lib}.so.53.2" ]; then
-                ln -sf "/usr/local/icu53/lib/${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
-                ln -sf "/usr/local/icu53/lib/${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
-                echo "  Created symlink for ${lib}"
-            fi
-        done
-        cd -
-    fi
+    export ICU_DATA="/usr/local/icu53/share/icu/53.2"
 
     echo "[ ✓ ] ICU linking fixes applied"
     
@@ -769,7 +690,8 @@ build_php() {
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    
+    /tmp/php-build-wrapper.sh gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log" 2>&1
 
     if [ $? -ne 0 ]; then
         echo ""
@@ -789,8 +711,8 @@ build_php() {
         tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
-        gmake clean
-        if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+        /tmp/php-build-wrapper.sh gmake clean
+        if /tmp/php-build-wrapper.sh gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log" 2>&1; then
             echo "[ ✓ ] Single core build succeeded!"
         else
             return 1
@@ -802,7 +724,7 @@ build_php() {
     # ============================================================
     echo "[ * ] Installing PHP ${PHP_VERSION}..."
     mkdir -p "$install_dir"
-    gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log"
+    /tmp/php-build-wrapper.sh gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log" 2>&1
     if [ $? -ne 0 ]; then
         echo "❌ Install failed"
         tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
@@ -815,63 +737,8 @@ build_php() {
         echo "[ ✓ ] php-cgi -> php symlink created"
     fi
 
-    # ============================================================
-    # 编译 ImageMagick 扩展
-    # ============================================================
-    if [ -d "$build_dir/ext/imagick" ]; then
-        echo "[ * ] Building ImageMagick extension..."
-        
-        local php_prefix="$install_dir/usr/local"
-        local php_config="$php_prefix/bin/php-config"
-        local phpize="$php_prefix/bin/phpize"
-        
-        if [ ! -f "$phpize" ] || [ ! -f "$php_config" ]; then
-            echo "⚠️  phpize or php-config not found, skipping ImageMagick"
-        else
-            cd "$build_dir/ext/imagick"
-            export PHP_PREFIX="$php_prefix"
-            export PHP_CONFIG="$php_config"
-            export PHPIZE="$phpize"
-            ln -sf "$php_prefix/lib/php/build" /usr/local/lib/php/build
-            if [ -d "$php_prefix/include/php" ] && [ ! -d "/usr/local/include/php" ]; then
-                echo "[ * ] Linking PHP headers to /usr/local/include/php..."
-                mkdir -p /usr/local/include
-                ln -sf "$php_prefix/include/php" /usr/local/include/php
-            fi
-            
-            if [ -L "/usr/local/include/php" ] && [ ! -d "/usr/local/include/php/main" ]; then
-                rm -f /usr/local/include/php
-                ln -sf "$php_prefix/include/php" /usr/local/include/php
-            fi
-            
-            if [ -d "/usr/local/include/php" ] && [ ! -L "/usr/local/include/php/php" ]; then
-                echo "[ * ] Creating php -> . symlink..."
-                cd /usr/local/include/php
-                ln -sf . php
-                cd - > /dev/null
-            fi
-            
-            echo "[ * ] Running phpize..."
-            "$phpize"
-            
-            echo "[ * ] Configuring ImageMagick extension..."
-            ./configure --with-php-config="$php_config" --with-imagick=/usr/local
-            
-            echo "[ * ] Compiling ImageMagick extension..."
-            make
-            
-            echo "[ * ] Installing ImageMagick extension..."
-            make install INSTALL_ROOT="$install_dir"
-            
-            # 创建 php.ini 启用 imagick
-            local php_ini_dir="$install_dir/usr/local/etc"
-            mkdir -p "$php_ini_dir"
-            echo "extension=imagick.so" >> "$php_ini_dir/php.ini"
-            echo "[ ✓ ] ImageMagick extension installed"
-        fi
-    fi
+    echo "⚠️  ImageMagick extension skipped"
 
-    # 检查 PHP 二进制文件
     if [ -f "$install_dir/usr/local/bin/php" ]; then
         echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
         "$install_dir/usr/local/bin/php" -v || true
@@ -900,43 +767,23 @@ create_package() {
         return 1
     fi
     
-    # 验证 PHP
     echo "[ * ] Verifying PHP binary..."
     "$php_bin" -v || {
         echo "❌ PHP binary verification failed!"
         return 1
     }
     
-    # 验证 OpenSSL 扩展
     echo "[ * ] Verifying OpenSSL extension..."
     "$php_bin" -m | grep -i openssl || {
         echo "❌ OpenSSL extension not loaded!"
         return 1
     }
 
-    # 验证 ImageMagick 扩展
-    echo "[ * ] Verifying ImageMagick extension..."
-    PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
-    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
-    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
+    echo "[ * ] Verifying intl extension..."
+    "$php_bin" -m | grep -i intl || {
+        echo "⚠️  intl extension not loaded!"
+    }
 
-    if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-        echo "✅ ImageMagick extension found"
-        "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-            $imagick_loaded = extension_loaded("imagick");
-            echo "PHP Version: " . PHP_VERSION . "\n";
-            echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-            echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
-            if ($imagick_loaded) {
-                $formats = Imagick::queryFormats("*");
-                echo "ImageMagick supports " . count($formats) . " formats\n";
-            }
-        '
-    else
-        echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
-    fi
-
-    # 创建包目录结构
     PKG_NAME="php${ver_suffix}-openssl4"
     
     rm -rf "${PKG_DIR}"
@@ -948,8 +795,6 @@ create_package() {
     
     if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
         echo "❌ PHP binary not found after copy!"
-        echo "  Files in PKG_DIR:"
-        find "${PKG_DIR}" -type f | head -10
         return 1
     fi
     
@@ -962,7 +807,20 @@ create_package() {
         echo "[ ✓ ] ICU libraries copied"
     fi
     
-    # 创建 PLIST
+    echo "[ * ] Creating ICU 53 symlinks in package..."
+    mkdir -p "${PKG_DIR}/usr/local/lib"
+    cd /usr/local/icu53/lib
+    for lib in libicuuc libicudata libicui18n libicuio; do
+        if [ -f "${lib}.so.53.2" ]; then
+            cp "${lib}.so.53.2" "${PKG_DIR}/usr/local/lib/"
+            cd "${PKG_DIR}/usr/local/lib"
+            ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+            cd -
+        fi
+    done
+    cd -
+    
     echo "[ * ] Creating file list..."
     cd "${PKG_DIR}"
     find . -type f | sed 's|^\.||' > +PLIST
@@ -972,7 +830,7 @@ create_package() {
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
 origin: local/php${ver_suffix}-openssl4
-comment: PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick support
+comment: PHP ${PHP_VERSION} with OpenSSL 4.x support
 categories: [www, lang]
 maintainer: build@hestiacp.com
 www: https://github.com/hestiacp/hestiacp-freebsd
@@ -982,10 +840,10 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 
 This is a custom build of PHP 5.6.40 that includes:
 - OpenSSL 4.x compatibility patches
-- ImageMagick extension (imagick)
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - GD with JPEG, PNG, FreeType support
+- intl extension with ICU 53
 
 IMPORTANT: PHP 5.6 is end-of-life. Use at your own risk.
 EOD
@@ -1002,8 +860,8 @@ echo ""
 echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
-echo "Verify ImageMagick:"
-/usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
+echo "Verify extensions:"
+/usr/local/bin/php${ver_suffix} -m | grep -E "openssl|intl" || echo "Extensions not loaded"
 echo "========================================"
 EOF
     chmod +x "+POST_INSTALL"
