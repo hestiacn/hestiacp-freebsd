@@ -564,12 +564,18 @@ build_php() {
         export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
         
         export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
-            -Wno-deprecated-declarations \
-            -Wno-incompatible-pointer-types-discards-qualifiers \
-            -Wno-pointer-bool-conversion \
-            -Wno-implicit-function-declaration \
-            -Wno-pointer-sign \
-            -Wno-implicit-const-int-float-conversion"
+                    -Wno-deprecated-declarations \
+                    -Wno-incompatible-pointer-types-discards-qualifiers \
+                    -Wno-pointer-bool-conversion \
+                    -Wno-implicit-function-declaration \
+                    -Wno-pointer-sign \
+                    -Wno-implicit-const-int-float-conversion \
+                    -Wno-implicit-int \
+                    -Wno-return-type \
+                    -Wno-incompatible-pointer-types \
+                    -Wno-discarded-qualifiers \
+                    -Wno-deprecated \
+                    -Wno-error"
         export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
         export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib"
         export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
