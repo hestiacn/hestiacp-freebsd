@@ -1,6 +1,6 @@
 #!/bin/bash
 # src/build-php56-openssl4.sh
-# Build PHP 5.6.40 with OpenSSL 4.x and create package
+# Build PHP 5.6.40 with OpenSSL 4.x and ImageMagick and create package
 
 set -e
 
@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$BUILD_DIR" "$ARCHIVE_DIR" "$LOG_DIR" "$PKG_DIR" "$ARTIFACT_DIR"
 
 echo "========================================"
-echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
+echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick"
 echo "========================================"
 echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
 echo "OpenSSL version: $(openssl version || echo 'unknown')"
@@ -50,11 +50,28 @@ download_php() {
 }
 
 # ============================================================
-# 下载 ImageMagick 扩展源码（完全禁用）
+# 下载 ImageMagick 扩展源码
 # ============================================================
 download_imagick() {
-    echo "⚠️  ImageMagick extension is DISABLED to avoid ICU conflicts"
-    echo "   PHP will be built with GD support instead"
+    local build_dir="$1"
+    local imagick_dir="${build_dir}/ext/imagick"
+    
+    [ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
+    
+    echo "[ * ] Downloading ImageMagick 3.8.1..."
+    fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
+    
+    echo "[ * ] Extracting..."
+    tar -xf "/tmp/imagick.tar.gz" -C "${build_dir}/ext"
+    
+    # 找到解压出来的目录并重命名
+    local extracted=$(find "${build_dir}/ext" -maxdepth 1 -type d -name "imagick-*" | head -1)
+    [ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
+    
+    mv "$extracted" "$imagick_dir"
+    rm -f "/tmp/imagick.tar.gz"
+    
+    echo "[ ✓ ] ImageMagick extension ready at $imagick_dir"
     return 0
 }
 
@@ -136,37 +153,21 @@ get_config_args() {
 		"--with-imap-ssl=/usr/local"
 		"--with-pspell=/usr/local"
 		"--with-libedit"
+		#"--with-ffi"
 	)
 
-	printf "%s\n" "${args[@]}"
-}
+	# PHP 7.1 及以下: 没有 Argon2 支持
+	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
+		local new_args=()
+		for arg in "${args[@]}"; do
+			if [[ "$arg" != "--with-password-argon2="* ]]; then
+				new_args+=("$arg")
+			fi
+		done
+		args=("${new_args[@]}")
+	fi
 
-# ============================================================
-# 覆盖系统 ICU 库
-# ============================================================
-override_system_icu() {
-    local icu_prefix="$1"
-    
-    echo "[ * ] Setting up ICU 53 library paths..."
-    
-    export LD_LIBRARY_PATH="$icu_prefix/lib:$LD_LIBRARY_PATH"
-    
-    # 创建符号链接到 /usr/local/lib（但不要覆盖系统 ICU）
-    cd /usr/local/lib || return 1
-    
-    for lib in libicuuc libicudata libicui18n libicuio; do
-        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
-            if [ ! -L "${lib}.so.53.2" ] && [ ! -f "${lib}.so.53.2" ]; then
-                ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2" 2>/dev/null || true
-                echo "  ✓ Linked ${lib}.so.53.2"
-            fi
-        fi
-    done
-    
-    cd -
-    
-    echo "[ ✓ ] ICU 53 library paths configured"
-    return 0
+	printf "%s\n" "${args[@]}"
 }
 
 # ============================================================
@@ -177,7 +178,6 @@ build_icu53() {
     
     if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.53.2" ]; then
         echo "[ ✓ ] ICU 53 already installed at $icu_prefix"
-        # 不调用 override_system_icu，避免干扰
         return 0
     fi
     
@@ -296,6 +296,33 @@ build_icu53() {
     rm -rf /tmp/icu-release-53-2 /tmp/icu-53.tar.gz
     
     echo "[ ✓ ] ICU 53 installed successfully"
+    return 0
+}
+
+# ============================================================
+# 覆盖系统 ICU 库
+# ============================================================
+override_system_icu() {
+    local icu_prefix="$1"
+    
+    echo "[ * ] Setting up ICU 53 library paths..."
+    
+    export LD_LIBRARY_PATH="$icu_prefix/lib:$LD_LIBRARY_PATH"
+    
+    cd /usr/local/lib || return 1
+    
+    for lib in libicuuc libicudata libicui18n libicuio; do
+        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
+            if [ ! -L "${lib}.so.53.2" ] && [ ! -f "${lib}.so.53.2" ]; then
+                ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2" 2>/dev/null || true
+                echo "  ✓ Linked ${lib}.so.53.2"
+            fi
+        fi
+    done
+    
+    cd -
+    
+    echo "[ ✓ ] ICU 53 library paths configured"
     return 0
 }
 
@@ -470,6 +497,86 @@ patch_icu_headers() {
 }
 
 # ============================================================
+# 编译 ImageMagick 扩展
+# ============================================================
+build_imagick() {
+    local build_dir="$1"
+    local install_dir="$2"
+    
+    if [ ! -d "$build_dir/ext/imagick" ]; then
+        echo "⚠️  ImageMagick extension not found, skipping"
+        return 0
+    fi
+    
+    echo "[ * ] Building ImageMagick extension..."
+    
+    local php_prefix="$install_dir/usr/local"
+    local php_config="$php_prefix/bin/php-config"
+    local phpize="$php_prefix/bin/phpize"
+    
+    if [ ! -f "$phpize" ] || [ ! -f "$php_config" ]; then
+        echo "⚠️  phpize or php-config not found, skipping ImageMagick"
+        return 0
+    fi
+    
+    cd "$build_dir/ext/imagick" || return 1
+    
+    # 设置环境变量
+    export PHP_PREFIX="$php_prefix"
+    export PHP_CONFIG="$php_config"
+    export PHPIZE="$phpize"
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export CFLAGS="-I/usr/local/include $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    
+    # 创建必要的符号链接
+    if [ -d "$php_prefix/lib/php/build" ] && [ ! -d "/usr/local/lib/php/build" ]; then
+        mkdir -p /usr/local/lib/php
+        ln -sf "$php_prefix/lib/php/build" /usr/local/lib/php/build
+    fi
+    
+    if [ -d "$php_prefix/include/php" ] && [ ! -L "/usr/local/include/php" ]; then
+        mkdir -p /usr/local/include
+        rm -f /usr/local/include/php
+        ln -sf "$php_prefix/include/php" /usr/local/include/php
+    fi
+    
+    echo "[ * ] Running phpize..."
+    "$phpize"
+    
+    echo "[ * ] Configuring ImageMagick extension..."
+    ./configure --with-php-config="$php_config" --with-imagick=/usr/local
+    
+    echo "[ * ] Compiling ImageMagick extension..."
+    make
+    
+    echo "[ * ] Installing ImageMagick extension..."
+    make install INSTALL_ROOT="$install_dir"
+    
+    # 获取扩展目录
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    # 验证安装
+    if [ -f "$ext_dir/imagick.so" ]; then
+        echo "[ ✓ ] ImageMagick extension installed to $ext_dir/imagick.so"
+        
+        # 创建 php.ini 启用 imagick
+        local php_ini_dir="$install_dir/usr/local/etc"
+        mkdir -p "$php_ini_dir"
+        echo "extension=imagick.so" >> "$php_ini_dir/php.ini"
+        echo "[ ✓ ] ImageMagick extension enabled in php.ini"
+    else
+        echo "⚠️  ImageMagick extension not found in expected location"
+        find "$install_dir" -name "imagick.so" 2>/dev/null || echo "  Not found anywhere"
+    fi
+    
+    cd - > /dev/null
+    echo "[ ✓ ] ImageMagick extension build complete"
+    return 0
+}
+
+# ============================================================
 # 构建 PHP
 # ============================================================
 build_php() {
@@ -480,7 +587,7 @@ build_php() {
     
     echo ""
     echo "========================================"
-    echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick"
     echo "========================================"
 
     if ! download_php; then
@@ -500,9 +607,9 @@ build_php() {
         fi
     fi
 
-    # ImageMagick 已禁用
+    # 下载 ImageMagick 扩展
     if ! download_imagick "$build_dir"; then
-        echo "⚠️  ImageMagick extension disabled"
+        echo "⚠️  ImageMagick extension download failed, continuing without it"
     fi
 
     cd "$build_dir"
@@ -694,7 +801,12 @@ build_php() {
         ln -sf php "$install_dir/usr/local/bin/php-cgi"
     fi
 
-    echo "⚠️  ImageMagick extension skipped"
+    # ============================================================
+    # 编译 ImageMagick 扩展
+    # ============================================================
+    if ! build_imagick "$build_dir" "$install_dir"; then
+        echo "⚠️  ImageMagick extension build failed"
+    fi
 
     if [ -f "$install_dir/usr/local/bin/php" ]; then
         echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
@@ -741,7 +853,12 @@ create_package() {
         echo "⚠️  intl extension not loaded!"
     }
 
-    PKG_NAME="php${ver_suffix}-openssl4"
+    echo "[ * ] Verifying ImageMagick extension..."
+    "$php_bin" -m | grep -i imagick || {
+        echo "⚠️  ImageMagick extension not loaded!"
+    }
+
+    PKG_NAME="php${ver_suffix}-openssl4-imagick"
     
     rm -rf "${PKG_DIR}"
     mkdir -p "${PKG_DIR}/usr/local"
@@ -769,8 +886,8 @@ create_package() {
     cat > "+MANIFEST" << EOF
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
-origin: local/php${ver_suffix}-openssl4
-comment: PHP ${PHP_VERSION} with OpenSSL 4.x support
+origin: local/php${ver_suffix}-openssl4-imagick
+comment: PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick support
 categories: [www, lang]
 maintainer: build@hestiacp.com
 www: https://github.com/hestiacp/hestiacp-freebsd
@@ -780,6 +897,7 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 
 This is a custom build of PHP 5.6.40 that includes:
 - OpenSSL 4.x compatibility patches
+- ImageMagick extension (imagick)
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - GD with JPEG, PNG, FreeType support
@@ -801,7 +919,7 @@ echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
 echo "Verify extensions:"
-/usr/local/bin/php${ver_suffix} -m | grep -E "openssl|intl" || echo "Extensions not loaded"
+/usr/local/bin/php${ver_suffix} -m | grep -E "openssl|intl|imagick" || echo "Extensions not loaded"
 echo "========================================"
 EOF
     chmod +x "+POST_INSTALL"
@@ -824,6 +942,17 @@ EOF
         echo "Package: ${PKG_FILE}"
         echo "Size: ${FILE_SIZE}"
         echo "========================================"
+        
+        echo ""
+        echo "========================================"
+        echo "📦 Package Contents"
+        echo "========================================"
+        echo "Package Name: ${PKG_NAME}"
+        echo "Version: ${PHP_VERSION}"
+        echo "Size: ${FILE_SIZE}"
+        echo "Location: ${PKG_FILE}"
+        echo "========================================"
+        
         return 0
     else
         echo "❌ Failed to create package!"
@@ -837,7 +966,7 @@ EOF
 main() {
     echo ""
     echo "========================================"
-    echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x and ImageMagick"
     echo "========================================"
     echo "Start time: $(date)"
     echo ""
@@ -856,7 +985,7 @@ main() {
             echo "✅ ALL COMPLETED"
             echo "========================================"
             local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
-            echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
+            echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-imagick-${PHP_VERSION}.pkg"
             echo "========================================"
             exit 0
         else
