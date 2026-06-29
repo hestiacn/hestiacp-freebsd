@@ -132,7 +132,7 @@ get_config_args() {
 		"--with-jpeg-dir=/usr/local"
 		"--with-freetype-dir=/usr/local"
 		"--enable-zip"
-		"--with-icu-dir=/usr/local/icu53"
+		"--with-icu-dir=/usr/local/icu64"
 		"--with-ldap=/usr/local"
 		"--with-imap=/usr/local"
 		"--with-imap-ssl=/usr/local"
@@ -149,14 +149,14 @@ get_config_args() {
 override_system_icu() {
     local icu_prefix="$1"
     
-    echo "[ * ] Overriding system ICU libraries with ICU 53..."
+    echo "[ * ] Overriding system ICU libraries with ICU 64..."
     
     cd /usr/local/lib || return 1
     
     # 1. 彻底移除 ICU 76 的库和符号链接
     for lib in libicuuc libicudata libicui18n libicuio; do
         # 移除所有相关的 .so 文件（但保留 .bak）
-        rm -f "${lib}.so" "${lib}.so.53" "${lib}.so.76" 2>/dev/null || true
+        rm -f "${lib}.so" "${lib}.so.64" "${lib}.so.76" 2>/dev/null || true
         
         if [ -f "${lib}.so.76.1" ]; then
             mv "${lib}.so.76.1" "${lib}.so.76.1.bak" 2>/dev/null || true
@@ -164,50 +164,50 @@ override_system_icu() {
         fi
     done
     
-    # 2. 创建指向 ICU 53 的符号链接
+    # 2. 创建指向 ICU 64 的符号链接
     for lib in libicuuc libicudata libicui18n libicuio; do
         if [ -f "$icu_prefix/lib/${lib}.so.64.2" ]; then
             ln -sf "$icu_prefix/lib/${lib}.so.64.2" "${lib}.so.64.2" 2>/dev/null || true
-            ln -sf "${lib}.so.64.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so.64" 2>/dev/null || true
             ln -sf "${lib}.so.64.2" "${lib}.so" 2>/dev/null || true
-            echo "  ✓ ${lib}.so -> ICU 53"
+            echo "  ✓ ${lib}.so -> ICU 64"
         fi
     done
     
     cd -
     
-    echo "[ ✓ ] System ICU libraries overridden with ICU 53"
+    echo "[ ✓ ] System ICU libraries overridden with ICU 64"
     return 0
 }
 
 # ============================================================
-# 编译和安装 ICU 53
+# 编译和安装 ICU 64
 # ============================================================
-build_icu53() {
-    local icu_prefix="/usr/local/icu53"
+build_icu64() {
+    local icu_prefix="/usr/local/icu64"
     
     if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.64.2" ]; then
-        echo "[ ✓ ] ICU 53 already installed at $icu_prefix"
+        echo "[ ✓ ] ICU 64 already installed at $icu_prefix"
         override_system_icu "$icu_prefix"
         return 0
     fi
     
-    echo "[ * ] Building ICU 53 for PHP 5.6 compatibility..."
+    echo "[ * ] Building ICU 64 for PHP 5.6 compatibility..."
     rm -rf "$icu_prefix"
     
-    echo "[ * ] Downloading ICU 53..."
-    fetch -o /tmp/icu-53.tar.gz \
+    echo "[ * ] Downloading ICU 64..."
+    fetch -o /tmp/icu-64.tar.gz \
         "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-64-2" || return 1
-    tar -xf /tmp/icu-53.tar.gz -C /tmp || return 1
+    tar -xf /tmp/icu-64.tar.gz -C /tmp || return 1
     
-    cd /tmp/icu-release-53-2/icu4c/source || return 1
+    cd /tmp/icu-release-64-2/icu4c/source || return 1
     
     make distclean || true
     
     export CC=gcc14
     export CXX=g++14
     
-    echo "[ * ] Configuring ICU 53..."
+    echo "[ * ] Configuring ICU 64..."
     ./configure \
         --prefix="$icu_prefix" \
         --enable-shared=yes \
@@ -258,19 +258,19 @@ build_icu53() {
         return 1
     fi
     
-    echo "[ * ] Installing ICU 53..."
+    echo "[ * ] Installing ICU 64..."
     if ! gmake install 2>&1 | tee /tmp/icu-install.log; then
         echo "❌ ICU install failed"
         tail -50 /tmp/icu-install.log
         return 1
     fi
     
-    echo "[ * ] Creating ICU 53 library symlinks..."
+    echo "[ * ] Creating ICU 64 library symlinks..."
     cd "$icu_prefix/lib"
     for lib in libicuuc libicui18n libicudata libicuio; do
         if [ -f "${lib}.so.64.2" ]; then
             [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.64.2" "${lib}.so"
-            [ ! -f "${lib}.so.53" ] && ln -sf "${lib}.so.64.2" "${lib}.so.53"
+            [ ! -f "${lib}.so.64" ] && ln -sf "${lib}.so.64.2" "${lib}.so.64"
             echo "  ✓ Created ${lib} links"
         fi
     done
@@ -295,7 +295,7 @@ build_icu53() {
         sed -i '' 's/libicuio.so/libicuio.so.64.2/g' "$icu_prefix/bin/icu-config" || true
     fi
     
-    echo "[ * ] Verifying ICU 53 installation..."
+    echo "[ * ] Verifying ICU 64 installation..."
     if ! "$icu_prefix/bin/icu-config" --version > /dev/null 2>&1; then
         echo "❌ icu-config validation failed"
         return 1
@@ -303,9 +303,9 @@ build_icu53() {
     echo "  Version: $($icu_prefix/bin/icu-config --version)"
     
     cd /
-    rm -rf /tmp/icu-release-53-2 /tmp/icu-53.tar.gz
+    rm -rf /tmp/icu-release-64-2 /tmp/icu-64.tar.gz
     
-    echo "[ ✓ ] ICU 53 installed successfully"
+    echo "[ ✓ ] ICU 64 installed successfully"
     return 0
 }
 
@@ -449,9 +449,9 @@ using namespace icu;
 # 修复 ICU 头文件
 # ============================================================
 patch_icu_headers() {
-    local icu_prefix="/usr/local/icu53"
+    local icu_prefix="/usr/local/icu64"
     
-    echo "[ * ] Patching ICU 53 headers for C++11 compatibility..."
+    echo "[ * ] Patching ICU 64 headers for C++11 compatibility..."
     
     for header in "$icu_prefix/include/unicode/"*.h; do
         if [ -f "$header" ]; then
@@ -472,7 +472,7 @@ patch_icu_headers() {
         fi
     done
     
-    echo "[ ✓ ] ICU 53 headers patched"
+    echo "[ ✓ ] ICU 64 headers patched"
 }
 
 # ============================================================
@@ -487,28 +487,28 @@ fix_icu_linking() {
     if [ -f "Makefile" ]; then
         cp Makefile Makefile.bak
         sed -i '' 's|-licuio||g' Makefile
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
-        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib \1|' Makefile
-        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' Makefile
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu64/lib -licui18n -licuuc -licudata \1|' Makefile
+        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu64/lib -Wl,-rpath,/usr/local/icu64/lib -Wl,-rpath-link,/usr/local/icu64/lib \1|' Makefile
+        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu64/lib -licui18n -licuuc -licudata \1|' Makefile
         echo "[ ✓ ] Makefile updated"
     fi
     
     if [ -f "ext/intl/Makefile" ]; then
         cp ext/intl/Makefile ext/intl/Makefile.bak
         sed -i '' 's|-licuio||g' ext/intl/Makefile
-        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib \1|' ext/intl/Makefile
-        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
-        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu53/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu64/lib -Wl,-rpath,/usr/local/icu64/lib \1|' ext/intl/Makefile
+        sed -i '' 's|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/icu64/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
+        sed -i '' 's|^LIBS = \(.*\)$|LIBS = -L/usr/local/icu64/lib -licui18n -licuuc -licudata \1|' ext/intl/Makefile
         echo "[ ✓ ] ext/intl/Makefile updated"
     fi
     
     cat > /tmp/php-build-wrapper.sh << 'EOF'
 #!/bin/sh
-LD_LIBRARY_PATH=/usr/local/icu53/lib:$LD_LIBRARY_PATH
-LIBRARY_PATH=/usr/local/icu53/lib:$LIBRARY_PATH
-CPATH=/usr/local/icu53/include:$CPATH
-C_INCLUDE_PATH=/usr/local/icu53/include:$C_INCLUDE_PATH
-CPLUS_INCLUDE_PATH=/usr/local/icu53/include:$CPLUS_INCLUDE_PATH
+LD_LIBRARY_PATH=/usr/local/icu64/lib:$LD_LIBRARY_PATH
+LIBRARY_PATH=/usr/local/icu64/lib:$LIBRARY_PATH
+CPATH=/usr/local/icu64/include:$CPATH
+C_INCLUDE_PATH=/usr/local/icu64/include:$C_INCLUDE_PATH
+CPLUS_INCLUDE_PATH=/usr/local/icu64/include:$CPLUS_INCLUDE_PATH
 export LD_LIBRARY_PATH LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH
 exec "$@"
 EOF
@@ -574,12 +574,12 @@ build_php() {
     export CC=gcc14
     export CXX=g++14
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
-    export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
+    export CPPFLAGS="-I/usr/local/icu64/include -I/usr/local/include"
     find . -name "config.cache" -delete
     
     if [ "$major" = "5" ] && [ "$PHP_VERSION" = "5.6.40" ]; then
-        if ! build_icu53; then
-            echo "❌ Failed to build ICU 53"
+        if ! build_icu64; then
+            echo "❌ Failed to build ICU 64"
             return 1
         fi
         cd "$build_dir" || {
@@ -589,16 +589,16 @@ build_php() {
         echo "[ * ] Current directory: $(pwd)"
         
         patch_icu_headers
-        if [ ! -f "/usr/local/icu53/bin/icu-config" ]; then
-            echo "❌ icu-config not found at /usr/local/icu53/bin/icu-config"
+        if [ ! -f "/usr/local/icu64/bin/icu-config" ]; then
+            echo "❌ icu-config not found at /usr/local/icu64/bin/icu-config"
             return 1
         fi
-        echo "[ ✓ ] icu-config found at /usr/local/icu53/bin/icu-config"
+        echo "[ ✓ ] icu-config found at /usr/local/icu64/bin/icu-config"
         
-        export PATH="/usr/local/icu53/bin:$PATH"
-        export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
+        export PATH="/usr/local/icu64/bin:$PATH"
+        export LD_LIBRARY_PATH="/usr/local/icu64/lib:$LD_LIBRARY_PATH"
         
-        export CFLAGS="-I/usr/local/icu53/include -I/usr/local/include \
+        export CFLAGS="-I/usr/local/icu64/include -I/usr/local/include \
             -Wno-deprecated-declarations \
             -Wno-incompatible-pointer-types-discards-qualifiers \
             -Wno-pointer-bool-conversion \
@@ -616,13 +616,13 @@ build_php() {
             -Wno-incompatible-pointer-types \
             -Wno-error"
 
-        export LDFLAGS="-L/usr/local/lib/gcc14 -L/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib/gcc14 -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath-link,/usr/local/icu53/lib"
+        export LDFLAGS="-L/usr/local/lib/gcc14 -L/usr/local/icu64/lib -Wl,-rpath,/usr/local/lib/gcc14 -Wl,-rpath,/usr/local/icu64/lib -Wl,-rpath-link,/usr/local/icu64/lib"
                 
-        export CPPFLAGS="-I/usr/local/icu53/include -I/usr/local/include"
-        export ICU_CONFIG="/usr/local/icu53/bin/icu-config"
-        export ICU_PREFIX="/usr/local/icu53"
-        export ICU_CFLAGS="-I/usr/local/icu53/include"
-        export ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata"
+        export CPPFLAGS="-I/usr/local/icu64/include -I/usr/local/include"
+        export ICU_CONFIG="/usr/local/icu64/bin/icu-config"
+        export ICU_PREFIX="/usr/local/icu64"
+        export ICU_CFLAGS="-I/usr/local/icu64/include"
+        export ICU_LIBS="-L/usr/local/icu64/lib -licui18n -licuuc -licudata"
         
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo 'unknown')"
         
@@ -649,20 +649,20 @@ build_php() {
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CPPFLAGS: $CPPFLAGS"
     echo "PKG_CONFIG_PATH: $PKG_CONFIG_PATH"
-    export LD_LIBRARY_PATH="/usr/local/icu53/lib:$LD_LIBRARY_PATH"
-    export LDFLAGS="-L/usr/local/icu53/lib -Wl,-rpath,/usr/local/icu53/lib $LDFLAGS"
-    export LDFLAGS="-L/usr/local/icu53/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu53/lib -Wl,-rpath,/usr/local/lib -Wl,-rpath-link,/usr/local/icu53/lib"
+    export LD_LIBRARY_PATH="/usr/local/icu64/lib:$LD_LIBRARY_PATH"
+    export LDFLAGS="-L/usr/local/icu64/lib -Wl,-rpath,/usr/local/icu64/lib $LDFLAGS"
+    export LDFLAGS="-L/usr/local/icu64/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu64/lib -Wl,-rpath,/usr/local/lib -Wl,-rpath-link,/usr/local/icu64/lib"
     export LIBS="-licui18n -licuuc -licudata -lc++ -lpq -lintl -lssl -lcrypto -lpthread -lm"
 
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
     ./configure \
         "${CONFIG_ARGS[@]}" \
-        --with-icu-dir=/usr/local/icu53 \
+        --with-icu-dir=/usr/local/icu64 \
         LDFLAGS="$LDFLAGS" \
         LIBS="$LIBS" \
-        ICU_CFLAGS="-I/usr/local/icu53/include" \
-        ICU_LIBS="-L/usr/local/icu53/lib -licui18n -licuuc -licudata" \
+        ICU_CFLAGS="-I/usr/local/icu64/include" \
+        ICU_LIBS="-L/usr/local/icu64/lib -licui18n -licuuc -licudata" \
         > "$LOG_DIR/configure-${PHP_VERSION}.log" 2>&1
 
     if [ $? -ne 0 ]; then
@@ -679,8 +679,8 @@ build_php() {
     # ============================================================
     echo "[ * ] Fixing ICU library linking for PHP 5.6..."
 
-    if [ -f "/usr/local/icu53/lib/libicuuc.so.64.2" ]; then
-        echo "[ ✓ ] ICU libraries found at /usr/local/icu53/lib"
+    if [ -f "/usr/local/icu64/lib/libicuuc.so.64.2" ]; then
+        echo "[ ✓ ] ICU libraries found at /usr/local/icu64/lib"
     else
         echo "❌ ICU libraries not found!"
         return 1
@@ -691,11 +691,11 @@ build_php() {
 
     fix_icu_linking "$build_dir"
 
-    export LD_LIBRARY_PATH="/usr/local/icu53/lib:/usr/local/lib:$LD_LIBRARY_PATH"
-    export LIBRARY_PATH="/usr/local/icu53/lib:$LIBRARY_PATH"
-    export C_INCLUDE_PATH="/usr/local/icu53/include:$C_INCLUDE_PATH"
-    export CPLUS_INCLUDE_PATH="/usr/local/icu53/include:$CPLUS_INCLUDE_PATH"
-    export ICU_DATA="/usr/local/icu53/share/icu/64.2"
+    export LD_LIBRARY_PATH="/usr/local/icu64/lib:/usr/local/lib:$LD_LIBRARY_PATH"
+    export LIBRARY_PATH="/usr/local/icu64/lib:$LIBRARY_PATH"
+    export C_INCLUDE_PATH="/usr/local/icu64/include:$C_INCLUDE_PATH"
+    export CPLUS_INCLUDE_PATH="/usr/local/icu64/include:$CPLUS_INCLUDE_PATH"
+    export ICU_DATA="/usr/local/icu64/share/icu/64.2"
 
     echo "[ ✓ ] ICU linking fixes applied"
     
@@ -813,21 +813,21 @@ create_package() {
     
     echo "[ ✓ ] Files copied successfully"
 
-    echo "[ * ] Copying ICU 53 libraries..."
-    mkdir -p "${PKG_DIR}/usr/local/icu53/lib"
-    if [ -d "/usr/local/icu53/lib" ]; then
-        cp -r /usr/local/icu53/lib/libicu*.so* "${PKG_DIR}/usr/local/icu53/lib/" || true
+    echo "[ * ] Copying ICU 64 libraries..."
+    mkdir -p "${PKG_DIR}/usr/local/icu64/lib"
+    if [ -d "/usr/local/icu64/lib" ]; then
+        cp -r /usr/local/icu64/lib/libicu*.so* "${PKG_DIR}/usr/local/icu64/lib/" || true
         echo "[ ✓ ] ICU libraries copied"
     fi
     
-    echo "[ * ] Creating ICU 53 symlinks in package..."
+    echo "[ * ] Creating ICU 64 symlinks in package..."
     mkdir -p "${PKG_DIR}/usr/local/lib"
-    cd /usr/local/icu53/lib
+    cd /usr/local/icu64/lib
     for lib in libicuuc libicudata libicui18n libicuio; do
         if [ -f "${lib}.so.64.2" ]; then
             cp "${lib}.so.64.2" "${PKG_DIR}/usr/local/lib/"
             cd "${PKG_DIR}/usr/local/lib"
-            ln -sf "${lib}.so.64.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so.64" 2>/dev/null || true
             ln -sf "${lib}.so.64.2" "${lib}.so" 2>/dev/null || true
             cd -
         fi
@@ -856,7 +856,7 @@ This is a custom build of PHP 5.6.40 that includes:
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - GD with JPEG, PNG, FreeType support
-- intl extension with ICU 53
+- intl extension with ICU 64
 
 IMPORTANT: PHP 5.6 is end-of-life. Use at your own risk.
 EOD
