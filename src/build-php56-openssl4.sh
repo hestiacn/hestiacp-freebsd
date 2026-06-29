@@ -197,7 +197,7 @@ build_icu64() {
     
     echo "[ * ] Downloading ICU 64..."
     fetch -o /tmp/icu-64.tar.gz \
-        "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-64-2" || return 1
+        "https://github.com/unicode-org/icu/archive/refs/tags/release-64-2.tar.gz" || return 1
     tar -xf /tmp/icu-64.tar.gz -C /tmp || return 1
     
     cd /tmp/icu-release-64-2/icu4c/source || return 1
