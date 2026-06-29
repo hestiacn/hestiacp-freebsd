@@ -166,10 +166,10 @@ override_system_icu() {
     
     # 2. 创建指向 ICU 53 的符号链接
     for lib in libicuuc libicudata libicui18n libicuio; do
-        if [ -f "$icu_prefix/lib/${lib}.so.53.2" ]; then
-            ln -sf "$icu_prefix/lib/${lib}.so.53.2" "${lib}.so.53.2" 2>/dev/null || true
-            ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
-            ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+        if [ -f "$icu_prefix/lib/${lib}.so.64.2" ]; then
+            ln -sf "$icu_prefix/lib/${lib}.so.64.2" "${lib}.so.64.2" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so" 2>/dev/null || true
             echo "  ✓ ${lib}.so -> ICU 53"
         fi
     done
@@ -186,7 +186,7 @@ override_system_icu() {
 build_icu53() {
     local icu_prefix="/usr/local/icu53"
     
-    if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.53.2" ]; then
+    if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.64.2" ]; then
         echo "[ ✓ ] ICU 53 already installed at $icu_prefix"
         override_system_icu "$icu_prefix"
         return 0
@@ -197,7 +197,7 @@ build_icu53() {
     
     echo "[ * ] Downloading ICU 53..."
     fetch -o /tmp/icu-53.tar.gz \
-        "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-53-2" || return 1
+        "https://codeload.github.com/unicode-org/icu/tar.gz/refs/tags/release-64-2" || return 1
     tar -xf /tmp/icu-53.tar.gz -C /tmp || return 1
     
     cd /tmp/icu-release-53-2/icu4c/source || return 1
@@ -251,9 +251,9 @@ build_icu53() {
         return 1
     fi
     
-    if [ ! -f "lib/libicuuc.so.53.2" ] || \
-       [ ! -f "lib/libicui18n.so.53.2" ] || \
-       [ ! -f "lib/libicudata.so.53.2" ]; then
+    if [ ! -f "lib/libicuuc.so.64.2" ] || \
+       [ ! -f "lib/libicui18n.so.64.2" ] || \
+       [ ! -f "lib/libicudata.so.64.2" ]; then
         echo "❌ ICU libraries not built"
         return 1
     fi
@@ -268,9 +268,9 @@ build_icu53() {
     echo "[ * ] Creating ICU 53 library symlinks..."
     cd "$icu_prefix/lib"
     for lib in libicuuc libicui18n libicudata libicuio; do
-        if [ -f "${lib}.so.53.2" ]; then
-            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.53.2" "${lib}.so"
-            [ ! -f "${lib}.so.53" ] && ln -sf "${lib}.so.53.2" "${lib}.so.53"
+        if [ -f "${lib}.so.64.2" ]; then
+            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.64.2" "${lib}.so"
+            [ ! -f "${lib}.so.53" ] && ln -sf "${lib}.so.64.2" "${lib}.so.53"
             echo "  ✓ Created ${lib} links"
         fi
     done
@@ -289,10 +289,10 @@ build_icu53() {
     fi
     
     if [ -f "$icu_prefix/bin/icu-config" ]; then
-        sed -i '' 's/libicuuc.so/libicuuc.so.53.2/g' "$icu_prefix/bin/icu-config" || true
-        sed -i '' 's/libicui18n.so/libicui18n.so.53.2/g' "$icu_prefix/bin/icu-config" || true
-        sed -i '' 's/libicudata.so/libicudata.so.53.2/g' "$icu_prefix/bin/icu-config" || true
-        sed -i '' 's/libicuio.so/libicuio.so.53.2/g' "$icu_prefix/bin/icu-config" || true
+        sed -i '' 's/libicuuc.so/libicuuc.so.64.2/g' "$icu_prefix/bin/icu-config" || true
+        sed -i '' 's/libicui18n.so/libicui18n.so.64.2/g' "$icu_prefix/bin/icu-config" || true
+        sed -i '' 's/libicudata.so/libicudata.so.64.2/g' "$icu_prefix/bin/icu-config" || true
+        sed -i '' 's/libicuio.so/libicuio.so.64.2/g' "$icu_prefix/bin/icu-config" || true
     fi
     
     echo "[ * ] Verifying ICU 53 installation..."
@@ -679,7 +679,7 @@ build_php() {
     # ============================================================
     echo "[ * ] Fixing ICU library linking for PHP 5.6..."
 
-    if [ -f "/usr/local/icu53/lib/libicuuc.so.53.2" ]; then
+    if [ -f "/usr/local/icu53/lib/libicuuc.so.64.2" ]; then
         echo "[ ✓ ] ICU libraries found at /usr/local/icu53/lib"
     else
         echo "❌ ICU libraries not found!"
@@ -695,7 +695,7 @@ build_php() {
     export LIBRARY_PATH="/usr/local/icu53/lib:$LIBRARY_PATH"
     export C_INCLUDE_PATH="/usr/local/icu53/include:$C_INCLUDE_PATH"
     export CPLUS_INCLUDE_PATH="/usr/local/icu53/include:$CPLUS_INCLUDE_PATH"
-    export ICU_DATA="/usr/local/icu53/share/icu/53.2"
+    export ICU_DATA="/usr/local/icu53/share/icu/64.2"
 
     echo "[ ✓ ] ICU linking fixes applied"
     
@@ -824,11 +824,11 @@ create_package() {
     mkdir -p "${PKG_DIR}/usr/local/lib"
     cd /usr/local/icu53/lib
     for lib in libicuuc libicudata libicui18n libicuio; do
-        if [ -f "${lib}.so.53.2" ]; then
-            cp "${lib}.so.53.2" "${PKG_DIR}/usr/local/lib/"
+        if [ -f "${lib}.so.64.2" ]; then
+            cp "${lib}.so.64.2" "${PKG_DIR}/usr/local/lib/"
             cd "${PKG_DIR}/usr/local/lib"
-            ln -sf "${lib}.so.53.2" "${lib}.so.53" 2>/dev/null || true
-            ln -sf "${lib}.so.53.2" "${lib}.so" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so.53" 2>/dev/null || true
+            ln -sf "${lib}.so.64.2" "${lib}.so" 2>/dev/null || true
             cd -
         fi
     done
