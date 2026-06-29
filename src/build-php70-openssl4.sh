@@ -434,43 +434,30 @@ using namespace icu;
 	fi
     # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
     echo "[ * ] Fixing ICU namespace in intl extension..."
-
-    # 移除之前在头文件中添加的 using namespace icu;
-    for file in ext/intl/common/common_enum.h \
-                ext/intl/calendar/calendar_class.h \
-                ext/intl/intl_convertcpp.cpp; do
-        if [ -f "$file" ]; then
-            sed -i '' '/^using namespace icu;/d' "$file"
-            sed -i '' '/^#ifdef __cplusplus/,/^#endif/d' "$file"
-        fi
-    done
-
-    # 在 common_enum.h 中，将 StringEnumeration 替换为 icu::StringEnumeration
-    if [ -f "ext/intl/common/common_enum.h" ]; then
-        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.h
-        echo "[ ✓ ] Fixed StringEnumeration namespace in common_enum.h"
-    fi
-
-    # 在 common_enum.cpp 中，将 StringEnumeration 替换为 icu::StringEnumeration
-    if [ -f "ext/intl/common/common_enum.cpp" ]; then
-        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.cpp
-        echo "[ ✓ ] Fixed StringEnumeration namespace in common_enum.cpp"
-    fi
-
-    # 在 calendar_class.h 中，将 Calendar 和 TimeZone 替换为 icu::Calendar 和 icu::TimeZone
+    
+    # 将 icu::Calendar* 替换为 void* (C 兼容)
     if [ -f "ext/intl/calendar/calendar_class.h" ]; then
-        sed -i '' 's/Calendar\*/icu::Calendar*/g' ext/intl/calendar/calendar_class.h
-        sed -i '' 's/TimeZone\*/icu::TimeZone*/g' ext/intl/calendar/calendar_class.h
+        sed -i '' 's/icu::Calendar\*/void*/g' ext/intl/calendar/calendar_class.h
+        sed -i '' 's/icu::TimeZone\*/void*/g' ext/intl/calendar/calendar_class.h
         echo "[ ✓ ] Fixed Calendar/TimeZone namespace in calendar_class.h"
     fi
-
-    # 在 common_date.cpp 中，将 Calendar 和 TimeZone 替换为 icu::Calendar 和 icu::TimeZone
-    if [ -f "ext/intl/common/common_date.cpp" ]; then
-        sed -i '' 's/Calendar\*/icu::Calendar*/g' ext/intl/common/common_date.cpp
-        sed -i '' 's/TimeZone\*/icu::TimeZone*/g' ext/intl/common/common_date.cpp
-        echo "[ ✓ ] Fixed Calendar/TimeZone namespace in common_date.cpp"
-    fi
-
+    
+    # 修复所有使用 icu:: 的 .cpp 文件
+    for file in $(find ext/intl -name "*.cpp" -o -name "*.c"); do
+        if [ -f "$file" ]; then
+            sed -i '' 's/icu::Calendar\*/void*/g' "$file"
+            sed -i '' 's/icu::TimeZone\*/void*/g' "$file"
+            sed -i '' 's/icu::/void*/g' "$file" 2>/dev/null || true
+        fi
+    done
+    
+    # 移除 using namespace icu; 语句
+    for file in $(find ext/intl -name "*.h" -o -name "*.cpp"); do
+        if [ -f "$file" ]; then
+            sed -i '' '/^using namespace icu;/d' "$file"
+        fi
+    done
+    
     echo "[ ✓ ] ICU namespace fixes applied"
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
 	cd - > /dev/null || return 1
