@@ -435,39 +435,40 @@ using namespace icu;
     # 补丁10: 修复 intl 扩展的 ICU 命名空间问题
     echo "[ * ] Fixing ICU namespace in intl extension..."
 
-    # 移除之前可能添加的 using namespace icu;
-    for file in ext/intl/intl_convertcpp.cpp \
-                ext/intl/common/common_enum.h \
-                ext/intl/calendar/calendar_class.h; do
+    # 移除之前在头文件中添加的 using namespace icu;
+    for file in ext/intl/common/common_enum.h \
+                ext/intl/calendar/calendar_class.h \
+                ext/intl/intl_convertcpp.cpp; do
         if [ -f "$file" ]; then
             sed -i '' '/^using namespace icu;/d' "$file"
+            sed -i '' '/^#ifdef __cplusplus/,/^#endif/d' "$file"
         fi
     done
 
-    # 在头文件中添加 using namespace icu;（用 C++ 保护）
-    for header in ext/intl/calendar/calendar_class.h \
-                ext/intl/common/common_enum.h; do
-        if [ -f "$header" ]; then
-            if ! grep -q "using namespace icu;" "$header"; then
-            sed -i '' '1i\
-#ifdef __cplusplus\
-using namespace icu;\
-#endif
-' "$header"
-                echo "[ ✓ ] Fixed $(basename "$header")"
-            fi
-        fi
-    done
+    # 在 common_enum.h 中，将 StringEnumeration 替换为 icu::StringEnumeration
+    if [ -f "ext/intl/common/common_enum.h" ]; then
+        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.h
+        echo "[ ✓ ] Fixed StringEnumeration namespace in common_enum.h"
+    fi
 
-    # 对于 intl_convertcpp.cpp，直接添加 ICU 头文件包含
-    if [ -f "ext/intl/intl_convertcpp.cpp" ]; then
-        # 确保包含 unicode/unistr.h
-        if ! grep -q "#include <unicode/unistr.h>" ext/intl/intl_convertcpp.cpp; then
-            sed -i '' '1i\
-#include <unicode/unistr.h>
-' ext/intl/intl_convertcpp.cpp
-            echo "[ ✓ ] Added unistr.h include to intl_convertcpp.cpp"
-        fi
+    # 在 common_enum.cpp 中，将 StringEnumeration 替换为 icu::StringEnumeration
+    if [ -f "ext/intl/common/common_enum.cpp" ]; then
+        sed -i '' 's/StringEnumeration/icu::StringEnumeration/g' ext/intl/common/common_enum.cpp
+        echo "[ ✓ ] Fixed StringEnumeration namespace in common_enum.cpp"
+    fi
+
+    # 在 calendar_class.h 中，将 Calendar 和 TimeZone 替换为 icu::Calendar 和 icu::TimeZone
+    if [ -f "ext/intl/calendar/calendar_class.h" ]; then
+        sed -i '' 's/Calendar\*/icu::Calendar*/g' ext/intl/calendar/calendar_class.h
+        sed -i '' 's/TimeZone\*/icu::TimeZone*/g' ext/intl/calendar/calendar_class.h
+        echo "[ ✓ ] Fixed Calendar/TimeZone namespace in calendar_class.h"
+    fi
+
+    # 在 common_date.cpp 中，将 Calendar 和 TimeZone 替换为 icu::Calendar 和 icu::TimeZone
+    if [ -f "ext/intl/common/common_date.cpp" ]; then
+        sed -i '' 's/Calendar\*/icu::Calendar*/g' ext/intl/common/common_date.cpp
+        sed -i '' 's/TimeZone\*/icu::TimeZone*/g' ext/intl/common/common_date.cpp
+        echo "[ ✓ ] Fixed Calendar/TimeZone namespace in common_date.cpp"
     fi
 
     echo "[ ✓ ] ICU namespace fixes applied"
