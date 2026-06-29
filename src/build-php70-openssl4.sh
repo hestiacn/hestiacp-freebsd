@@ -432,7 +432,30 @@ using namespace icu;
 		echo "⚠️  Custom OpenSSL directory not found: $custom_openssl_dir"
 		echo "    Skipping OpenSSL source replacement"
 	fi
+    # 补丁10: 在所有 intl C++ 文件中添加 using namespace icu;
+    echo "[ * ] Adding using namespace icu; to intl C++ files..."
 
+    # 在 common_enum.h 开头添加
+    if [ -f "ext/intl/common/common_enum.h" ]; then
+        if ! grep -q "using namespace icu;" ext/intl/common/common_enum.h; then
+            sed -i '' '1i\
+using namespace icu;
+' ext/intl/common/common_enum.h
+            echo "[ ✓ ] Added using namespace icu; to common_enum.h"
+        fi
+    fi
+
+    # 在其他 intl 文件中添加
+    for file in ext/intl/common/common_enum.cpp \
+                ext/intl/calendar/calendar_class.h \
+                ext/intl/common/common_date.cpp; do
+        if [ -f "$file" ] && ! grep -q "using namespace icu;" "$file"; then
+            sed -i '' '1i\
+using namespace icu;
+' "$file"
+            echo "[ ✓ ] Added using namespace icu; to $(basename "$file")"
+        fi
+    done
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
 	cd - > /dev/null || return 1
 }
