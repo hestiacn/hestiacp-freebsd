@@ -187,7 +187,7 @@ build_icu67() {
     
     echo "[ * ] Downloading ICU 67..."
     fetch -o /tmp/icu-67.tar.gz \
-        "https://github.com/unicode-org/icu/archive/release-67-1.tar.gz" || return 1
+        "https://github.com/unicode-org/icu/archive/refs/tags/release-67-1.tar.gz" || return 1
     tar -xf /tmp/icu-67.tar.gz -C /tmp || return 1
     
     cd /tmp/icu-release-67-1/icu4c/source || return 1
@@ -371,7 +371,9 @@ apply_patches() {
 		sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2018 Zend Technologies\\n"/' ./Zend/zend.c
 		sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998-2018 Zend Technologies\\n"/' ./Zend/zend.c
 		echo "[ ✓ ] Copyright updated to 2018"
-	fi
+        grep "Copyright" ./main/main.c 2>/dev/null || true
+        grep "Copyright" ./Zend/zend.c 2>/dev/null || true
+    fi
 
 	# 补丁7: 修复 intl 头文件中的 UnicodeString 命名空间问题
 	if [ -f "ext/intl/intl_convertcpp.h" ]; then
