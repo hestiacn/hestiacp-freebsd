@@ -32,21 +32,22 @@ echo "========================================"
 # 下载 PHP
 # ============================================================
 download_php() {
-	local file="$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz"
-
-	if [ -f "$file" ]; then
-		echo "[ ✓ ] PHP ${PHP_VERSION} already downloaded"
-		return 0
-	fi
-
-	echo "[ * ] Downloading PHP ${PHP_VERSION}..."
-	fetch -o "$file" "https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz"
-	if [ $? -ne 0 ]; then
-		echo "Failed to download PHP ${PHP_VERSION}"
-		return 1
-	fi
-	echo "[ ✓ ] Downloaded PHP ${PHP_VERSION}"
-	return 0
+    local file="$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz"
+    
+    if [ -f "$file" ]; then
+        echo "[ ✓ ] PHP ${PHP_VERSION} already downloaded"
+        return 0
+    fi
+    
+    echo "[ * ] Downloading PHP ${PHP_VERSION}..."
+    fetch -o "$file" "https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz"
+    if [ $? -ne 0 ]; then
+        echo "Failed to download PHP ${PHP_VERSION}"
+        return 1
+    fi
+    
+    echo "[ ✓ ] Downloaded PHP ${PHP_VERSION}"
+    return 0
 }
 
 # ============================================================
@@ -156,7 +157,7 @@ get_config_args() {
 		"--with-libedit"
 		#"--with-ffi"
 	)
-
+    
 	# PHP 7.1 及以下: 没有 Argon2 支持
 	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
 		local new_args=()
@@ -761,39 +762,49 @@ build_php() {
 		
 		echo "[ ✓ ] Makefile updated to use ICU 56"
 	fi
+	
     echo "[ * ] Fixing zend_sprintf linkage issue..."
     if [ -f "main/php_config.h" ]; then
         sed -i '' 's/^int zend_sprintf(/\/\/ int zend_sprintf(/' main/php_config.h
         echo "[ ✓ ] Fixed zend_sprintf in php_config.h"
     fi
-	# ============================================================
-	# 编译 PHP
-	# ============================================================
-	echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-	gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    
+    if [ -f "ext/phar/phar.phar" ]; then
+        echo "[ ✓ ] phar.phar exists"
+    else
+        echo "[ * ] Creating phar.phar placeholder..."
+        echo "<?php __HALT_COMPILER(); ?>" > "ext/phar/phar.phar"
+        echo "[ ✓ ] phar.phar placeholder created"
+    fi
 
-	if [ $? -ne 0 ]; then
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "=== All errors ==="
-		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-		echo ""
-		echo "========================================"
-		echo "Last 100 lines:"
-		echo "========================================"
-		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
-		echo ""
-		echo "[ * ] Retrying with single core..."
-		gmake clean
-		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
-			echo "[ ✓ ] Single core build succeeded!"
-		else
-			return 1
-		fi
-	fi
+    # ============================================================
+    # 编译 PHP
+    # ============================================================
+    echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
+    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "=== All errors ==="
+        grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
+        echo ""
+        echo "========================================"
+        echo "Last 100 lines:"
+        echo "========================================"
+        tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+        echo ""
+        echo "[ * ] Retrying with single core..."
+        gmake clean
+        if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+            echo "[ ✓ ] Single core build succeeded!"
+        else
+            return 1
+        fi
+    fi
 
 	# ============================================================
 	# 安装 PHP
