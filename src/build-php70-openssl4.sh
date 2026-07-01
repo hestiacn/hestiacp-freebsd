@@ -157,7 +157,7 @@ get_config_args() {
 		"--with-libedit"
 		#"--with-ffi"
 	)
-    
+
 	# PHP 7.1 及以下: 没有 Argon2 支持
 	if [ "$major" = "7" ] && [ -n "$minor" ] && [ "$minor" -lt "2" ]; then
 		local new_args=()
@@ -506,7 +506,7 @@ EOF
         fi
         rm -f main/streams/cast.c.bak
     fi
-
+    
     echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
     cd - > /dev/null || return 1
 }
@@ -682,7 +682,6 @@ build_php() {
 		echo "[ ✓ ] icu-config found"
 		
 		export PATH="/usr/local/icu56/bin:$PATH"
-		export LD_LIBRARY_PATH="/usr/local/icu56/lib:$LD_LIBRARY_PATH"
 		
 		export CFLAGS="-I/usr/local/icu56/include -I/usr/local/include \
 			-Wno-deprecated-declarations \
@@ -701,11 +700,18 @@ build_php() {
 	fi
 	
 	# ============================================================
-	# 设置编译环境
+	# 设置编译环境（包括 OpenSSL 4.x 修复）
 	# ============================================================
 	export CC=gcc14
 	export CXX=g++14
 	export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
+	
+	# 设置 OpenSSL 4.x 环境变量（修复 phar 生成时的段错误）
+	echo "[ * ] Setting OpenSSL 4.x environment..."
+	export LD_PRELOAD="/usr/local/lib/libssl.so.30:/usr/local/lib/libcrypto.so.30"
+	export LD_LIBRARY_PATH="/usr/local/icu56/lib:/usr/local/lib:/usr/lib"
+	echo "[ ✓ ] OpenSSL 4.x environment set"
+	
 	find . -name "config.cache" -delete
 	
 	# ============================================================
@@ -763,48 +769,53 @@ build_php() {
 		echo "[ ✓ ] Makefile updated to use ICU 56"
 	fi
 	
-    echo "[ * ] Fixing zend_sprintf linkage issue..."
-    if [ -f "main/php_config.h" ]; then
-        sed -i '' 's/^int zend_sprintf(/\/\/ int zend_sprintf(/' main/php_config.h
-        echo "[ ✓ ] Fixed zend_sprintf in php_config.h"
-    fi
-    
-    if [ -f "ext/phar/phar.phar" ]; then
-        echo "[ ✓ ] phar.phar exists"
-    else
-        echo "[ * ] Creating phar.phar placeholder..."
-        echo "<?php __HALT_COMPILER(); ?>" > "ext/phar/phar.phar"
-        echo "[ ✓ ] phar.phar placeholder created"
-    fi
+	echo "[ * ] Fixing zend_sprintf linkage issue..."
+	if [ -f "main/php_config.h" ]; then
+		sed -i '' 's/^int zend_sprintf(/\/\/ int zend_sprintf(/' main/php_config.h
+		echo "[ ✓ ] Fixed zend_sprintf in php_config.h"
+	fi
 
-    # ============================================================
-    # 编译 PHP
-    # ============================================================
-    echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+	# ============================================================
+	# 确保 phar.phar 存在（源码包中默认没有此文件）
+	# ============================================================
+	echo "[ * ] Ensuring phar.phar exists..."
+	if [ -f "ext/phar/phar.phar" ]; then
+		echo "[ ✓ ] phar.phar exists"
+	else
+		echo "[ * ] Creating phar.phar placeholder..."
+		echo "<?php __HALT_COMPILER(); ?>" > "ext/phar/phar.phar"
+		chmod 444 "ext/phar/phar.phar"
+		echo "[ ✓ ] phar.phar placeholder created"
+	fi
 
-    if [ $? -ne 0 ]; then
-        echo ""
-        echo "========================================"
-        echo "❌ BUILD FAILED"
-        echo "========================================"
-        echo ""
-        echo "=== All errors ==="
-        grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-        echo ""
-        echo "========================================"
-        echo "Last 100 lines:"
-        echo "========================================"
-        tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
-        echo ""
-        echo "[ * ] Retrying with single core..."
-        gmake clean
-        if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
-            echo "[ ✓ ] Single core build succeeded!"
-        else
-            return 1
-        fi
-    fi
+	# ============================================================
+	# 编译 PHP
+	# ============================================================
+	echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
+	gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+
+	if [ $? -ne 0 ]; then
+		echo ""
+		echo "========================================"
+		echo "❌ BUILD FAILED"
+		echo "========================================"
+		echo ""
+		echo "=== All errors ==="
+		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
+		echo ""
+		echo "========================================"
+		echo "Last 100 lines:"
+		echo "========================================"
+		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+		echo ""
+		echo "[ * ] Retrying with single core..."
+		gmake clean
+		if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
+			echo "[ ✓ ] Single core build succeeded!"
+		else
+			return 1
+		fi
+	fi
 
 	# ============================================================
 	# 安装 PHP
