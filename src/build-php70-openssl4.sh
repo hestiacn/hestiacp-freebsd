@@ -827,7 +827,28 @@ build_php() {
 
     export LD_LIBRARY_PATH="/usr/local/icu56/lib:/usr/local/lib:/usr/lib"
     echo "[ ✓ ] OpenSSL 4.x environment set"
+    fix_openssl_links() {
+        echo "[ * ] Creating OpenSSL compatibility symlinks..."
+        cd /usr/local/lib
         
+        # 检测实际版本
+        SSL_VER=$(ls libssl.so.* 2>/dev/null | head -1 | sed 's/libssl\.so\.//')
+        CRYPTO_VER=$(ls libcrypto.so.* 2>/dev/null | head -1 | sed 's/libcrypto\.so\.//')
+        
+        if [ -n "$SSL_VER" ] && [ -n "$CRYPTO_VER" ]; then
+            # 如果 .30 不存在，创建链接
+            [ ! -f "libssl.so.30" ] && ln -sf "libssl.so.$SSL_VER" libssl.so.30
+            [ ! -f "libcrypto.so.30" ] && ln -sf "libcrypto.so.$CRYPTO_VER" libcrypto.so.30
+            echo "[ ✓ ] Created OpenSSL .30 compatibility links"
+            ls -la libssl.so.30 libcrypto.so.30
+        else
+            echo "⚠️  Could not detect OpenSSL versions"
+        fi
+        
+        cd - > /dev/null
+    }
+    
+    fix_openssl_links
 	find . -name "config.cache" -delete
 	
 	# ============================================================
