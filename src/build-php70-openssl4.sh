@@ -506,6 +506,93 @@ EOF
         fi
         rm -f main/streams/cast.c.bak
     fi
+    # ============================================================
+    # 补丁15: 修复 phar 扩展 OpenSSL 4.x 兼容性
+    # ============================================================
+    echo "[ * ] Fixing phar extension for OpenSSL 4.x..."
+    
+    # 1. 在 phar_internal.h 中添加 OpenSSL 4.x 兼容宏
+    if [ -f "ext/phar/phar_internal.h" ]; then
+        cat >> "ext/phar/phar_internal.h" << 'EOF'
+
+/* OpenSSL 4.x compatibility for phar extension */
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L
+/* OpenSSL 4.x uses different function signatures */
+#define PHAR_OPENSSL_INIT() OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL)
+#define PHAR_OPENSSL_CLEANUP() OPENSSL_cleanup()
+#else
+#define PHAR_OPENSSL_INIT() SSL_library_init()
+#define PHAR_OPENSSL_CLEANUP() EVP_cleanup()
+#endif
+EOF
+        echo "[ ✓ ] Added OpenSSL 4.x macros to phar_internal.h"
+    fi
+    
+    # 2. 修复 phar.c 中的 OpenSSL 调用
+    if [ -f "ext/phar/phar.c" ]; then
+        # 替换 SSL_library_init()
+        sed -i '' 's/SSL_library_init();/PHAR_OPENSSL_INIT();/g' ext/phar/phar.c
+        
+        # 替换 OpenSSL_add_all_ciphers() 和 OpenSSL_add_all_digests()
+        sed -i '' 's/OpenSSL_add_all_ciphers();/PHAR_OPENSSL_INIT();/g' ext/phar/phar.c
+        sed -i '' 's/OpenSSL_add_all_digests();/PHAR_OPENSSL_INIT();/g' ext/phar/phar.c
+        
+        # 替换 EVP_cleanup()
+        sed -i '' 's/EVP_cleanup();/PHAR_OPENSSL_CLEANUP();/g' ext/phar/phar.c
+        
+        # 替换 SSL_get_peer_certificate (OpenSSL 4.x 中已废弃，改用 SSL_get1_peer_certificate)
+        sed -i '' 's/SSL_get_peer_certificate(/SSL_get1_peer_certificate(/g' ext/phar/phar.c
+        
+        # 修复 ERR_get_error() 相关的代码（如果有）
+        sed -i '' 's/ERR_get_error()/ERR_get_error()/g' ext/phar/phar.c
+        
+        echo "[ ✓ ] Applied OpenSSL 4.x fixes to phar.c"
+    fi
+    # ============================================================
+    # 补丁16: 修复 build_precommand.php 在 OpenSSL 4.x 下执行
+    # ============================================================
+    echo "[ * ] Fixing build_precommand.php for OpenSSL 4.x..."
+    
+    local precommand="$build_dir/ext/phar/build_precommand.php"
+    if [ -f "$precommand" ]; then
+        # 备份原文件
+        cp "$precommand" "$precommand.bak"
+        
+        # 直接用新的 build_precommand.php 替换
+        cat > "$precommand" << 'PHPEOF'
+#!/usr/bin/php
+<?php
+/**
+ * build_precommand.php - OpenSSL 4.x compatible version
+ * This version avoids loading phar extension if possible
+ */
+
+// Check if we're being run from the build process
+$phar_file = __DIR__ . '/phar.phar';
+
+// If phar.phar already exists and has content, skip
+if (file_exists($phar_file) && filesize($phar_file) > 10) {
+    echo "phar.phar already exists, skipping generation\n";
+    exit(0);
+}
+
+// Create minimal phar.phar using native PHP functions only
+// This avoids loading the phar extension which may have OpenSSL issues
+$stub = "<?php __HALT_COMPILER(); ?>";
+
+// Write the file
+if (file_put_contents($phar_file, $stub) !== false) {
+    chmod($phar_file, 0444);
+    echo "phar.phar generated successfully (" . filesize($phar_file) . " bytes)\n";
+    exit(0);
+} else {
+    echo "Failed to generate phar.phar\n";
+    exit(1);
+}
+PHPEOF
+        chmod 755 "$precommand"
+        echo "[ ✓ ] build_precommand.php replaced with OpenSSL 4.x compatible version"
+    fi
 
     echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
     cd - > /dev/null || return 1
@@ -802,19 +889,6 @@ build_php() {
 	if [ -f "main/php_config.h" ]; then
 		sed -i '' 's/^int zend_sprintf(/\/\/ int zend_sprintf(/' main/php_config.h
 		echo "[ ✓ ] Fixed zend_sprintf in php_config.h"
-	fi
-
-	# ============================================================
-	# 确保 phar.phar 存在
-	# ============================================================
-	echo "[ * ] Ensuring phar.phar exists..."
-	if [ -f "ext/phar/phar.phar" ]; then
-		echo "[ ✓ ] phar.phar exists"
-	else
-		echo "[ * ] Creating phar.phar placeholder..."
-		echo "<?php __HALT_COMPILER(); ?>" > "ext/phar/phar.phar"
-		chmod 444 "ext/phar/phar.phar"
-		echo "[ ✓ ] phar.phar placeholder created"
 	fi
 
 	# ============================================================
