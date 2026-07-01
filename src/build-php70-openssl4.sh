@@ -506,7 +506,7 @@ EOF
         fi
         rm -f main/streams/cast.c.bak
     fi
-    
+
     echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
     cd - > /dev/null || return 1
 }
@@ -700,18 +700,47 @@ build_php() {
 	fi
 	
 	# ============================================================
-	# 设置编译环境（包括 OpenSSL 4.x 修复）
+	# 设置编译环境
 	# ============================================================
 	export CC=gcc14
 	export CXX=g++14
 	export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
-	
-	# 设置 OpenSSL 4.x 环境变量（修复 phar 生成时的段错误）
-	echo "[ * ] Setting OpenSSL 4.x environment..."
-	export LD_PRELOAD="/usr/local/lib/libssl.so.30:/usr/local/lib/libcrypto.so.30"
-	export LD_LIBRARY_PATH="/usr/local/icu56/lib:/usr/local/lib:/usr/lib"
-	echo "[ ✓ ] OpenSSL 4.x environment set"
-	
+    echo "[ * ] Setting OpenSSL 4.x environment..."
+
+    # 定义并调用 OpenSSL 库检测函数
+    detect_ssl_lib() {
+        local ssl_lib=$(find /usr/local/lib -name "libssl.so" -type f 2>/dev/null | head -1)
+        if [ -z "$ssl_lib" ]; then
+            ssl_lib=$(find /usr/local/lib -name "libssl.so.*" -type f 2>/dev/null | sort -V | tail -1)
+        fi
+        
+        local crypto_lib=$(find /usr/local/lib -name "libcrypto.so" -type f 2>/dev/null | head -1)
+        if [ -z "$crypto_lib" ]; then
+            crypto_lib=$(find /usr/local/lib -name "libcrypto.so.*" -type f 2>/dev/null | sort -V | tail -1)
+        fi
+        
+        if [ -n "$ssl_lib" ] && [ -n "$crypto_lib" ]; then
+            echo "$ssl_lib:$crypto_lib"
+            return 0
+        fi
+        return 1
+    }
+
+    # 调用检测并设置 LD_PRELOAD
+    SSL_LIBS=$(detect_ssl_lib)
+    if [ $? -eq 0 ]; then
+        SSL_LIB=$(echo "$SSL_LIBS" | cut -d: -f1)
+        CRYPTO_LIB=$(echo "$SSL_LIBS" | cut -d: -f2)
+        export LD_PRELOAD="$SSL_LIB:$CRYPTO_LIB"
+        echo "[ ✓ ] LD_PRELOAD set to: $LD_PRELOAD"
+    else
+        echo "⚠️  Warning: Could not detect OpenSSL libraries"
+        echo "   LD_PRELOAD not set"
+    fi
+
+    export LD_LIBRARY_PATH="/usr/local/icu56/lib:/usr/local/lib:/usr/lib"
+    echo "[ ✓ ] OpenSSL 4.x environment set"
+        
 	find . -name "config.cache" -delete
 	
 	# ============================================================
@@ -776,7 +805,7 @@ build_php() {
 	fi
 
 	# ============================================================
-	# 确保 phar.phar 存在（源码包中默认没有此文件）
+	# 确保 phar.phar 存在
 	# ============================================================
 	echo "[ * ] Ensuring phar.phar exists..."
 	if [ -f "ext/phar/phar.phar" ]; then
