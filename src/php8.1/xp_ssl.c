@@ -140,7 +140,7 @@
 /* Used for IPv6 Address peer verification */
 #define EXPAND_IPV6_ADDRESS(_str, _bytes) \
 	do { \
-		const unsigned char *__data = ASN1_STRING_get0_data(_bytes); \
+		const unsigned char *__data = ASN1_STRING_get0_data((const ASN1_STRING *)_bytes); \
 		snprintf(_str, 40, "%X:%X:%X:%X:%X:%X:%X:%X", \
 			__data[0] << 8 | __data[1], \
 			__data[2] << 8 | __data[3], \
