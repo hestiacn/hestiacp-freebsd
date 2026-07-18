@@ -58,8 +58,8 @@ download_imagick() {
 	
 	[ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
 	
-	echo "[ * ] Downloading ImageMagick 3.8.2..."
-	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.2.tar.gz" || return 1
+	echo "[ * ] Downloading ImageMagick 3.8.1..."
+	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
 	
 	echo "[ * ] Extracting..."
 	tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
