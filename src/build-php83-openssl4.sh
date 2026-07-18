@@ -1972,7 +1972,8 @@ EOF
         CC="clang" \
         CXX="clang++" \
         CXXFLAGS="-std=c++17" \
-        LIBS="-licuio" \
+        LDFLAGS="-L/usr/local/icu74/lib -Wl,-rpath,/usr/local/icu74/lib" \
+        LIBS="-licui18n -licuuc -licudata -licuio" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
         LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
