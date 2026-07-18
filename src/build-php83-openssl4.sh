@@ -1923,6 +1923,55 @@ EOF
     echo "  CC=$CC"
     echo "  CXX=$CXX"
     echo "  CXXFLAGS=$CXXFLAGS"
+
+    echo ""
+    echo "========================================"
+    echo "[ * ] 检测 ICU 74 路径"
+    echo "========================================"
+
+    ICU_FOUND=""
+    ICU_PREFIX=""
+
+    # 尝试找到 ICU 74
+    if [ -d "/usr/local/icu74" ] && [ -f "/usr/local/icu74/lib/libicuuc.so.74.2" ]; then
+        ICU_FOUND="/usr/local/icu74"
+        ICU_PREFIX="/usr/local/icu74"
+        echo "✅ 找到 ICU 74: $ICU_FOUND"
+    elif [ -d "/usr/local/icu" ] && [ -f "/usr/local/icu/lib/libicuuc.so.74.2" ]; then
+        ICU_FOUND="/usr/local/icu"
+        ICU_PREFIX="/usr/local/icu"
+        echo "✅ 找到 ICU 74: $ICU_FOUND"
+    elif [ -d "/usr/local" ] && [ -f "/usr/local/lib/libicuuc.so.74.2" ]; then
+        ICU_FOUND="/usr/local"
+        ICU_PREFIX="/usr/local"
+        echo "✅ 找到 ICU 74: $ICU_FOUND"
+    else
+        echo "⚠️  未找到 ICU 74，尝试查找其他版本..."
+        # 查找任何 ICU 版本
+        ICU_LIB=$(find /usr -name "libicuuc.so*" -type f 2>/dev/null | head -1)
+        if [ -n "$ICU_LIB" ]; then
+            ICU_PREFIX=$(dirname $(dirname "$ICU_LIB"))
+            echo "  找到 ICU: $ICU_LIB"
+            echo "  前缀: $ICU_PREFIX"
+        else
+            echo "❌ 未找到任何 ICU 库"
+            exit 1
+        fi
+    fi
+
+    # 导出 ICU 路径
+    export ICU_PREFIX="$ICU_PREFIX"
+    export ICU_CFLAGS="-I${ICU_PREFIX}/include"
+    export ICU_LIBS="-L${ICU_PREFIX}/lib -licui18n -licuuc -licudata -licuio"
+    export LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib"
+    export PKG_CONFIG_PATH="${ICU_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+    echo "ICU_PREFIX: $ICU_PREFIX"
+    echo "ICU_CFLAGS: $ICU_CFLAGS"
+    echo "ICU_LIBS: $ICU_LIBS"
+    echo "LDFLAGS: $LDFLAGS"
+    echo "========================================"
+
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -1932,10 +1981,10 @@ EOF
         return 1
     }
 
-	echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-	echo "CFLAGS: $CFLAGS"
-    export LDFLAGS="-L/usr/local/icu74/lib -L/usr/local/lib ${LDFLAGS}"
-    echo "LDFLAGS (without rpath for configure): $LDFLAGS"
+    echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
+    echo "CFLAGS: $CFLAGS"
+    echo "LDFLAGS: $LDFLAGS"
+
     # ============================================================
     # 修复 bzip2 pkg-config（FreeType 2 依赖）
     # ============================================================
@@ -1943,20 +1992,21 @@ EOF
 
     mkdir -p /usr/local/libdata/pkgconfig
     cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
-prefix=/usr
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
+    prefix=/usr
+    exec_prefix=${prefix}
+    libdir=${exec_prefix}/lib
+    includedir=${prefix}/include
 
-Name: bzip2
-Description: bzip2 compression library
-Version: 1.0.8
-Libs: -L${libdir} -lbz2
-Cflags: -I${includedir}
-EOF
+    Name: bzip2
+    Description: bzip2 compression library
+    Version: 1.0.8
+    Libs: -L${libdir} -lbz2
+    Cflags: -I${includedir}
+    EOF
 
     export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     echo "  ✅ bzip2.pc created and PKG_CONFIG_PATH updated"
+
     # 获取基础配置参数
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
@@ -1972,8 +2022,9 @@ EOF
         CC="clang" \
         CXX="clang++" \
         CXXFLAGS="-std=c++17" \
-        LDFLAGS="-L/usr/local/icu74/lib -Wl,-rpath,/usr/local/icu74/lib" \
+        LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib" \
         LIBS="-licui18n -licuuc -licudata -licuio" \
+        --with-icu="${ICU_PREFIX}" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
         LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
@@ -2016,7 +2067,6 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
-    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/icu74/lib -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2048,30 +2098,6 @@ EOF
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
     
-    # ============================================================
-    # 修复 Makefile 链接问题
-    # ============================================================
-    echo "[ * ] Fixing link flags in Makefile..."
-
-    if [ -f "Makefile" ]; then
-        if ! grep -q "\-lc++" Makefile; then
-            sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -lc++/' Makefile
-            echo "[ ✓ ] Added -lc++ to EXTRA_LIBS"
-        fi
-        
-        echo "[ * ] Forcing ICU 74 library paths..."
-        sed -i '' 's|-licuio|/usr/local/icu74/lib/libicuio.so.74.2|g' Makefile
-        sed -i '' 's|-licui18n|/usr/local/icu74/lib/libicui18n.so.74.2|g' Makefile
-        sed -i '' 's|-licuuc|/usr/local/icu74/lib/libicuuc.so.74.2|g' Makefile
-        sed -i '' 's|-licudata|/usr/local/icu74/lib/libicudata.so.74.2|g' Makefile
-
-        if ! grep -q "/usr/local/icu74/lib" Makefile; then
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu74/lib \1|' Makefile
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -Wl,-rpath,/usr/local/icu74/lib|' Makefile
-        fi
-        
-        echo "[ ✓ ] Makefile updated to use ICU 74"
-    fi
 
     # ============================================================
     # 编译 PHP
