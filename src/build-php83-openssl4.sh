@@ -736,50 +736,48 @@ build_php() {
     # ============================================================
     # PHP 8.3 特殊处理：使用 ICU 74
     # ============================================================
-    if [ "$major" = "8" ] && [ "$minor" = "3" ]; then
-        # 编译 ICU 74
-        if ! build_icu74; then
-            echo "❌ Failed to build ICU 74"
-            return 1
-        fi
-        
-        cd "$build_dir" || {
-            echo "❌ Failed to return to PHP source directory"
-            return 1
-        }
-        echo "[ * ] Current directory: $(pwd)"
-        
-        if [ ! -f "/usr/local/icu74/bin/icu-config" ]; then
-            echo "❌ icu-config not found at /usr/local/icu74/bin/icu-config"
-            return 1
-        fi
-        echo "[ ✓ ] icu-config found"
-        
-        export PATH="/usr/local/icu74/bin:$PATH"
-        
-        export CFLAGS="-I/usr/local/icu74/include -I/usr/local/include \
-            -Wno-deprecated-declarations \
-            -Wno-incompatible-pointer-types-discards-qualifiers \
-            -Wno-implicit-function-declaration \
-            -Wno-pointer-sign"
-        export PSPELL_LIBS="-laspell"
-        export LIBS="-laspell $LIBS"
-        export DTRACE="/usr/sbin/dtrace"
-        export ac_cv_prog_DTRACE="/usr/sbin/dtrace"
-        export CFLAGS="$CFLAGS -D_WANT_FREEBSD11_WAIT=1"
-        export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/icu74/lib:/usr/lib"
-        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/icu74/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu74/lib -Wl,-rpath,/usr/local/lib"
-        export CPPFLAGS="-I/usr/local/icu74/include -I/usr/local/include -I/usr/local/include/freetype2"
-        export ICU_CONFIG="/usr/local/icu74/bin/icu-config"
-        export ICU_PREFIX="/usr/local/icu74"
-        export ICU_CFLAGS="-I/usr/local/icu74/include"
-        export ICU_LIBS="-L/usr/local/icu74/lib -licui18n -licuuc -licudata -licuio"
-        export LDFLAGS="$LDFLAGS -licuio"
-        export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
-        export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
-        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '74.2')"
+    # 编译 ICU 74
+    if ! build_icu74; then
+        echo "❌ Failed to build ICU 74"
+        return 1
     fi
+    
+    cd "$build_dir" || {
+        echo "❌ Failed to return to PHP source directory"
+        return 1
+    }
+    echo "[ * ] Current directory: $(pwd)"
+    
+    if [ ! -f "/usr/local/icu74/bin/icu-config" ]; then
+        echo "❌ icu-config not found at /usr/local/icu74/bin/icu-config"
+        return 1
+    fi
+    echo "[ ✓ ] icu-config found"
+    
+    export PATH="/usr/local/icu74/bin:$PATH"
+    
+    export CFLAGS="-I/usr/local/icu74/include -I/usr/local/include \
+        -Wno-deprecated-declarations \
+        -Wno-incompatible-pointer-types-discards-qualifiers \
+        -Wno-implicit-function-declaration \
+        -Wno-pointer-sign"
+    export PSPELL_LIBS="-laspell"
+    export LIBS="-laspell $LIBS"
+    export DTRACE="/usr/sbin/dtrace"
+    export ac_cv_prog_DTRACE="/usr/sbin/dtrace"
+    export CFLAGS="$CFLAGS -D_WANT_FREEBSD11_WAIT=1"
+    export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/icu74/lib:/usr/lib"
+    export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
+    export LDFLAGS="-L/usr/local/icu74/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu74/lib -Wl,-rpath,/usr/local/lib"
+    export CPPFLAGS="-I/usr/local/icu74/include -I/usr/local/include -I/usr/local/include/freetype2"
+    export ICU_CONFIG="/usr/local/icu74/bin/icu-config"
+    export ICU_PREFIX="/usr/local/icu74"
+    export ICU_CFLAGS="-I/usr/local/icu74/include"
+    export ICU_LIBS="-L/usr/local/icu74/lib -licui18n -licuuc -licudata -licuio"
+    export LDFLAGS="$LDFLAGS -licuio"
+    export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
+    export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
+    echo "[ ✓ ] ICU config version: $(icu-config --version || echo '74.2')"
 	
     # ============================================================
     # 设置编译环境
