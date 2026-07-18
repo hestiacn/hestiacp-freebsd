@@ -113,9 +113,7 @@ extract_archive() {
 # ============================================================
 get_config_args() {
     local version="$1"
-    local major=$(echo "$version" | cut -d. -f1)
-    local minor=$(echo "$version" | cut -d. -f2)
-    local ver_suffix="${major}${minor}"
+    local ver_suffix="82"
     
     local args=(
         "--prefix=/usr/local"
@@ -123,12 +121,12 @@ get_config_args() {
         "--bindir=/usr/local/bin"
         "--sbindir=/usr/local/sbin"
         "--libexecdir=/usr/local/libexec"
-        "--sysconfdir=/usr/local/etc/php${ver_suffix}"
+        "--sysconfdir=/usr/local/etc/php82"
         "--localstatedir=/usr/local/var"
-        "--mandir=/usr/local/share/php${ver_suffix}/man"
-        "--includedir=/usr/local/include/php${ver_suffix}"
-        "--libdir=/usr/local/lib/php${ver_suffix}"
-        "--program-suffix=${ver_suffix}"
+        "--mandir=/usr/local/share/php82/man"
+        "--includedir=/usr/local/include/php82"
+        "--libdir=/usr/local/lib/php82"
+        "--program-suffix=82"
         "--enable-embed"
         "--enable-fpm"
         "--enable-cli"
@@ -165,7 +163,7 @@ get_config_args() {
         "--enable-sysvsem"
         "--enable-sysvshm"
         "--enable-calendar"
-        "--enable-random"
+        "--with-pic"
         "--with-gettext=/usr/local"
         "--with-curl=/usr/local"
         "--with-gmp=/usr/local"
@@ -176,7 +174,7 @@ get_config_args() {
         "--with-pgsql"
         "--with-pdo-pgsql"
         "--with-iconv=/usr/local"
-        "--with-openssl=${OPENSSL_PREFIX:-/usr/local}"
+        "--with-openssl=/usr/local"
         "--with-sodium"
         "--with-password-argon2"
         "--with-ldap=/usr/local"
@@ -190,7 +188,7 @@ get_config_args() {
         "--with-jpeg"
         "--with-webp"
         "--with-zip"
-        "--with-icu"
+        "--with-icu=/usr/local/icu72"
     )
 
     printf "%s\n" "${args[@]}"
