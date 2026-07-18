@@ -16,7 +16,7 @@
 export PATH=$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 
 # 仓库地址
-RHOST='pkg.hestiacp.com'
+RHOST='pkg.hestiamb.org'
 VERSION='freebsd'
 HESTIA='/usr/local/hestia'
 LOG="/root/hst_install_backups/hst_install-$(date +%d%m%Y%H%M).log"
@@ -251,46 +251,42 @@ version_ge() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1" -o -n 
 tmpfile=$(mktemp -t /tmp)
 
 # 参数解析
-for arg; do
-	delim=""
-	case "$arg" in
-		--apache24) args="${args}-a " ;;
-		--phpfpm) args="${args}-w " ;;
-		--vsftpd) args="${args}-v " ;;
-		--proftpd) args="${args}-j " ;;
-		--bind${BIND_VER}) args="${args}-k " ;;
-		--mysql) args="${args}-m " ;;
-		--mariadb$mariadb_v-server) args="${args}-m " ;;
-		--mysql-classic) args="${args}-M " ;;
-		--mysql8) args="${args}-M " ;;
-		--postgresql${POSTGRES_VER}-server) args="${args}-g " ;;
-		--exim) args="${args}-x " ;;
-		--dovecot) args="${args}-z " ;;
-		--sieve) args="${args}-Z " ;;
-		--clamav) args="${args}-c " ;;
-		--spamassassin) args="${args}-t " ;;
-		--pf) args="${args}-i " ;;
-		--fail2ban) args="${args}-b " ;;
-		--multiphp) args="${args}-o " ;;
-		--quota) args="${args}-q " ;;
-		--resourcelimit) args="${args}-L " ;;
-		--webterminal) args="${args}-W " ;;
-		--port) args="${args}-r " ;;
-		--lang) args="${args}-l " ;;
-		--interactive) args="${args}-y " ;;
-		--api) args="${args}-d " ;;
-		--hostname) args="${args}-s " ;;
-		--email) args="${args}-e " ;;
-		--username) args="${args}-u " ;;
-		--password) args="${args}-p " ;;
-		--force) args="${args}-f " ;;
-		--with-pkgs) args="${args}-D " ;;
-		--help) args="${args}-h " ;;
-		*)
-			[[ "${arg:0:1}" == "-" ]] || delim="\""
-			args="${args}${delim}${arg}${delim} "
-			;;
-	esac
+args=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apache24) args="$args -a" ;;
+        --phpfpm) args="$args -w" ;;
+        --vsftpd) args="$args -v" ;;
+        --proftpd) args="$args -j" ;;
+        --named) args="$args -k" ;;
+        --mysql) args="$args -m" ;;
+        --mysql8) args="$args -M" ;;
+        --postgresql) args="$args -g" ;;
+        --exim) args="$args -x" ;;
+        --dovecot) args="$args -z" ;;
+        --sieve) args="$args -Z" ;;
+        --clamav) args="$args -c" ;;
+        --spamassassin) args="$args -t" ;;
+        --pf) args="$args -i" ;;
+        --fail2ban) args="$args -b" ;;
+        --multiphp) args="$args -o" ;;
+        --quota) args="$args -q" ;;
+        --resourcelimit) args="$args -L" ;;
+        --webterminal) args="$args -W $2"; shift ;;
+        --api) args="$args -d" ;;
+        --interactive) args="$args -y" ;;
+        --force) args="$args -f" ;;
+        --help) args="$args -h" ;;
+        --port) args="$args -r $2"; shift ;;
+        --lang) args="$args -l $2"; shift ;;
+        --hostname) args="$args -s $2"; shift ;;
+        --email) args="$args -e $2"; shift ;;
+        --username) args="$args -u $2"; shift ;;
+        --password) args="$args -p $2"; shift ;;
+        --with-pkgs) args="$args -D $2"; shift ;;
+        *) ;;
+    esac
+    shift
 done
 eval set -- "$args"
 
@@ -441,11 +437,19 @@ if [ -d "$HESTIA" ]; then
 fi
 
 # Check OS
-type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
-if [ "$type" = "ubuntu" ]; then
-	check_result 1 "You are running the wrong installer for Ubuntu. Please run hst-install.sh or hst-install-ubuntu.sh instead."
-elif [ "$type" != "debian" ]; then
-	check_result 1 "You are running an unsupported OS."
+if [ "$(uname -s)" = "FreeBSD" ]; then
+	# 这是 FreeBSD 系统，继续安装
+	echo "FreeBSD system detected, continuing..."
+elif [ -f /etc/os-release ]; then
+	type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
+	if [ "$type" = "ubuntu" ]; then
+		check_result 1 "You are running the wrong installer for Ubuntu. Please run hst-install.sh or hst-install-ubuntu.sh instead."
+	elif [ "$type" != "debian" ]; then
+		check_result 1 "You are running an unsupported OS."
+	fi
+else
+	# 如果既不是 FreeBSD 也没有 /etc/os-release，报错
+	check_result 1 "Unable to detect OS. This installer is for FreeBSD only."
 fi
 
 # Clear the screen
@@ -493,7 +497,7 @@ fi
 
 # Check installed packages
 tmpfile=$(mktemp -p /tmp)
-pkg --get-selections > $tmpfile
+pkg info > $tmpfile
 conflicts_pkg="exim4 mariadb-server apache2 nginx hestia postfix"
 
 # Drop postfix from the list if exim should not be installed
@@ -521,7 +525,7 @@ if [ -n "$conflicts" ] && [ -z "$force" ]; then
 	read -p 'Would you like to remove the conflicting packages? [y/N] ' answer
 	if [ "$answer" = 'y' ] || [ "$answer" = 'Y' ]; then
 		pkg_delete_force=$(echo $conflicts | tr ' ' '\n' | cut -d'*' -f1 | xargs)
-		pkg_remove $pkg_delete_force
+		pkg delete -y $pkg_delete_force
 		unset answer
 	else
 		check_result 1 "Hestia Control Panel should be installed on a clean server."
@@ -557,7 +561,7 @@ fi
 
 # Validate whether installation script matches release version before continuing with install
 if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
-	release_branch_ver=$(curl -s https://raw.githubusercontent.com/hestiacp/hestiacp/release/src/deb/hestia/control | grep "Version:" | awk '{print $2}')
+	release_branch_ver=$(curl -s https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/src/pkg/hestia/control | grep "Version:" | awk '{print $2}')
 	if [ "$HESTIA_INSTALL_VER" != "$release_branch_ver" ]; then
 		echo
 		echo -e "\e[91mInstallation aborted\e[0m"
@@ -565,7 +569,7 @@ if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
 		echo -e "\e[33mERROR: Install script version does not match package version!\e[0m"
 		echo -e "\e[33mPlease download the installer from the release branch in order to continue:\e[0m"
 		echo ""
-		echo -e "\e[33mhttps://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install.sh\e[0m"
+		echo -e "\e[33mhttps://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install.sh\e[0m"
 		echo ""
 		echo -e "\e[33mTo test pre-release versions, build the .deb packages and re-run the installer:\e[0m"
 		echo -e "  \e[33m./hst_autocompile.sh \e[1m--hestia branchname no\e[21m\e[0m"

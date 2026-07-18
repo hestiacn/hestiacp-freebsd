@@ -89,10 +89,6 @@ elif command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]
 	VERSION='freebsd'
 	
 	case "$release" in
-		13)
-			echo "FreeBSD 13 detected (version: $full_release)"
-			echo "Note: FreeBSD 13.2 or higher is recommended"
-			;;
 		14)
 			echo "FreeBSD 14 detected (version: $full_release)"
 			;;
@@ -102,7 +98,7 @@ elif command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]
 			;;
 		*)
 			echo "Error: FreeBSD $release is not supported"
-			echo "Supported versions: FreeBSD 13, 14, 15"
+			echo "Supported versions: FreeBSD 14, 15"
 			exit 1
 			;;
 	esac
@@ -117,7 +113,7 @@ no_support_message() {
 	echo "****************************************************"
 	echo "  Debian 11, 12"
 	echo "  Ubuntu 22.04, 24.04 LTS"
-	echo "  FreeBSD 13, 14, 15"
+	echo "  FreeBSD 14, 15"
 	echo ""
 	exit 1
 }
@@ -180,7 +176,7 @@ check_wget_curl() {
 	
 	# FreeBSD: 使用 fetch
 	if [ "$type" = "freebsd" ]; then
-		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install-$type.sh
+		fetch -o hst-install-$type.sh https://gh.felicity.ac.cn/https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh
 		if [ "$?" -eq '0' ]; then
 			bash hst-install-$type.sh "$@"
 			exit

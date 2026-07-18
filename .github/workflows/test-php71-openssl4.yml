@@ -1,0 +1,200 @@
+name: TEST - PHP 7.1 with OpenSSL 4.0.1
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - mains
+      - release
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+jobs:
+  test-php71-openssl4:
+    name: Test PHP 7.1.33 with OpenSSL 4.0.1 on FreeBSD 14.0
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Build PHP 7.1.33 with OpenSSL 4.0.1
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.0"
+          usesh: true
+          sync: rsync
+          copyback: true
+          run: |
+            set -e
+
+            export IGNORE_OSVERSION=yes
+            export ASSUME_ALWAYS_YES=yes
+
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
+
+            echo "========================================"
+            echo "TEST: PHP 7.1.33 with OpenSSL 4.0.1"
+            echo "========================================"
+
+            # 安装编译依赖
+            echo "[ * ] Installing build dependencies..."
+            pkg update -f
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp python pcre2 openssl40 postgresql18-client
+
+            # 创建 bash 软链接
+            if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
+                ln -sf /usr/local/bin/bash /bin/bash
+                echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
+            fi
+
+            echo ""
+            echo "OpenSSL version:"
+            /usr/local/bin/openssl version
+            echo ""
+
+            # 设置使用 OpenSSL 4.0.1
+            export OPENSSL_PREFIX="/usr/local"
+            export OPENSSL_VERSION="4.0.1"
+            export OPENSSL40_INCLUDE="/usr/local/include/openssl"
+            export OPENSSL40_LIB="/usr/local/lib"
+            export CFLAGS="-I${OPENSSL40_INCLUDE} -I/usr/include -I/usr/local/include -Wno-deprecated-declarations"
+            export LDFLAGS="-L${OPENSSL40_LIB} -L/usr/lib -L/usr/local/lib"
+            export PKG_CONFIG_PATH="${OPENSSL40_LIB}/pkgconfig:/usr/local/lib/pkgconfig"
+            export LD_LIBRARY_PATH="${OPENSSL40_LIB}:/usr/lib"
+
+            export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts-test"
+            mkdir -p "$ARTIFACT_DIR"
+
+            chmod +x src/test-php71-openssl4.sh
+
+            echo "[ * ] Starting PHP 7.1.33 build with OpenSSL 4.0.1..."
+            echo "OPENSSL_PREFIX: $OPENSSL_PREFIX"
+            echo "OPENSSL40_INCLUDE: $OPENSSL40_INCLUDE"
+            echo "OPENSSL40_LIB: $OPENSSL40_LIB"
+            echo "CFLAGS: $CFLAGS"
+            echo "LDFLAGS: $LDFLAGS"
+            echo ""
+
+            # 运行测试脚本
+            bash src/test-php71-openssl4.sh 2>&1 | tee build-php71-openssl4.log
+            EXIT_CODE=$?
+
+            echo "=== Exit code: $EXIT_CODE ==="
+
+            # ============================================================
+            # 完整打印 OpenSSL 4.0.x 扫描报告
+            # ============================================================
+            echo ""
+            echo "========================================"
+            echo "OpenSSL 4.0.x SCAN REPORTS (FULL)"
+            echo "========================================"
+            echo ""
+
+            # 报告1: openssl4-scan-report.txt
+            if [ -f "/tmp/php-build-test/logs/openssl4-scan-report.txt" ]; then
+                echo "========== openssl4-scan-report.txt =========="
+                cat "/tmp/php-build-test/logs/openssl4-scan-report.txt"
+                echo "========== END =========="
+                echo ""
+            else
+                echo "⚠️  openssl4-scan-report.txt not found"
+            fi
+
+            # 报告2: openssl4-missing-functions.txt
+            if [ -f "/tmp/php-build-test/logs/openssl4-missing-functions.txt" ]; then
+                echo "========== openssl4-missing-functions.txt =========="
+                echo "Functions used by PHP 7.0 but NOT found in OpenSSL 4.0.x:"
+                echo ""
+                cat "/tmp/php-build-test/logs/openssl4-missing-functions.txt"
+                echo "========== END =========="
+                echo ""
+            else
+                echo "⚠️  openssl4-missing-functions.txt not found"
+            fi
+
+            # 报告3: php71-used-functions.txt
+            if [ -f "/tmp/php-build-test/logs/php71-used-functions.txt" ]; then
+                echo "========== php71-used-functions.txt =========="
+                echo "OpenSSL functions used by PHP 7.0:"
+                echo ""
+                cat "/tmp/php-build-test/logs/php71-used-functions.txt"
+                echo "========== END =========="
+                echo ""
+            else
+                echo "⚠️  php71-used-functions.txt not found"
+            fi
+
+            # 报告4: openssl4-available-functions.txt
+            if [ -f "/tmp/php-build-test/logs/openssl4-available-functions.txt" ]; then
+                echo "========== openssl4-available-functions.txt =========="
+                echo "All functions available in OpenSSL 4.x:"
+                echo ""
+                cat "/tmp/php-build-test/logs/openssl4-available-functions.txt"
+                echo "========== END =========="
+                echo ""
+            else
+                echo "⚠️  openssl4-available-functions.txt not found"
+            fi
+
+            # 编译错误
+            if [ $EXIT_CODE -ne 0 ]; then
+                echo "========================================"
+                echo "BUILD ERRORS (FULL)"
+                echo "========================================"
+                echo ""
+                echo "=== All errors ==="
+                grep -E "error:|Error:" build-php71-openssl4.log || echo "No errors found"
+                echo ""
+                echo "========================================"
+                echo "Full build log (last 500 lines):"
+                echo "========================================"
+                tail -500 build-php71-openssl4.log
+            fi
+
+            echo ""
+            echo "========================================"
+            echo "End of OpenSSL 4.0.x Scan Reports"
+            echo "========================================"
+            echo ""
+
+            if [ $EXIT_CODE -eq 0 ]; then
+                echo "[ ✓ ] PHP 7.1.33 with OpenSSL 4.0.1 compiled successfully!"
+            else
+                echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
+                exit 1
+            fi
+
+            echo ""
+            echo "=== Build artifacts ==="
+            ls -la "$ARTIFACT_DIR/" 2>/dev/null || echo "No artifacts found"
+
+            echo "[ ✓ ] Test completed!"
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-php71-openssl4-log
+          path: build-php71-openssl4.log
+          retention-days: 7
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-php71-openssl4-build-logs
+          path: /tmp/php-build-test/logs/
+          retention-days: 7
+
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: openssl4-scan-reports-php71
+          path: /tmp/php-build-test/logs/openssl4-*.txt
+          retention-days: 7

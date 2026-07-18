@@ -1,0 +1,245 @@
+name: Build and Deploy PHP Packages to Cloudflare R2
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - mains
+      - release
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+jobs:
+  build-php:
+    name: Build PHP ${{ matrix.php_version }} on FreeBSD ${{ matrix.freebsd_version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php_version: "5.6.40"
+            freebsd_version: "14.0"
+          - php_version: "7.0.33"
+            freebsd_version: "14.0"
+          - php_version: "7.1.33"
+            freebsd_version: "14.0"
+          - php_version: "7.2.34"
+            freebsd_version: "14.0"
+          - php_version: "7.3.33"
+            freebsd_version: "14.0"
+          - php_version: "7.4.33"
+            freebsd_version: "14.0"
+          - php_version: "8.0.30"
+            freebsd_version: "14.0"
+          - php_version: "8.1.34"
+            freebsd_version: "14.0"
+          - php_version: "8.2.31"
+            freebsd_version: "14.0"
+          - php_version: "8.3.31"
+            freebsd_version: "14.0"
+          - php_version: "8.4.22"
+            freebsd_version: "14.0"
+          - php_version: "8.5.7"
+            freebsd_version: "14.0"
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Build PHP ${{ matrix.php_version }} on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: ${{ matrix.freebsd_version }}
+          usesh: true
+          sync: rsync
+          copyback: true
+          run: |
+            set -e
+            export IGNORE_OSVERSION=yes
+            export ASSUME_ALWAYS_YES=yes
+
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
+
+            PHP_VERSION="${{ matrix.php_version }}"
+            MAJOR=$(echo "$PHP_VERSION" | cut -d. -f1)
+            MINOR=$(echo "$PHP_VERSION" | cut -d. -f2)
+
+            echo "========================================"
+            echo "Building PHP ${PHP_VERSION} on FreeBSD ${{ matrix.freebsd_version }}"
+            echo "========================================"
+
+            # 1. 安装依赖
+            echo "[ * ] Installing build dependencies..."
+            pkg update -f
+
+            PKGS="bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp python pcre2 openssl postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7"
+
+            # PHP 5.6 需要旧版 autoconf
+            [ "$MAJOR" = "5" ] && PKGS="$PKGS autoconf2.69"
+
+            # PHP 7.4+ 需要 oniguruma
+            if [ "$MAJOR" -ge "8" ] || [ "$MAJOR" = "7" -a "$MINOR" -ge "4" ]; then
+                PKGS="$PKGS oniguruma"
+            fi
+
+            # PHP 8.1+ 需要 xxHash
+            if [ "$MAJOR" -ge "8" ] && [ "$MINOR" -ge "1" ]; then
+                PKGS="$PKGS xxhash"
+            fi
+
+            pkg install -y $PKGS
+
+            # bash 软链接
+            [ ! -L /bin/bash ] && [ ! -f /bin/bash ] && ln -sf /usr/local/bin/bash /bin/bash
+
+            # 2. 构建
+            export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+            mkdir -p "$ARTIFACT_DIR"
+
+            chmod +x src/build-legacy-php.sh
+            /usr/local/bin/bash src/build-legacy-php.sh "$PHP_VERSION" 2>&1 | tee build-php.log
+
+            EXIT_CODE=$?
+            echo "=== Exit code: $EXIT_CODE ==="
+
+            if [ $EXIT_CODE -ne 0 ]; then
+                echo "❌ Build failed!"
+                tail -200 build-php.log
+                exit 1
+            fi
+
+            echo "✅ Build successful!"
+            ls -la "$ARTIFACT_DIR/" 2>/dev/null || echo "No artifacts found"
+
+      - name: Upload PHP packages (Artifact)
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: php-${{ matrix.php_version }}-static
+          path: artifacts/*.pkg
+          retention-days: 30
+
+  # ============================================================
+  # 合并所有 PHP 包并上传到 R2
+  # ============================================================
+  deploy-to-r2:
+    name: Deploy all PHP packages to Cloudflare R2
+    runs-on: ubuntu-latest
+    needs: [build-php]
+    if: always() && !cancelled()
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Download all PHP packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: php-*-static
+          path: ./packages
+          merge-multiple: true
+
+      - name: List downloaded packages
+        run: |
+          echo "========================================"
+          echo "Downloaded packages:"
+          echo "========================================"
+          ls -la ./packages/ || echo "No packages found"
+          echo ""
+          echo "Package count: $(find ./packages -name '*.pkg' 2>/dev/null | wc -l)"
+
+      - name: Sync to Cloudflare R2 (incremental)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
+          if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
+            ENDPOINT="https://$ENDPOINT"
+          fi
+
+          echo "========================================"
+          echo "Uploading packages to Cloudflare R2"
+          echo "Endpoint: $ENDPOINT"
+          echo "========================================"
+
+          # 检查是否有包
+          if [ -z "$(ls -A ./packages/ 2>/dev/null)" ]; then
+            echo "⚠️ No packages found in ./packages/, skipping upload"
+            exit 0
+          fi
+
+          echo "Local packages:"
+          ls -la ./packages/
+
+          # 增量同步到 R2
+          aws s3 sync ./packages/ s3://fbsd-repo/ \
+            --endpoint-url "$ENDPOINT" \
+            --exact-timestamps \
+            --region auto \
+            --acl public-read
+
+          echo ""
+          echo "========================================"
+          echo "✅ Upload completed!"
+          echo "========================================"
+
+          # 验证上传
+          echo ""
+          echo "Files in R2 bucket:"
+          aws s3 ls s3://fbsd-repo/ \
+            --endpoint-url "$ENDPOINT" \
+            --recursive \
+            --human-readable || echo "⚠️ Could not list files"
+
+      - name: Generate repository metadata
+        if: success()
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
+          if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
+            ENDPOINT="https://$ENDPOINT"
+          fi
+
+          echo "========================================"
+          echo "Generating repository metadata"
+          echo "========================================"
+
+          # 生成 PHP 版本索引
+          echo "## PHP Versions Available" > php-versions.md
+          echo "" >> php-versions.md
+          echo "| Version | Package |" >> php-versions.md
+          echo "|---------|---------|" >> php-versions.md
+
+          # 从 R2 获取已上传的包列表
+          aws s3 ls s3://fbsd-repo/ \
+            --endpoint-url "$ENDPOINT" \
+            --recursive | grep "\.pkg$" | while read line; do
+            filename=$(echo "$line" | awk '{print $NF}')
+            version=$(echo "$filename" | sed -E 's/php-([0-9]+\.[0-9]+\.[0-9]+)-.*/\1/')
+            if [ -n "$version" ]; then
+              echo "| PHP $version | \`$filename\` |" >> php-versions.md
+            fi
+          done
+
+          echo "" >> php-versions.md
+          echo "## Usage" >> php-versions.md
+          echo "" >> php-versions.md
+          echo "To use these PHP packages, add the following repository configuration:" >> php-versions.md
+          echo "" >> php-versions.md
+          echo '```bash' >> php-versions.md
+          echo '# /usr/local/etc/pkg/repos/hestiacp-php.conf' >> php-versions.md
+          echo 'hestiacp-php: {' >> php-versions.md
+          echo '  url: "https://pkg.hestiamb.org/php",' >> php-versions.md
+          echo '  mirror_type: "srv",' >> php-versions.md
+          echo '  signature_type: "none",' >> php-versions.md
+          echo '  enabled: yes' >> php-versions.md
+          echo '}' >> php-versions.md
+          echo '```' >> php-versions.md
+
+          cat php-versions.md

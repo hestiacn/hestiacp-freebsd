@@ -6,7 +6,7 @@ on:
     types: [published]
   push:
     branches:
-      - main
+      - mains
       - release
   workflow_dispatch:
     inputs:
@@ -22,12 +22,12 @@ jobs:
     steps:
       # 1. 检出最新源码
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "15.0"
+          release: "14.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
@@ -95,39 +95,8 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 准备产物 - 包含公钥供客户端下载
-            mkdir -p final-packages
-
-            # 复制签名后的包文件到 final-packages
-            cp -R ./* final-packages/
-
-            # 复制公钥到产物目录（客户端需要）
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
-
-            # 验证签名文件
-            echo "=== Verifying signature ==="
-            ls -la final-packages/ | grep -E "(digests|meta|packagesite)"
-
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/
-
-            if [ -f "final-packages/digests.sig" ] || [ -f "final-packages/packagesite.sig" ]; then
-              echo "[ ✓ ] Repository signed successfully! Signature files found."
-            else
-              echo "[ ⚠️ ] Warning: No .sig files found, but continuing..."
-            fi
-
-            echo "=== Build artifacts ==="
-            ls -la final-packages/
-
-            # 将产物复制到 GitHub runner 的工作目录（通过 copyback）
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
-            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
-
-            echo "[ ✓ ] Build and sign completed successfully!"
-      # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
-        if: always() # 即使编译失败也运行
+        if: always()
         run: |
           # 检查 build.log 是否存在
           if [ ! -f "build.log" ]; then
@@ -256,7 +225,6 @@ jobs:
           aws s3 sync artifacts/ s3://fbsd-repo \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
-            --delete \
             --region auto
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

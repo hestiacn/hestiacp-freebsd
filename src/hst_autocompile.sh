@@ -1200,7 +1200,7 @@ if [ "$WEB_TERMINAL_B" = "true" ]; then
 			chmod +x "${BUILD_DIR_HESTIA_TERMINAL}/usr/local/hestia/web-terminal/server.js"
 
 			if [ "$OSTYPE" = 'freebsd' ] && ! command -v npm > /dev/null 2>&1; then
-				pkg install -y node20 npm
+				pkg install -y node24 npm
 			fi
 
 			cd "${BUILD_DIR_HESTIA_TERMINAL}/usr/local/hestia/web-terminal" || exit 1
@@ -1313,7 +1313,7 @@ if [ "$HESTIA_B" = "true" ]; then
 			if [ "$OSTYPE" = 'freebsd' ]; then
 				if ! command -v npm > /dev/null 2>&1; then
 					echo "[ * ] Installing npm on FreeBSD..."
-					pkg install -y node20 npm
+					pkg install -y node24 npm
 				fi
 			else
 				if ! command -v npm > /dev/null 2>&1; then
