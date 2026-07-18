@@ -16,13 +16,13 @@ on:
 
 jobs:
   build-php84-openssl4:
-    name: Build PHP 8.4.8 with OpenSSL 4.x on FreeBSD 14.0
+    name: Build PHP 8.4.23 with OpenSSL 4.x on FreeBSD 14.0
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
 
-      - name: Build PHP 8.4.8 with OpenSSL 4.x
+      - name: Build PHP 8.4.23 with OpenSSL 4.x
         uses: vmactions/freebsd-vm@v1
         with:
           release: "14.0"
@@ -38,7 +38,7 @@ jobs:
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             echo "========================================"
-            echo "Build PHP 8.4.8 with OpenSSL 4.x"
+            echo "Build PHP 8.4.23 with OpenSSL 4.x"
             echo "========================================"
 
             # 安装编译依赖
@@ -73,7 +73,7 @@ jobs:
 
             chmod +x src/build-php82-openssl4.sh
 
-            echo "[ * ] Starting PHP 8.2.31 build with OpenSSL 4.x..."
+            echo "[ * ] Starting PHP 8.4.23 build with OpenSSL 4.x..."
             echo "OPENSSL_OPT: $OPENSSL_OPT"
             echo "OPENSSL_PREFIX: $OPENSSL_PREFIX"
             echo "OPENSSL_INCLUDE: $OPENSSL_INCLUDE"

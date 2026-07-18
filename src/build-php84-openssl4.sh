@@ -198,7 +198,7 @@ get_config_args() {
 }
 
 # ============================================================
-# 编译和安装 ICU 74（用于 PHP 8.2）
+# 编译和安装 ICU 74（用于 php 8.4）
 # ============================================================
 build_icu74() {
     local icu_prefix="/usr/local/icu74"
@@ -208,7 +208,7 @@ build_icu74() {
         return 0
     fi
     
-    echo "[ * ] Building ICU 74 for PHP 8.2 compatibility..."
+    echo "[ * ] Building ICU 74 for php 8.4 compatibility..."
     rm -rf "$icu_prefix"
 
     echo "[ * ] ICU 74 local file not found, downloading..."
@@ -735,7 +735,7 @@ build_php() {
     fi
 
     # ============================================================
-    # PHP 8.2 特殊处理：使用 ICU 74
+    # php 8.4 特殊处理：使用 ICU 74
     # ============================================================
     if [ "$major" = "8" ] && [ "$minor" = "4" ]; then
         # 编译 ICU 74
@@ -2454,7 +2454,7 @@ This is a custom build of PHP 8.4.23 that includes:
 - Readonly classes
 - Disjunctive Normal Form (DNF) types
 
-IMPORTANT: PHP 8.2 is end-of-life. Use at your own risk.
+IMPORTANT: php 8.4 is end-of-life. Use at your own risk.
 EOD
 EOF
 	
