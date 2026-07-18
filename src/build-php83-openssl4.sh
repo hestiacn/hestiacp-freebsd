@@ -1,5 +1,5 @@
 #!/bin/bash
-# src/build-php83-openssl3.sh
+# src/build-php83-openssl4.sh
 # Build PHP 8.3.32 with  OpenSSL 4.x and create package
 
 set -e
@@ -1917,14 +1917,12 @@ EOF
         fi
         echo "  ✅ configure generated"
     fi
-
-    echo "[ * ] Detecting ICU installation..."
-    find /usr/local -name "libicu*.so*" 2>/dev/null | head -20
-    find /usr/local -name "unicode/utypes.h" 2>/dev/null
-    find /usr/local -name "icu-config" 2>/dev/null
-    ls -la /usr/local/icu*/lib/libicuuc.so* 2>/dev/null || echo "没有找到 ICU"
-    pkg-config --modversion icu-uc 2>/dev/null || echo "pkg-config 未找到 ICU"
-
+    export CC="clang"
+    export CXX="clang++"
+    export CXXFLAGS="-std=c++17"
+    echo "  CC=$CC"
+    echo "  CXX=$CXX"
+    echo "  CXXFLAGS=$CXXFLAGS"
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -1971,6 +1969,9 @@ EOF
     # ============================================================
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
+        CC="clang" \
+        CXX="clang++" \
+        CXXFLAGS="-std=c++17" \
         LIBS="-licuio" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
@@ -2444,10 +2445,10 @@ EOD
 EOF
 	
 	# 创建安装后脚本
-	cat > "+POST_INSTALL" << 'EOF'
+	cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
-echo "PHP 8.3.32 with OpenSSL 4.x installed"
+echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"

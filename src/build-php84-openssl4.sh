@@ -1917,7 +1917,12 @@ EOF
         fi
         echo "  ✅ configure generated"
     fi
-
+    export CC="clang"
+    export CXX="clang++"
+    export CXXFLAGS="-std=c++17"
+    echo "  CC=$CC"
+    echo "  CXX=$CXX"
+    echo "  CXXFLAGS=$CXXFLAGS"
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -1964,6 +1969,9 @@ EOF
     # ============================================================
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
+        CC="clang" \
+        CXX="clang++" \
+        CXXFLAGS="-std=c++17" \
         LIBS="-licuio" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
@@ -2099,7 +2107,7 @@ EOF
             # 1. 检查 ICU 66 库是否存在及符号
             echo "=== ICU 66 检查 ==="
             ls -la /usr/local/icu66/lib/libicu*.so*
-            nm -D /usr/local/icu66/lib/libicuuc.so.66.1 2>/dev/null | grep u_sprintf
+            nm -D /usr/local/icu66/lib/libicuuc.so.74.2 2>/dev/null | grep u_sprintf
 
             # 2. 检查系统 OpenSSL 版本
             echo "=== OpenSSL 版本 ==="
