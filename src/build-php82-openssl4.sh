@@ -58,8 +58,8 @@ download_imagick() {
 	
 	[ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
 	
-	echo "[ * ] Downloading ImageMagick 3.8.1..."
-	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
+	echo "[ * ] Downloading ImageMagick 3.8.2..."
+	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.2.tar.gz" || return 1
 	
 	echo "[ * ] Extracting..."
 	tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
@@ -197,7 +197,7 @@ get_config_args() {
 }
 
 # ============================================================
-# 编译和安装 ICU 72（用于 PHP 8.1）
+# 编译和安装 ICU 72（用于 PHP 8.2）
 # ============================================================
 build_icu72() {
     local icu_prefix="/usr/local/icu72"
@@ -207,7 +207,7 @@ build_icu72() {
         return 0
     fi
     
-    echo "[ * ] Building ICU 72 for PHP 8.1 compatibility..."
+    echo "[ * ] Building ICU 72 for PHP 8.2 compatibility..."
     rm -rf "$icu_prefix"
 
     echo "[ * ] ICU 72 local file not found, downloading..."
@@ -795,7 +795,7 @@ build_php() {
     fi
 
     # ============================================================
-    # PHP 8.1 特殊处理：使用 ICU 72
+    # PHP 8.2 特殊处理：使用 ICU 72
     # ============================================================
     if [ "$major" = "8" ] && [ "$minor" = "2" ]; then
         # 编译 ICU 72
