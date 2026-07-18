@@ -1121,9 +1121,9 @@ build_php() {
             rm -f /usr/local/lib/libcurl.so /usr/local/lib/libcurl.so.4
         fi
         
-        cp "$SCRIPT_DIR/php7.0/curl-8.30.0.tar.gz" /tmp/
+        cp "$SCRIPT_DIR/php7.0/curl-8.20.0.tar.gz" /tmp/
         cd /tmp
-        extract_archive curl-8.30.0.tar.gz
+        extract_archive curl-8.20.0.tar.gz
         cd curl-8.30.0
         
         echo "[ * ] 配置 curl..."
@@ -1156,7 +1156,7 @@ build_php() {
         fi
         
         cd /tmp
-        rm -rf curl-8.30.0 curl-8.30.0.tar.gz
+        rm -rf curl-8.30.0 curl-8.20.0.tar.gz
         
         if [ -f "/usr/local/lib/libcurl.so" ]; then
             echo "✅ curl 编译成功"
