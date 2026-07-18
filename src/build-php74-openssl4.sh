@@ -292,8 +292,8 @@ apply_patches() {
         echo "[ ✓ ] Added ERR_NUM_ERRORS definition to php_openssl.h"
     fi
 
-    # 补丁7:修复 ICU u_sprintf 符号问题 (ICU 66+)
-    # 修复 ICU u_sprintf 符号问题 (ICU 66+)
+    # 补丁7:修复 ICU u_sprintf 符号问题 (ICU 68+)
+    # 修复 ICU u_sprintf 符号问题 (ICU 68+)
     if [ -f "ext/intl/msgformat/msgformat_helpers.cpp" ]; then
         if grep -q "u_sprintf" ext/intl/msgformat/msgformat_helpers.cpp; then
             sed -i '' -e 's/u_sprintf(temp, "%u", (uint32_t)num_index);/u_snprintf(temp, 16, "%u", (uint32_t)num_index);/g' ext/intl/msgformat/msgformat_helpers.cpp
@@ -306,34 +306,34 @@ apply_patches() {
 }
 
 # ============================================================
-# 编译和安装 ICU 66（用于 PHP 7.4）
+# 编译和安装 ICU 68（用于 PHP 7.4）
 # ============================================================
-build_icu66() {
-    local icu_prefix="/usr/local/icu66"
+build_icu68() {
+    local icu_prefix="/usr/local/icu68"
     
-    if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.66.1" ]; then
-        echo "[ ✓ ] ICU 66 already installed at $icu_prefix"
+    if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.68.1" ]; then
+        echo "[ ✓ ] ICU 68 already installed at $icu_prefix"
         return 0
     fi
     
-    echo "[ * ] Building ICU 66 for PHP 7.4 compatibility..."
+    echo "[ * ] Building ICU 68 for PHP 7.4 compatibility..."
     rm -rf "$icu_prefix"
 
-    echo "[ * ] ICU 66 local file not found, downloading..."
-    #fetch -o /tmp/icu-66.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-66-1.tar.gz" || return 1
-     echo "[ * ] Copying ICU 66 from local file..."
-    LOCAL_ICU_FILE="$SCRIPT_DIR/php7.4/icu-release-66-1.tar.gz"
-    cp "$LOCAL_ICU_FILE" /tmp/icu-66.tar.gz || return 1
-    tar -xf /tmp/icu-66.tar.gz -C /tmp || return 1
+    echo "[ * ] ICU 68 local file not found, downloading..."
+    #fetch -o /tmp/icu-68.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-68-1.tar.gz" || return 1
+     echo "[ * ] Copying ICU 68 from local file..."
+    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.0/icu-release-68-1.tar.gz"
+    cp "$LOCAL_ICU_FILE" /tmp/icu-68.tar.gz || return 1
+    tar -xf /tmp/icu-68.tar.gz -C /tmp || return 1
     
-    cd /tmp/icu-release-66-1/icu4c/source || return 1
+    cd /tmp/icu-release-68-1/icu4c/source || return 1
     
     make distclean || true
     
     export CC=gcc14
     export CXX=g++14
     
-    echo "[ * ] Configuring ICU 66..."
+    echo "[ * ] Configuring ICU 68..."
     ./configure \
         --prefix="$icu_prefix" \
         --enable-shared=yes \
@@ -351,30 +351,30 @@ build_icu66() {
         return 1
     fi
     
-    echo "[ * ] Building ICU 66 (this may take a while)..."
+    echo "[ * ] Building ICU 68 (this may take a while)..."
     mkdir -p ../lib
     
-    if ! gmake -j"$NUM_CPUS" | tee /tmp/icu66-build.log; then
+    if ! gmake -j"$NUM_CPUS" | tee /tmp/icu68-build.log; then
         echo "❌ ICU build failed"
-        tail -50 /tmp/icu66-build.log
+        tail -50 /tmp/icu68-build.log
         return 1
     fi
     
-    echo "[ * ] Installing ICU 66..."
-    if ! gmake install | tee /tmp/icu66-install.log; then
+    echo "[ * ] Installing ICU 68..."
+    if ! gmake install | tee /tmp/icu68-install.log; then
         echo "❌ ICU install failed"
-        tail -50 /tmp/icu66-install.log
+        tail -50 /tmp/icu68-install.log
         return 1
     fi
-    echo "[ ✓ ] ICU 66 installation completed successfully"
+    echo "[ ✓ ] ICU 68 installation completed successfully"
     
     # 创建符号链接
-    echo "[ * ] Creating ICU 66 library symlinks..."
+    echo "[ * ] Creating ICU 68 library symlinks..."
     cd "$icu_prefix/lib"
     for lib in libicuuc libicui18n libicudata libicuio; do
-        if [ -f "${lib}.so.66.1" ]; then
-            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.66.1" "${lib}.so"
-            [ ! -f "${lib}.so.66" ] && ln -sf "${lib}.so.66.1" "${lib}.so.66"
+        if [ -f "${lib}.so.68.1" ]; then
+            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.68.1" "${lib}.so"
+            [ ! -f "${lib}.so.68" ] && ln -sf "${lib}.so.68.1" "${lib}.so.68"
             echo "  ✓ Created ${lib} links"
         fi
     done
@@ -382,14 +382,14 @@ build_icu66() {
     
     # 创建 icu-config
     if [ ! -f "$icu_prefix/bin/icu-config" ]; then
-        echo "[ * ] Creating icu-config wrapper for ICU 66..."
+        echo "[ * ] Creating icu-config wrapper for ICU 68..."
         cat > "$icu_prefix/bin/icu-config" << 'EOF'
 #!/bin/sh
-prefix=/usr/local/icu66
+prefix=/usr/local/icu68
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
-version=66.1
+version=68.1
 
 case "$1" in
     --version)
@@ -423,15 +423,15 @@ EOF
     fi
     
     # 验证
-    echo "[ * ] Verifying ICU 66 installation..."
+    echo "[ * ] Verifying ICU 68 installation..."
     if [ -f "$icu_prefix/bin/icu-config" ]; then
-        echo "  Version: $($icu_prefix/bin/icu-config --version || echo '66.1')"
+        echo "  Version: $($icu_prefix/bin/icu-config --version || echo '68.1')"
     fi
     
     cd /
-    rm -rf /tmp/icu-release-66-1 /tmp/icu-66.tar.gz
+    rm -rf /tmp/icu-release-68-1 /tmp/icu-68.tar.gz
     
-    echo "[ ✓ ] ICU 66 installed successfully"
+    echo "[ ✓ ] ICU 68 installed successfully"
     return 0
 }
 
@@ -804,12 +804,12 @@ build_php() {
     fi
 
     # ============================================================
-    # PHP 7.4 特殊处理：使用 ICU 66
+    # PHP 7.4 特殊处理：使用 ICU 68
     # ============================================================
     if [ "$major" = "7" ] && [ "$minor" = "4" ]; then
-        # 编译 ICU 66
-        if ! build_icu66; then
-            echo "❌ Failed to build ICU 66"
+        # 编译 ICU 68
+        if ! build_icu68; then
+            echo "❌ Failed to build ICU 68"
             return 1
         fi
         
@@ -819,15 +819,15 @@ build_php() {
         }
         echo "[ * ] Current directory: $(pwd)"
         
-        if [ ! -f "/usr/local/icu66/bin/icu-config" ]; then
-            echo "❌ icu-config not found at /usr/local/icu66/bin/icu-config"
+        if [ ! -f "/usr/local/icu68/bin/icu-config" ]; then
+            echo "❌ icu-config not found at /usr/local/icu68/bin/icu-config"
             return 1
         fi
         echo "[ ✓ ] icu-config found"
         
-        export PATH="/usr/local/icu66/bin:$PATH"
+        export PATH="/usr/local/icu68/bin:$PATH"
         
-        export CFLAGS="-I/usr/local/icu66/include -I/usr/local/include \
+        export CFLAGS="-I/usr/local/icu68/include -I/usr/local/include \
             -Wno-deprecated-declarations \
             -Wno-incompatible-pointer-types-discards-qualifiers \
             -Wno-implicit-function-declaration \
@@ -837,17 +837,17 @@ build_php() {
         export DTRACE="/usr/sbin/dtrace"
         export ac_cv_prog_DTRACE="/usr/sbin/dtrace"
         export CFLAGS="$CFLAGS -D_WANT_FREEBSD11_WAIT=1"
-        export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/icu66/lib:/usr/lib"
+        export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/icu68/lib:/usr/lib"
         export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/icu66/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu66/lib -Wl,-rpath,/usr/local/lib"
-        export CPPFLAGS="-I/usr/local/icu66/include -I/usr/local/include -I/usr/local/include/freetype2"
-        export ICU_CONFIG="/usr/local/icu66/bin/icu-config"
-        export ICU_PREFIX="/usr/local/icu66"
-        export ICU_CFLAGS="-I/usr/local/icu66/include"
-        export ICU_LIBS="-L/usr/local/icu66/lib -licui18n -licuuc -licudata"
+        export LDFLAGS="-L/usr/local/icu68/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu68/lib -Wl,-rpath,/usr/local/lib"
+        export CPPFLAGS="-I/usr/local/icu68/include -I/usr/local/include -I/usr/local/include/freetype2"
+        export ICU_CONFIG="/usr/local/icu68/bin/icu-config"
+        export ICU_PREFIX="/usr/local/icu68"
+        export ICU_CFLAGS="-I/usr/local/icu68/include"
+        export ICU_LIBS="-L/usr/local/icu68/lib -licui18n -licuuc -licudata"
         export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
         export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
-        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '66.1')"
+        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '68.1')"
     fi
 	
     # ============================================================
@@ -927,7 +927,7 @@ build_php() {
         echo "[ * ] Setting up OpenSSL 4.x environment..."
         
         # 设置库路径
-        export LD_LIBRARY_PATH="/usr/local/icu66/lib:/usr/local/lib:/usr/lib"
+        export LD_LIBRARY_PATH="/usr/local/icu68/lib:/usr/local/lib:/usr/lib"
         export LD_ELF_RPATH="/usr/local/lib"
         
         # 设置编译标志
@@ -1879,8 +1879,8 @@ EOF
     # 导出 GMP 和 ICU 变量供 configure 使用
     export GMP_CFLAGS="$(pkg-config --cflags gmp)"
     export GMP_LIBS="$(pkg-config --libs gmp)"
-    export ICU_CFLAGS="-I/usr/local/icu66/include"
-    export ICU_LIBS="-L/usr/local/icu66/lib -licui18n -licuuc -licudata"
+    export ICU_CFLAGS="-I/usr/local/icu68/include"
+    export ICU_LIBS="-L/usr/local/icu68/lib -licui18n -licuuc -licudata"
     export GMP_DIR=/usr/local
     
     # ============================================================
@@ -1970,7 +1970,7 @@ EOF
     # 配置编译环境（使用 OpenSSL 4.x）
     # ============================================================
     echo "[ * ] Configuring environment for OpenSSL 4.x..."
-    export LD_LIBRARY_PATH="/usr/local/icu66/lib:/usr/local/lib:/usr/lib"
+    export LD_LIBRARY_PATH="/usr/local/icu68/lib:/usr/local/lib:/usr/lib"
     # 验证 OpenSSL 存在
     if [ -f "/usr/local/lib/libcrypto.so.19" ]; then
         echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.19"
@@ -1997,7 +1997,7 @@ EOF
 
 	echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
 	echo "CFLAGS: $CFLAGS"
-    export LDFLAGS="-L/usr/local/icu66/lib -L/usr/local/lib ${LDFLAGS}"
+    export LDFLAGS="-L/usr/local/icu68/lib -L/usr/local/lib ${LDFLAGS}"
     echo "LDFLAGS (without rpath for configure): $LDFLAGS"
 	export FREETYPE2_CFLAGS="-I/usr/local/include/freetype2"
 	export FREETYPE2_LIBS="-L/usr/local/lib -lfreetype"
@@ -2056,7 +2056,7 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
-    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/icu66/lib -Wl,-rpath,/usr/local/lib"
+    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/icu68/lib -Wl,-rpath,/usr/local/lib"
     
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2099,18 +2099,18 @@ EOF
             echo "[ ✓ ] Added -lc++ to EXTRA_LIBS"
         fi
         
-        echo "[ * ] Forcing ICU 66 library paths..."
-        sed -i '' 's|-licuio|/usr/local/icu66/lib/libicuio.so.66.1|g' Makefile
-        sed -i '' 's|-licui18n|/usr/local/icu66/lib/libicui18n.so.66.1|g' Makefile
-        sed -i '' 's|-licuuc|/usr/local/icu66/lib/libicuuc.so.66.1|g' Makefile
-        sed -i '' 's|-licudata|/usr/local/icu66/lib/libicudata.so.66.1|g' Makefile
+        echo "[ * ] Forcing ICU 68 library paths..."
+        sed -i '' 's|-licuio|/usr/local/icu68/lib/libicuio.so.68.1|g' Makefile
+        sed -i '' 's|-licui18n|/usr/local/icu68/lib/libicui18n.so.68.1|g' Makefile
+        sed -i '' 's|-licuuc|/usr/local/icu68/lib/libicuuc.so.68.1|g' Makefile
+        sed -i '' 's|-licudata|/usr/local/icu68/lib/libicudata.so.68.1|g' Makefile
 
-        if ! grep -q "/usr/local/icu66/lib" Makefile; then
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu66/lib \1|' Makefile
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -Wl,-rpath,/usr/local/icu66/lib|' Makefile
+        if ! grep -q "/usr/local/icu68/lib" Makefile; then
+            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu68/lib \1|' Makefile
+            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -Wl,-rpath,/usr/local/icu68/lib|' Makefile
         fi
         
-        echo "[ ✓ ] Makefile updated to use ICU 66"
+        echo "[ ✓ ] Makefile updated to use ICU 68"
     fi
 
     # ============================================================
@@ -2145,10 +2145,10 @@ EOF
         if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
-            # 1. 检查 ICU 66 库是否存在及符号
-            echo "=== ICU 66 检查 ==="
-            ls -la /usr/local/icu66/lib/libicu*.so*
-            nm -D /usr/local/icu66/lib/libicuuc.so.66.1 2>/dev/null | grep u_sprintf
+            # 1. 检查 ICU 68 库是否存在及符号
+            echo "=== ICU 68 检查 ==="
+            ls -la /usr/local/icu68/lib/libicu*.so*
+            nm -D /usr/local/icu68/lib/libicuuc.so.68.1 2>/dev/null | grep u_sprintf
 
             # 2. 检查系统 OpenSSL 版本
             echo "=== OpenSSL 版本 ==="
@@ -2467,10 +2467,10 @@ create_package() {
         fi
     done
     
-    echo "[ * ] Copying ICU 66 libraries..."
-    mkdir -p "${PKG_DIR}/usr/local/icu66/lib"
-    if [ -d "/usr/local/icu66/lib" ]; then
-        cp -r /usr/local/icu66/lib/libicu*.so* "${PKG_DIR}/usr/local/icu66/lib/" || true
+    echo "[ * ] Copying ICU 68 libraries..."
+    mkdir -p "${PKG_DIR}/usr/local/icu68/lib"
+    if [ -d "/usr/local/icu68/lib" ]; then
+        cp -r /usr/local/icu68/lib/libicu*.so* "${PKG_DIR}/usr/local/icu68/lib/" || true
     fi
 
 	echo "[ * ] Creating file list..."
@@ -2640,7 +2640,7 @@ zend_extension=opcache.so
 EOF
 
     # 设置库路径
-    export LD_LIBRARY_PATH="$TEST_ROOT/usr/local/lib:$TEST_ROOT/usr/local/icu66/lib:/usr/local/lib"
+    export LD_LIBRARY_PATH="$TEST_ROOT/usr/local/lib:$TEST_ROOT/usr/local/icu68/lib:/usr/local/lib"
 
     # 测试 PHP 版本
     echo ""

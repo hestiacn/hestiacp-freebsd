@@ -152,13 +152,13 @@ get_config_args() {
         "--enable-xmlreader"
         "--enable-xmlwriter"
         "--enable-simplexml"
-        "--enable-xsl"
+        "--with-xsl"
         "--enable-opcache"
         "--enable-intl"
         "--enable-soap"
         "--enable-posix"
         "--enable-tokenizer"
-        "--enable-readline"
+        "--with-readline"
         "--enable-phar=shared"
         "--enable-shmop"
         "--enable-sysvmsg"
@@ -183,12 +183,13 @@ get_config_args() {
         "--with-imap-ssl=/usr/local"
         "--with-pspell=/usr/local"
         "--with-libedit"
+        "--with-ffi"
         "--enable-gd"
-        "--with-freetype=/usr/local"
-        "--with-jpeg=/usr/local"
+        "--with-freetype"
+        "--with-jpeg"
         "--with-webp"
-        "--enable-zip"
-        "--with-icu-dir=/usr/local/icu67"
+        "--with-zip"
+        "--with-icu"
     )
 
     printf "%s\n" "${args[@]}"
@@ -382,7 +383,7 @@ apply_patches() {
         grep "Copyright" ./Zend/zend.c || true
     fi
 
-	# 补丁4: ext/openssl/php_openssl.h - ERR_NUM_ERRORS
+	# 补丁5: ext/openssl/php_openssl.h - ERR_NUM_ERRORS
 	if [ -f "ext/openssl/php_openssl.h" ]; then
 		sed -i '' -e '/^#define PHP_OPENSSL_H$/a\
 #ifndef ERR_NUM_ERRORS\
@@ -393,7 +394,7 @@ apply_patches() {
 	fi
 
 	# ============================================================
-	# 补丁5: 替换 OpenSSL 源文件
+	# 补丁6: 替换 OpenSSL 源文件
 	# ============================================================
 	local custom_openssl_dir="$SCRIPT_DIR/php8.0"
 	if [ -d "$custom_openssl_dir" ]; then
@@ -1992,6 +1993,7 @@ EOF
 	echo "CFLAGS: $CFLAGS"
     export LDFLAGS="-L/usr/local/icu68/lib -L/usr/local/lib ${LDFLAGS}"
     echo "LDFLAGS (without rpath for configure): $LDFLAGS"
+    export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 
     # 获取基础配置参数
     mapfile -t CONFIG_ARGS < <(get_config_args)
