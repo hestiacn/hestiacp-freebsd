@@ -1993,8 +1993,27 @@ EOF
 	echo "CFLAGS: $CFLAGS"
     export LDFLAGS="-L/usr/local/icu68/lib -L/usr/local/lib ${LDFLAGS}"
     echo "LDFLAGS (without rpath for configure): $LDFLAGS"
-    export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    # ============================================================
+    # 修复 bzip2 pkg-config（FreeType 2 依赖）
+    # ============================================================
+    echo "[ * ] Creating bzip2.pc for pkg-config..."
 
+    mkdir -p /usr/local/libdata/pkgconfig
+    cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: bzip2
+Description: bzip2 compression library
+Version: 1.0.8
+Libs: -L${libdir} -lbz2
+Cflags: -I${includedir}
+EOF
+
+    export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    echo "  ✅ bzip2.pc created and PKG_CONFIG_PATH updated"
     # 获取基础配置参数
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
