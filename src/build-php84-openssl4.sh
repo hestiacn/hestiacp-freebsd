@@ -191,7 +191,6 @@ get_config_args() {
         "--with-jpeg"
         "--with-webp"
         "--with-zip"
-        "--with-icu=/usr/local/icu74"
     )
 
     printf "%s\n" "${args[@]}"
@@ -1949,7 +1948,7 @@ EOF
     else
         echo "⚠️  未找到 ICU 74，尝试查找其他版本..."
         # 查找任何 ICU 版本
-        ICU_LIB=$(find /usr -name "libicuuc.so*" -type f 2>/dev/null | head -1)
+        ICU_LIB=$(find /usr -name "libicuuc.so*" -type f | head -1)
         if [ -n "$ICU_LIB" ]; then
             ICU_PREFIX=$(dirname $(dirname "$ICU_LIB"))
             echo "  找到 ICU: $ICU_LIB"
@@ -2018,6 +2017,18 @@ EOF
     # ============================================================
     # 运行 configure
     # ============================================================
+    echo "[ * ] Running configure..."
+
+    # 调试信息
+    echo "=== DEBUG: CONFIG_ARGS_WITH_PHAR_SHARED ==="
+    echo "Length: ${#CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
+    for i in "${!CONFIG_ARGS_WITH_PHAR_SHARED[@]}"; do
+        echo "  [$i] ${CONFIG_ARGS_WITH_PHAR_SHARED[$i]}"
+    done
+    echo "=== END DEBUG ==="
+
+    # 使用数组方式执行
+    set +e  # 临时禁用 set -e
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
         CC="clang" \
@@ -2068,6 +2079,9 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
+    set -e  # 恢复 set -e
+
+    echo "[ * ] configure 退出码: $CONFIGURE_STATUS"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2075,26 +2089,8 @@ EOF
         return 1
     fi
 
-    # 在 configure 之后修复 php_config.h
-    echo "[ * ] Fixing zend_sprintf in php_config.h after configure..."
-    if [ -f "main/php_config.h" ]; then
-        sed -i '' '/zend_sprintf/d' main/php_config.h
-        echo "#define zend_sprintf sprintf" >> main/php_config.h
-        echo "  ✓ Fixed zend_sprintf in php_config.h (post-configure)"
-    fi
+    echo "✅ Configure completed successfully"
 
-    # 修复 ps_title.c
-    echo "[ * ] Fixing ps_title.c (force setproctitle)..."
-    if [ -f "sapi/cli/ps_title.c" ]; then
-        echo "  Before patch (first 10 lines):"
-        head -10 sapi/cli/ps_title.c
-        echo ""
-        perl -pi -e 'print "/* Force setproctitle for FreeBSD */\n#ifndef HAVE_SETPROCTITLE\n#define HAVE_SETPROCTITLE 1\n#endif\n#include <unistd.h>\n\n" if $. == 1' sapi/cli/ps_title.c
-        echo "  After patch (first 15 lines):"
-        head -15 sapi/cli/ps_title.c
-        echo ""
-        echo "  ✓ Patched ps_title.c"
-    fi
 
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
@@ -2135,7 +2131,7 @@ EOF
             # 1. 检查 ICU 66 库是否存在及符号
             echo "=== ICU 66 检查 ==="
             ls -la /usr/local/icu66/lib/libicu*.so*
-            nm -D /usr/local/icu66/lib/libicuuc.so.74.2 2>/dev/null | grep u_sprintf
+            nm -D /usr/local/icu66/lib/libicuuc.so.74.2 | grep u_sprintf
 
             # 2. 检查系统 OpenSSL 版本
             echo "=== OpenSSL 版本 ==="
@@ -2148,8 +2144,8 @@ EOF
 
             # 4. 检查链接顺序
             echo "=== 链接顺序 ==="
-            grep "^LDFLAGS" Makefile 2>/dev/null | head -5
-            grep "^EXTRA_LIBS" Makefile 2>/dev/null | head -5
+            grep "^LDFLAGS" Makefile | head -5
+            grep "^EXTRA_LIBS" Makefile | head -5
 
             # 5. 检查 PHP configure 检测到的 ICU
             echo "=== PHP ICU 检测 ==="

@@ -191,7 +191,6 @@ get_config_args() {
         "--with-jpeg"
         "--with-webp"
         "--with-zip"
-        "--with-icu=/usr/local/icu74"
     )
 
     printf "%s\n" "${args[@]}"
@@ -2017,6 +2016,18 @@ EOF
     # ============================================================
     # 运行 configure
     # ============================================================
+    echo "[ * ] Running configure..."
+
+    # 调试信息
+    echo "=== DEBUG: CONFIG_ARGS_WITH_PHAR_SHARED ==="
+    echo "Length: ${#CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
+    for i in "${!CONFIG_ARGS_WITH_PHAR_SHARED[@]}"; do
+        echo "  [$i] ${CONFIG_ARGS_WITH_PHAR_SHARED[$i]}"
+    done
+    echo "=== END DEBUG ==="
+
+    # 使用数组方式执行
+    set +e  # 临时禁用 set -e
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
         CC="clang" \
@@ -2067,6 +2078,9 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
+    set -e  # 恢复 set -e
+
+    echo "[ * ] configure 退出码: $CONFIGURE_STATUS"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2074,26 +2088,8 @@ EOF
         return 1
     fi
 
-    # 在 configure 之后修复 php_config.h
-    echo "[ * ] Fixing zend_sprintf in php_config.h after configure..."
-    if [ -f "main/php_config.h" ]; then
-        sed -i '' '/zend_sprintf/d' main/php_config.h
-        echo "#define zend_sprintf sprintf" >> main/php_config.h
-        echo "  ✓ Fixed zend_sprintf in php_config.h (post-configure)"
-    fi
-
-    # 修复 ps_title.c
-    echo "[ * ] Fixing ps_title.c (force setproctitle)..."
-    if [ -f "sapi/cli/ps_title.c" ]; then
-        echo "  Before patch (first 10 lines):"
-        head -10 sapi/cli/ps_title.c
-        echo ""
-        perl -pi -e 'print "/* Force setproctitle for FreeBSD */\n#ifndef HAVE_SETPROCTITLE\n#define HAVE_SETPROCTITLE 1\n#endif\n#include <unistd.h>\n\n" if $. == 1' sapi/cli/ps_title.c
-        echo "  After patch (first 15 lines):"
-        head -15 sapi/cli/ps_title.c
-        echo ""
-        echo "  ✓ Patched ps_title.c"
-    fi
+    echo "✅ Configure completed successfully"
+    
     
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
