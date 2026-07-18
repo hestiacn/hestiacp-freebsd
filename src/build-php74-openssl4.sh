@@ -846,6 +846,7 @@ build_php() {
         export ICU_PREFIX="/usr/local/icu66"
         export ICU_CFLAGS="-I/usr/local/icu66/include"
         export ICU_LIBS="-L/usr/local/icu66/lib -licui18n -licuuc -licudata -licuio"
+        export LDFLAGS="$LDFLAGS -licuio"
         export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
         export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
         echo "[ ✓ ] ICU config version: $(icu-config --version || echo '66.1')"
@@ -889,32 +890,15 @@ build_php() {
     # ============================================================
     fix_openssl_links() {
         echo "[ * ] Checking OpenSSL libraries..."
-        
         cd /usr/local/lib || return
-        
-        SSL_LIB=$(ls libssl.so.* | grep -v "\.so\.[0-9]\.[0-9]" | head -1)
-        CRYPTO_LIB=$(ls libcrypto.so.* | grep -v "\.so\.[0-9]\.[0-9]" | head -1)
-        
-        if [ -n "$SSL_LIB" ] && [ -n "$CRYPTO_LIB" ]; then
-            SSL_VER=$(echo "$SSL_LIB" | sed 's/libssl\.so\.//')
-            CRYPTO_VER=$(echo "$CRYPTO_LIB" | sed 's/libcrypto\.so\.//')
-            
-            echo "  Detected: libssl.so.$SSL_VER, libcrypto.so.$CRYPTO_VER"
-            echo "  ✅ Using OpenSSL directly (no compatibility symlinks)"
-            
-            # 如果存在 .30 符号链接，删除它们
-            if [ -L "libssl.so.30" ]; then
-                rm -f libssl.so.30
-                echo "  Removed existing libssl.so.30 symlink"
-            fi
-            if [ -L "libcrypto.so.30" ]; then
-                rm -f libcrypto.so.30
-                echo "  Removed existing libcrypto.so.30 symlink"
-            fi
-        else
-            echo "  ⚠️  Could not detect OpenSSL libraries"
+        if [ -f "libcrypto.so.30" ] && [ -f "libssl.so.30" ]; then
+            echo "  ✅ OpenSSL 4.x found: libcrypto.so.30, libssl.so.30"
+            export OPENSSL_CFLAGS="-I/usr/local/include"
+            export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
+            cd - > /dev/null
+            return 0
         fi
-        
+        echo "  ⚠️  OpenSSL 4.x not found, using default"
         cd - > /dev/null
     }
 
@@ -1622,7 +1606,7 @@ build_php() {
         if [ -f "/usr/local/lib/libc-client.so" ]; then
             echo "✅ 动态库: /usr/local/lib/libc-client.so ($(du -h /usr/local/lib/libc-client.so | cut -f1))"
             
-            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.19"; then
+            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.30"; then
                 echo "  ✅ 链接到 OpenSSL 4.x"
             else
                 echo "  ⚠️  可能链接到其他 OpenSSL 版本"
@@ -1973,8 +1957,8 @@ EOF
     echo "[ * ] Configuring environment for OpenSSL 4.x..."
     export LD_LIBRARY_PATH="/usr/local/icu66/lib:/usr/local/lib:/usr/lib"
     # 验证 OpenSSL 存在
-    if [ -f "/usr/local/lib/libcrypto.so.19" ]; then
-        echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.19"
+    if [ -f "/usr/local/lib/libcrypto.so.30" ]; then
+        echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.30"
     else
         echo "  ⚠️  OpenSSL 4.x not found"
     fi
@@ -2015,6 +1999,7 @@ EOF
     # ============================================================
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
+        LIBS="-licuio" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
         LDAP_LIBS="-L/usr/local/lib -lldap -llber" \

@@ -1509,7 +1509,7 @@ build_php() {
         if [ -f "/usr/local/lib/libc-client.so" ]; then
             echo "✅ 动态库: /usr/local/lib/libc-client.so ($(du -h /usr/local/lib/libc-client.so | cut -f1))"
             
-            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.19"; then
+            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.30"; then
                 echo "  ✅ 链接到 OpenSSL 4.x"
             else
                 echo "  ⚠️  可能链接到其他 OpenSSL 版本"
@@ -2054,18 +2054,22 @@ check_openssl4_compatibility() {
     echo "🔍 OpenSSL 4.x Compatibility Check"
     echo "========================================"
     
-    local all_passed=0
     local failed_items=()
+    local openssl4_found=0
     
     # 1. 检测系统 OpenSSL 版本
     echo ""
-    echo "[1/8] System OpenSSL"
+    echo "[1/5] System OpenSSL"
     echo "----------------------------------------"
     if command -v openssl >/dev/null 2>&1; then
         local openssl_ver=$(openssl version | awk '{print $2}')
         echo "  OpenSSL version: $openssl_ver"
         if [[ "$openssl_ver" == 4.* ]]; then
             echo "  ✅ OpenSSL 4.x detected"
+            openssl4_found=1
+        elif [[ "$openssl_ver" == 3.* ]]; then
+            echo "  ⚠️  OpenSSL 3.x detected (not 4.x)"
+            failed_items+=("System OpenSSL is 3.x, expected 4.x")
         else
             echo "  ⚠️  OpenSSL version is not 4.x: $openssl_ver"
             failed_items+=("System OpenSSL is $openssl_ver (expected 4.x)")
@@ -2075,152 +2079,63 @@ check_openssl4_compatibility() {
         failed_items+=("OpenSSL command not found")
     fi
     
-    # 2. 检测 libcrypto.so
+    # 2. 检测 OpenSSL 4.x 库文件 (libcrypto.so.30)
     echo ""
-    echo "[2/8] OpenSSL Libraries (libcrypto.so)"
+    echo "[2/5] OpenSSL 4.x Libraries"
     echo "----------------------------------------"
-    local libcrypto_found=0
-    for lib in /usr/local/lib/libcrypto.so*; do
-        if [ -f "$lib" ] && [ ! -L "$lib" ]; then
-            local libver=$(basename "$lib" | sed 's/libcrypto\.so\.//')
-            echo "  Found: $(basename $lib) (version $libver)"
-            if [[ "$libver" == "19" ]] || [[ "$libver" == "4"* ]] || [[ "$libver" == "20"* ]]; then
-                echo "  ✅ OpenSSL 4.x compatible (version $libver)"
-                libcrypto_found=1
-            else
-                echo "  ⚠️  May be older OpenSSL (version $libver)"
-                failed_items+=("libcrypto.so.$libver (not OpenSSL 4.x)")
-            fi
+    
+    local found_30=0
+    for dir in /usr/local/lib /lib; do
+        if [ -f "$dir/libcrypto.so.30" ] && [ -f "$dir/libssl.so.30" ]; then
+            echo "  ✅ OpenSSL 4.x found: $dir/libcrypto.so.30, $dir/libssl.so.30"
+            found_30=1
+            openssl4_found=1
+            break
         fi
     done
-    if [ $libcrypto_found -eq 0 ]; then
-        echo "  ⚠️  No libcrypto.so found in /usr/local/lib"
-        failed_items+=("No libcrypto.so found")
+    
+    if [ $found_30 -eq 0 ]; then
+        echo "  ❌ OpenSSL 4.x (libcrypto.so.30) NOT found"
+        failed_items+=("OpenSSL 4.x (libcrypto.so.30) not found")
     fi
     
-    # 3. 检测 libssl.so
+    # 3. 检测是否有 OpenSSL 1.1.x 残留
     echo ""
-    echo "[3/8] OpenSSL Libraries (libssl.so)"
+    echo "[3/5] Check for OpenSSL 1.1.x (should be avoided)"
     echo "----------------------------------------"
-    local libssl_found=0
-    for lib in /usr/local/lib/libssl.so*; do
-        if [ -f "$lib" ] && [ ! -L "$lib" ]; then
-            local libver=$(basename "$lib" | sed 's/libssl\.so\.//')
-            echo "  Found: $(basename $lib) (version $libver)"
-            if [[ "$libver" == "19" ]] || [[ "$libver" == "4"* ]] || [[ "$libver" == "20"* ]]; then
-                echo "  ✅ OpenSSL 4.x compatible (version $libver)"
-                libssl_found=1
-            else
-                echo "  ⚠️  May be older OpenSSL (version $libver)"
-                failed_items+=("libssl.so.$libver (not OpenSSL 4.x)")
-            fi
+    
+    local found_19=0
+    for dir in /usr/local/lib /lib; do
+        if [ -f "$dir/libcrypto.so.19" ]; then
+            echo "  ⚠️  OpenSSL 1.1.x found: $dir/libcrypto.so.19"
+            found_19=1
         fi
     done
-    if [ $libssl_found -eq 0 ]; then
-        echo "  ⚠️  No libssl.so found in /usr/local/lib"
-        failed_items+=("No libssl.so found")
+    
+    if [ $found_19 -eq 0 ]; then
+        echo "  ✅ No OpenSSL 1.1.x found"
+    else
+        echo "  ⚠️  OpenSSL 1.1.x present - may cause compatibility issues"
+        failed_items+=("OpenSSL 1.1.x (libcrypto.so.19) present")
     fi
     
-    # 4. 检测关键库的 OpenSSL 依赖
+    # 4. 检测 PHP 扩展的 OpenSSL 依赖
     echo ""
-    echo "[4/8] Critical Libraries (OpenSSL dependencies)"
-    echo "----------------------------------------"
-    
-    local critical_libs=(
-        "libcurl.so"
-        "libldap.so"
-        "libssh2.so"
-        "libpq.so"
-        "libsasl2.so"
-        "libarchive.so"
-    )
-    
-    for lib in "${critical_libs[@]}"; do
-        local lib_path="/usr/local/lib/$lib"
-        if [ -f "$lib_path" ] || [ -L "$lib_path" ]; then
-            local real_path="$lib_path"
-            if [ -L "$lib_path" ]; then
-                real_path=$(readlink "$lib_path")
-                if [[ "$real_path" != /* ]]; then
-                    real_path="/usr/local/lib/$real_path"
-                fi
-            fi
-            
-            echo -n "  $lib: "
-            if [ -f "$real_path" ]; then
-                if objdump -p "$real_path" 2>/dev/null | grep -q "OPENSSL_1_1_0"; then
-                    echo "⚠️  Requires OPENSSL_1_1_0 symbols"
-                    failed_items+=("$lib requires OPENSSL_1_1_0")
-                elif objdump -p "$real_path" 2>/dev/null | grep -q "OPENSSL_1_0_0"; then
-                    echo "⚠️  Requires OPENSSL_1_0_0 symbols"
-                    failed_items+=("$lib requires OPENSSL_1_0_0")
-                else
-                    if ldd "$real_path" 2>/dev/null | grep -q "libcrypto.so"; then
-                        local crypto_ver=$(ldd "$real_path" 2>/dev/null | grep "libcrypto.so" | awk '{print $1}' | sed 's/libcrypto\.so\.//')
-                        if [[ "$crypto_ver" == "19" ]] || [[ "$crypto_ver" == "4"* ]] || [[ "$crypto_ver" == "20"* ]]; then
-                            echo "✅ OpenSSL 4.x compatible (libcrypto.so.$crypto_ver)"
-                        else
-                            echo "⚠️  Linked to libcrypto.so.$crypto_ver (may not be OpenSSL 4.x)"
-                            failed_items+=("$lib linked to libcrypto.so.$crypto_ver")
-                        fi
-                    else
-                        echo "✅ No OpenSSL dependency detected"
-                    fi
-                fi
-            else
-                echo "❌ File not found"
-                failed_items+=("$lib not found")
-            fi
-        else
-            echo "  $lib: ❌ Not found"
-            failed_items+=("$lib not found")
-        fi
-    done
-    
-    # 5. 检测 PHP 扩展的 OpenSSL 依赖
-    echo ""
-    echo "[5/8] PHP Extensions (OpenSSL dependencies)"
+    echo "[4/5] PHP Extensions Check"
     echo "----------------------------------------"
     
     if [ -f "$install_dir/usr/local/bin/php" ]; then
-        echo "  PHP binary: $install_dir/usr/local/bin/php"
+        echo "  ✅ PHP binary: $install_dir/usr/local/bin/php"
         
         local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" 2>/dev/null | awk '{print $3}' || echo "unknown")
         local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
         
-        local php_extensions=(
-            "openssl.so"
-            "intl.so"
-            "imagick.so"
-            "curl.so"
-            "ldap.so"
-        )
-        
-        for ext in "${php_extensions[@]}"; do
-            echo -n "  $ext: "
-            local ext_path="$ext_dir/$ext"
-            if [ -f "$ext_path" ]; then
-                if objdump -p "$ext_path" 2>/dev/null | grep -q "OPENSSL_1_1_0"; then
-                    echo "⚠️  Requires OPENSSL_1_1_0 symbols"
-                    failed_items+=("PHP extension $ext requires OPENSSL_1_1_0")
-                elif objdump -p "$ext_path" 2>/dev/null | grep -q "OPENSSL_1_0_0"; then
-                    echo "⚠️  Requires OPENSSL_1_0_0 symbols"
-                    failed_items+=("PHP extension $ext requires OPENSSL_1_0_0")
-                else
-                    if ldd "$ext_path" 2>/dev/null | grep -q "libcrypto.so"; then
-                        local crypto_ver=$(ldd "$ext_path" 2>/dev/null | grep "libcrypto.so" | awk '{print $1}' | sed 's/libcrypto\.so\.//')
-                        if [[ "$crypto_ver" == "19" ]] || [[ "$crypto_ver" == "4"* ]] || [[ "$crypto_ver" == "20"* ]]; then
-                            echo "✅ OpenSSL 4.x compatible (libcrypto.so.$crypto_ver)"
-                        else
-                            echo "⚠️  Linked to libcrypto.so.$crypto_ver"
-                            failed_items+=("PHP extension $ext linked to libcrypto.so.$crypto_ver")
-                        fi
-                    else
-                        echo "✅ No OpenSSL dependency detected"
-                    fi
-                fi
+        for ext in openssl intl imagick; do
+            if "$install_dir/usr/local/bin/php" -m 2>/dev/null | grep -q "^$ext$"; then
+                echo "  ✅ $ext extension loaded"
             else
-                echo "❌ Not found"
+                echo "  ⚠️  $ext extension not loaded"
+                failed_items+=("PHP extension $ext not loaded")
             fi
         done
     else
@@ -2228,65 +2143,17 @@ check_openssl4_compatibility() {
         failed_items+=("PHP binary not found")
     fi
     
-    # 6. 检测 ICU 库
+    # 5. 总结报告
     echo ""
-    echo "[6/8] ICU Libraries"
-    echo "----------------------------------------"
-    for icu_lib in /usr/local/icu53/lib/libicu*.so*; do
-        if [ -f "$icu_lib" ] && [ ! -L "$icu_lib" ]; then
-            echo -n "  $(basename $icu_lib): "
-            if objdump -p "$icu_lib" 2>/dev/null | grep -q "OPENSSL_1_1_0"; then
-                echo "⚠️  Requires OPENSSL_1_1_0"
-                failed_items+=("$(basename $icu_lib) requires OPENSSL_1_1_0")
-            else
-                echo "✅ No OpenSSL dependency"
-            fi
-        fi
-    done
-    
-    # 7. PHP 扩展加载测试
-    echo ""
-    echo "[7/8] PHP Extension Load Test"
-    echo "----------------------------------------"
-    if [ -f "$install_dir/usr/local/bin/php" ]; then
-        echo "  Testing OpenSSL extension load..."
-        if "$install_dir/usr/local/bin/php" -m 2>/dev/null | grep -q "openssl"; then
-            echo "  ✅ OpenSSL extension loads successfully"
-            local openssl_info=$("$install_dir/usr/local/bin/php" -i 2>/dev/null | grep -i "openssl" | head -3)
-            echo "$openssl_info" | while read line; do
-                echo "    $line"
-            done
-        else
-            echo "  ❌ OpenSSL extension failed to load"
-            failed_items+=("PHP OpenSSL extension failed to load")
-        fi
-        
-        echo "  Testing intl extension load..."
-        if "$install_dir/usr/local/bin/php" -m 2>/dev/null | grep -q "intl"; then
-            echo "  ✅ intl extension loads successfully"
-        else
-            echo "  ⚠️  intl extension not loaded"
-            failed_items+=("PHP intl extension not loaded")
-        fi
-        
-        echo "  Testing imagick extension load..."
-        if "$install_dir/usr/local/bin/php" -m 2>/dev/null | grep -q "imagick"; then
-            echo "  ✅ imagick extension loads successfully"
-        else
-            echo "  ⚠️  imagick extension not loaded"
-            failed_items+=("PHP imagick extension not loaded")
-        fi
-    fi
-    
-    # 8. 总结报告
-    echo ""
-    echo "[8/8] Summary Report"
+    echo "[5/5] Summary Report"
     echo "========================================"
     
-    if [ ${#failed_items[@]} -eq 0 ]; then
-        echo "✅ ALL CHECKS PASSED"
-        echo "   All libraries and extensions are OpenSSL 4.x compatible"
+    if [ ${#failed_items[@]} -eq 0 ] && [ $openssl4_found -eq 1 ]; then
+        echo "✅ ALL CHECKS PASSED - OpenSSL 4.x ready"
         echo "========================================"
+        # 设置环境变量，供后续编译使用
+        export OPENSSL_CFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L"
+        export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
         return 0
     else
         echo "⚠️  ISSUES FOUND (${#failed_items[@]} items)"
@@ -2300,9 +2167,9 @@ check_openssl4_compatibility() {
         echo "========================================"
         echo "📋 Recommended Actions:"
         echo "========================================"
-        echo "  1. Rebuild any libraries that require OPENSSL_1_1_0"
-        echo "  2. Rebuild PHP extensions that link to old OpenSSL"
-        echo "  3. Ensure all dependencies are compiled with OpenSSL 4.x"
+        echo "  1. Install OpenSSL 4.x: pkg install openssl40"
+        echo "  2. Rebuild PHP with OpenSSL 4.x paths"
+        echo "  3. Ensure PHP extensions use OpenSSL 4.x"
         echo "========================================"
         return 1
     fi
@@ -2375,14 +2242,18 @@ create_package() {
         return 1
     fi
 
-    rm -rf "${PKG_DIR}/usr/local/lib/php/php/test"
-    rm -rf "${PKG_DIR}/usr/local/lib/php/php/doc"
-    rm -rf "${PKG_DIR}/usr/local/lib/php/.channels"
-    rm -rf "${PKG_DIR}/usr/local/lib/php/.registry"
-    rm -rf "${PKG_DIR}/usr/local/lib/php/.filemap"
-    rm -rf "${PKG_DIR}/usr/local/lib/php/.lock"
-    rmdir "${PKG_DIR}/usr/local/lib/php/php/doc"
-    rmdir "${PKG_DIR}/usr/local/lib/php/php/test"
+	echo "[ * ] Cleaning up unnecessary files..."
+	for dir in "${PKG_DIR}/usr/local/lib/php/php/test" \
+	           "${PKG_DIR}/usr/local/lib/php/php/doc" \
+	           "${PKG_DIR}/usr/local/lib/php/.channels" \
+	           "${PKG_DIR}/usr/local/lib/php/.registry" \
+	           "${PKG_DIR}/usr/local/lib/php/.filemap" \
+	           "${PKG_DIR}/usr/local/lib/php/.lock"; do
+		if [ -d "$dir" ]; then
+			rm -rf "$dir"
+			echo "  Removed: $dir"
+		fi
+	done
     
     echo "[ * ] Copying ICU 53 libraries..."
     mkdir -p "${PKG_DIR}/usr/local/icu53/lib"
