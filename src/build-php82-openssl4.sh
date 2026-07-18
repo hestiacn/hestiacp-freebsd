@@ -1,13 +1,13 @@
 #!/bin/bash
 # src/build-php82-openssl4.sh
-# Build PHP 8.2.31 with OpenSSL 4.x and create package
+# Build PHP 8.2.32 with OpenSSL 4.x and create package
 
 set -e
 
 # ============================================================
 # 配置
 # ============================================================
-PHP_VERSION="8.2.31"
+PHP_VERSION="8.2.32"
 BUILD_DIR="/tmp/php-build-test"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
@@ -1904,6 +1904,18 @@ EOF
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
+
+    # ============================================================
+    # 生成 configure 脚本（如果不存在）
+    # ============================================================
+    if [ ! -f "configure" ]; then
+        echo "[ * ] Generating configure script with buildconf..."
+        if ! ./buildconf --force; then
+            echo "❌ buildconf failed"
+            return 1
+        fi
+        echo "  ✅ configure generated"
+    fi
     
     # ============================================================
     # 配置 PHP
@@ -2406,7 +2418,7 @@ prefix: /usr/local
 desc: <<EOD
 PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 
-This is a custom build of PHP 8.2.31 that includes:
+This is a custom build of PHP 8.2.32 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
 - FPM, CLI, CGI support
@@ -2427,7 +2439,7 @@ EOF
 	cat > "+POST_INSTALL" << 'EOF'
 #!/bin/sh
 echo "========================================"
-echo "PHP 8.2.31 with OpenSSL 4.x installed"
+echo "PHP 8.2.32 with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"

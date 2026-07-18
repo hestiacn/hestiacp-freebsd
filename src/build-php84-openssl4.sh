@@ -737,7 +737,7 @@ build_php() {
     # ============================================================
     # PHP 8.2 特殊处理：使用 ICU 74
     # ============================================================
-    if [ "$major" = "8" ] && [ "$minor" = "2" ]; then
+    if [ "$major" = "8" ] && [ "$minor" = "4" ]; then
         # 编译 ICU 74
         if ! build_icu74; then
             echo "❌ Failed to build ICU 74"
@@ -1905,7 +1905,19 @@ EOF
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
-    
+
+    # ============================================================
+    # 生成 configure 脚本（如果不存在）
+    # ============================================================
+    if [ ! -f "configure" ]; then
+        echo "[ * ] Generating configure script with buildconf..."
+        if ! ./buildconf --force; then
+            echo "❌ buildconf failed"
+            return 1
+        fi
+        echo "  ✅ configure generated"
+    fi
+
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -2084,6 +2096,28 @@ EOF
         if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
+            # 1. 检查 ICU 66 库是否存在及符号
+            echo "=== ICU 66 检查 ==="
+            ls -la /usr/local/icu66/lib/libicu*.so*
+            nm -D /usr/local/icu66/lib/libicuuc.so.66.1 2>/dev/null | grep u_sprintf
+
+            # 2. 检查系统 OpenSSL 版本
+            echo "=== OpenSSL 版本 ==="
+            openssl version
+            pkg info openssl
+
+            # 3. 检查 libfetch 依赖的 OpenSSL
+            echo "=== libfetch 依赖 ==="
+            ldd /usr/lib/libfetch.so | grep ssl
+
+            # 4. 检查链接顺序
+            echo "=== 链接顺序 ==="
+            grep "^LDFLAGS" Makefile 2>/dev/null | head -5
+            grep "^EXTRA_LIBS" Makefile 2>/dev/null | head -5
+
+            # 5. 检查 PHP configure 检测到的 ICU
+            echo "=== PHP ICU 检测 ==="
+            grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | tail -20
             return 1
         fi
     fi
@@ -2425,10 +2459,10 @@ EOD
 EOF
 	
 	# 创建安装后脚本
-	cat > "+POST_INSTALL" << 'EOF'
+	cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
-echo "PHP 8.4.23 with OpenSSL 4.x installed"
+echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"

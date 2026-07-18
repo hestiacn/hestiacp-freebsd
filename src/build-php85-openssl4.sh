@@ -166,7 +166,7 @@ get_config_args() {
         "--with-pgsql"
         "--with-pdo-pgsql"
         "--enable-intl"
-        "--with-icu=/usr/local/icu73"
+        "--with-icu=/usr/local/icu78"
         "--enable-gd"
         "--with-freetype"
         "--with-jpeg"
@@ -176,7 +176,7 @@ get_config_args() {
         "--with-sodium"
         "--with-password-argon2"
         "--with-gettext=/usr/local"
-        "--with-curl=/usr/local"
+        "--with-curl"
         "--with-gmp=/usr/local"
         "--with-zlib=/usr"
         "--with-bz2=/usr"
@@ -211,7 +211,7 @@ build_icu78() {
     rm -rf "$icu_prefix"
 
     echo "[ * ] ICU 78 local file not found, downloading..."
-    #fetch -o /tmp/icu-78.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-78-2.tar.gz" || return 1
+    fetch -o /tmp/icu-78.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-78-2.tar.gz" || return 1
      echo "[ * ] Copying ICU 78 from local file..."
     LOCAL_ICU_FILE="$SCRIPT_DIR/php8.3/icu-release-78-2.tar.gz"
     cp "$LOCAL_ICU_FILE" /tmp/icu-78.tar.gz || return 1
@@ -360,7 +360,6 @@ apply_patches() {
         grep "Copyright" ./main/main.c || true
         grep "Copyright" ./Zend/zend.c || true
     fi
-
 
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
 	cd - > /dev/null || return 1
@@ -1905,6 +1904,18 @@ EOF
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
+    
+    # ============================================================
+    # 生成 configure 脚本（如果不存在）
+    # ============================================================
+    if [ ! -f "configure" ]; then
+        echo "[ * ] Generating configure script with buildconf..."
+        if ! ./buildconf --force; then
+            echo "❌ buildconf failed"
+            return 1
+        fi
+        echo "  ✅ configure generated"
+    fi
     
     # ============================================================
     # 配置 PHP

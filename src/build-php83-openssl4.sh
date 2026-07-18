@@ -1905,7 +1905,19 @@ EOF
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
-    
+
+    # ============================================================
+    # 生成 configure 脚本（如果不存在）
+    # ============================================================
+    if [ ! -f "configure" ]; then
+        echo "[ * ] Generating configure script with buildconf..."
+        if ! ./buildconf --force; then
+            echo "❌ buildconf failed"
+            return 1
+        fi
+        echo "  ✅ configure generated"
+    fi
+        
     # ============================================================
     # 配置 PHP
     # ============================================================
