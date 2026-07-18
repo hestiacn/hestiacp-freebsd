@@ -1916,7 +1916,35 @@ EOF
         fi
         echo "  ✅ configure generated"
     fi
+    # ============================================================
+    # 强制 C++17 支持（PHP 8.2+ 需要）
+    # ============================================================
+    echo "[ * ] Checking C++17 support..."
     
+    # 测试 g++14 是否支持 C++17
+    if echo "int main(){}" | g++14 -std=c++17 -x c++ - > /dev/null 2>&1; then
+        echo "  ✅ g++14 supports C++17"
+        export CXX="g++14"
+        export CXXFLAGS="-std=c++17"
+    else
+        echo "  ⚠️  g++14 doesn't support C++17, trying clang..."
+        # 尝试使用 clang
+        if echo "int main(){}" | clang++ -std=c++17 -x c++ - > /dev/null 2>&1; then
+            echo "  ✅ clang++ supports C++17"
+            export CC="clang"
+            export CXX="clang++"
+            export CXXFLAGS="-std=c++17"
+        else
+            echo "  ❌ No C++17 compiler found!"
+            echo "  Please install: pkg install gcc14 or clang"
+            exit 1
+        fi
+    fi
+    
+    # 强制 configure 使用 C++17
+    export CXXFLAGS="$CXXFLAGS -Wno-register"
+    echo "  Using CXX: $CXX"
+    echo "  CXXFLAGS: $CXXFLAGS"
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -1963,6 +1991,8 @@ EOF
     # ============================================================
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
+        CXX="$CXX" \
+        CXXFLAGS="$CXXFLAGS" \
         LIBS="-licuio" \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \

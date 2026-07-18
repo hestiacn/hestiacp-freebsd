@@ -198,7 +198,7 @@ get_config_args() {
 }
 
 # ============================================================
-# 编译和安装 ICU 74（用于 PHP 8.2）
+# 编译和安装 ICU 74（用于 PHP 8.3）
 # ============================================================
 build_icu74() {
     local icu_prefix="/usr/local/icu74"
@@ -208,7 +208,7 @@ build_icu74() {
         return 0
     fi
     
-    echo "[ * ] Building ICU 74 for PHP 8.2 compatibility..."
+    echo "[ * ] Building ICU 74 for PHP 8.3 compatibility..."
     rm -rf "$icu_prefix"
 
     echo "[ * ] ICU 74 local file not found, downloading..."
@@ -735,9 +735,9 @@ build_php() {
     fi
 
     # ============================================================
-    # PHP 8.2 特殊处理：使用 ICU 74
+    # PHP 8.3 特殊处理：使用 ICU 74
     # ============================================================
-    if [ "$major" = "8" ] && [ "$minor" = "2" ]; then
+    if [ "$major" = "8" ] && [ "$minor" = "3" ]; then
         # 编译 ICU 74
         if ! build_icu74; then
             echo "❌ Failed to build ICU 74"
@@ -1121,10 +1121,10 @@ build_php() {
             rm -f /usr/local/lib/libcurl.so /usr/local/lib/libcurl.so.4
         fi
         
-        cp "$SCRIPT_DIR/php7.0/curl-8.20.0.tar.gz" /tmp/
+        cp "$SCRIPT_DIR/php7.0/curl-8.30.0.tar.gz" /tmp/
         cd /tmp
-        extract_archive curl-8.20.0.tar.gz
-        cd curl-8.20.0
+        extract_archive curl-8.30.0.tar.gz
+        cd curl-8.30.0
         
         echo "[ * ] 配置 curl..."
         ./configure --prefix=/usr/local \
@@ -1156,7 +1156,7 @@ build_php() {
         fi
         
         cd /tmp
-        rm -rf curl-8.20.0 curl-8.20.0.tar.gz
+        rm -rf curl-8.30.0 curl-8.30.0.tar.gz
         
         if [ -f "/usr/local/lib/libcurl.so" ]; then
             echo "✅ curl 编译成功"
@@ -1722,7 +1722,7 @@ case "$1" in
         echo "-I${includedir}"
         ;;
     --version)
-        echo "8.20.0"
+        echo "8.30.0"
         ;;
     --static-libs)
         echo "-L${libdir} -lcurl -lssl -lcrypto -lz"
@@ -1917,7 +1917,14 @@ EOF
         fi
         echo "  ✅ configure generated"
     fi
-        
+
+    echo "[ * ] Detecting ICU installation..."
+    find /usr/local -name "libicu*.so*" 2>/dev/null | head -20
+    find /usr/local -name "unicode/utypes.h" 2>/dev/null
+    find /usr/local -name "icu-config" 2>/dev/null
+    ls -la /usr/local/icu*/lib/libicuuc.so* 2>/dev/null || echo "没有找到 ICU"
+    pkg-config --modversion icu-uc 2>/dev/null || echo "pkg-config 未找到 ICU"
+
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -2432,7 +2439,7 @@ This is a custom build of PHP 8.3.32 that includes:
 - Readonly classes
 - Disjunctive Normal Form (DNF) types
 
-IMPORTANT: PHP 8.2 is end-of-life. Use at your own risk.
+IMPORTANT: PHP 8.3 is end-of-life. Use at your own risk.
 EOD
 EOF
 	
