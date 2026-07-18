@@ -113,20 +113,22 @@ extract_archive() {
 # ============================================================
 get_config_args() {
     local version="$1"
-    local ver_suffix="82"
-    
+    local major=$(echo "$version" | cut -d. -f1)
+    local minor=$(echo "$version" | cut -d. -f2)
+    local ver_suffix="${major}${minor}"
+
     local args=(
         "--prefix=/usr/local"
         "--exec-prefix=/usr/local"
         "--bindir=/usr/local/bin"
         "--sbindir=/usr/local/sbin"
         "--libexecdir=/usr/local/libexec"
-        "--sysconfdir=/usr/local/etc/php82"
+        "--sysconfdir=/usr/local/etc/php${ver_suffix}"
         "--localstatedir=/usr/local/var"
-        "--mandir=/usr/local/share/php82/man"
-        "--includedir=/usr/local/include/php82"
-        "--libdir=/usr/local/lib/php82"
-        "--program-suffix=82"
+        "--mandir=/usr/local/share/php${ver_suffix}/man"
+        "--includedir=/usr/local/include/php${ver_suffix}"
+        "--libdir=/usr/local/lib/php${ver_suffix}"
+        "--program-suffix=${ver_suffix}"
         "--enable-embed"
         "--enable-fpm"
         "--enable-cli"
@@ -335,90 +337,29 @@ apply_patches() {
 
 	echo "[ * ] Applying patches for PHP ${PHP_VERSION}..."
 
-	# 补丁1: libxml2 ATTRIBUTE_UNUSED
-	if [ -f "ext/libxml/libxml.c" ]; then
-		if grep -q "int compression ATTRIBUTE_UNUSED)" ext/libxml/libxml.c; then
-			sed -i '' 's/int compression ATTRIBUTE_UNUSED)/int compression)/' ext/libxml/libxml.c
-			echo "[ ✓ ] Patch 1: libxml.c ATTRIBUTE_UNUSED removed"
-		fi
-	fi
-
-	# 补丁2: libxml2 xmlSetStructuredErrorFunc
-	if [ -f "ext/libxml/libxml.c" ]; then
-		if grep -q "xmlSetStructuredErrorFunc(NULL, php_libxml_structured_error_handler);" ext/libxml/libxml.c; then
-			sed -i '' 's/xmlSetStructuredErrorFunc(NULL, php_libxml_structured_error_handler);/xmlSetStructuredErrorFunc(NULL, (xmlStructuredErrorFunc)php_libxml_structured_error_handler);/' ext/libxml/libxml.c
-			echo "[ ✓ ] Patch 2: libxml.c xmlSetStructuredErrorFunc cast"
-		fi
-	fi
-
-	# 补丁3: libxml2 xmlGetLastError
-	if [ -f "ext/libxml/libxml.c" ]; then
-		if grep -q "error = xmlGetLastError();" ext/libxml/libxml.c; then
-			sed -i '' 's/error = xmlGetLastError();/error = (xmlErrorPtr)xmlGetLastError();/' ext/libxml/libxml.c
-			echo "[ ✓ ] Patch 3: libxml.c xmlGetLastError cast"
-		fi
-	fi
-
 	# 补丁4:更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
-        echo "[ * ] Updating copyright year to  2025..."
+        echo "[ * ] Updating copyright year to  2026..."
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
-            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group.*/| Copyright (c) 1997- 2025 The PHP Group                                |/' {} \;
+            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group.*/| Copyright (c) 1997- 2026 The PHP Group                                |/' {} \;
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
-            -exec sed -i '' 's/| Copyright (c) The PHP Group.*/| Copyright (c) 1997- 2025 The PHP Group                                |/' {} \;
+            -exec sed -i '' 's/| Copyright (c) The PHP Group.*/| Copyright (c) 1997- 2026 The PHP Group                                |/' {} \;
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
-            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies.*/| Copyright (c) 1998- 2025 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
+            -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies.*/| Copyright (c) 1998- 2026 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
-            -exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998- 2025 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
+            -exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998- 2026 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
         for file in sapi/cli/php_cli.c sapi/fpm/fpm/fpm_main.c sapi/cgi/cgi_main.c sapi/litespeed/lsapi_main.c sapi/phpdbg/phpdbg.c; do
         if [ -f "$file" ]; then
-            sed -i '' 's/Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group/Copyright (c) 1997- 2025 The PHP Group/g' "$file"
-            sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997- 2025 The PHP Group/g' "$file"
+            sed -i '' 's/Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
+            sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
         fi
         done
-        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2025 Zend Technologies\\n"/' ./Zend/zend.c
-        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2025 Zend Technologies\\n"/' ./Zend/zend.c
-        echo "[ ✓ ] Copyright updated to  2025"
+        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2026 Zend Technologies\\n"/' ./Zend/zend.c
+        sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2026 Zend Technologies\\n"/' ./Zend/zend.c
+        echo "[ ✓ ] Copyright updated to  2026"
         grep "Copyright" ./main/main.c || true
         grep "Copyright" ./Zend/zend.c || true
     fi
-
-	# 补丁5: ext/openssl/php_openssl.h - ERR_NUM_ERRORS
-	if [ -f "ext/openssl/php_openssl.h" ]; then
-		sed -i '' -e '/^#define PHP_OPENSSL_H$/a\
-#ifndef ERR_NUM_ERRORS\
-#define ERR_NUM_ERRORS 128\
-#endif
-' "ext/openssl/php_openssl.h"
-		echo "[ ✓ ] Added ERR_NUM_ERRORS definition to php_openssl.h"
-	fi
-
-	# ============================================================
-	# 补丁5: 替换 OpenSSL 源文件
-	# ============================================================
-	local custom_openssl_dir="$SCRIPT_DIR/php8.2"
-	if [ -d "$custom_openssl_dir" ]; then
-		echo "[ * ] Using pre-modified OpenSSL source files..."
-		
-		if [ -f "$custom_openssl_dir/openssl.c" ]; then
-			cp "$custom_openssl_dir/openssl.c" "ext/openssl/openssl.c"
-			echo "[ ✓ ] Replaced ext/openssl/openssl.c"
-		else
-			echo "⚠️  openssl.c not found in $custom_openssl_dir"
-		fi
-		
-		if [ -f "$custom_openssl_dir/xp_ssl.c" ]; then
-			cp "$custom_openssl_dir/xp_ssl.c" "ext/openssl/xp_ssl.c"
-			echo "[ ✓ ] Replaced ext/openssl/xp_ssl.c"
-		else
-			echo "⚠️  xp_ssl.c not found in $custom_openssl_dir"
-		fi
-		
-		echo "[ ✓ ] OpenSSL source files replaced"
-	else
-		echo "⚠️  Custom OpenSSL directory not found: $custom_openssl_dir"
-		echo "    Skipping OpenSSL source replacement"
-	fi
 
 	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
 	cd - > /dev/null || return 1
@@ -878,32 +819,15 @@ build_php() {
     # ============================================================
     fix_openssl_links() {
         echo "[ * ] Checking OpenSSL libraries..."
-        
         cd /usr/local/lib || return
-        
-        SSL_LIB=$(ls libssl.so.* | grep -v "\.so\.[0-9]\.[0-9]" | head -1)
-        CRYPTO_LIB=$(ls libcrypto.so.* | grep -v "\.so\.[0-9]\.[0-9]" | head -1)
-        
-        if [ -n "$SSL_LIB" ] && [ -n "$CRYPTO_LIB" ]; then
-            SSL_VER=$(echo "$SSL_LIB" | sed 's/libssl\.so\.//')
-            CRYPTO_VER=$(echo "$CRYPTO_LIB" | sed 's/libcrypto\.so\.//')
-            
-            echo "  Detected: libssl.so.$SSL_VER, libcrypto.so.$CRYPTO_VER"
-            echo "  ✅ Using OpenSSL directly (no compatibility symlinks)"
-            
-            # 如果存在 .30 符号链接，删除它们
-            if [ -L "libssl.so.30" ]; then
-                rm -f libssl.so.30
-                echo "  Removed existing libssl.so.30 symlink"
-            fi
-            if [ -L "libcrypto.so.30" ]; then
-                rm -f libcrypto.so.30
-                echo "  Removed existing libcrypto.so.30 symlink"
-            fi
-        else
-            echo "  ⚠️  Could not detect OpenSSL libraries"
+        if [ -f "libcrypto.so.30" ] && [ -f "libssl.so.30" ]; then
+            echo "  ✅ OpenSSL 4.x found: libcrypto.so.30, libssl.so.30"
+            export OPENSSL_CFLAGS="-I/usr/local/include"
+            export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
+            cd - > /dev/null
+            return 0
         fi
-        
+        echo "  ⚠️  OpenSSL 4.x not found, using default"
         cd - > /dev/null
     }
 
@@ -1615,7 +1539,7 @@ build_php() {
         if [ -f "/usr/local/lib/libc-client.so" ]; then
             echo "✅ 动态库: /usr/local/lib/libc-client.so ($(du -h /usr/local/lib/libc-client.so | cut -f1))"
             
-            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.19"; then
+            if ldd /usr/local/lib/libc-client.so | grep -q "libcrypto.so.30"; then
                 echo "  ✅ 链接到 OpenSSL 4.x"
             else
                 echo "  ⚠️  可能链接到其他 OpenSSL 版本"
@@ -1967,8 +1891,8 @@ EOF
     export LD_LIBRARY_PATH="/usr/local/icu72/lib:/usr/local/lib:/usr/lib"
 
     # 验证 OpenSSL 存在
-    if [ -f "/usr/local/lib/libcrypto.so.19" ]; then
-        echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.19"
+    if [ -f "/usr/local/lib/libcrypto.so.30" ]; then
+        echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.30"
     else
         echo "  ⚠️  OpenSSL 4.x not found"
     fi
