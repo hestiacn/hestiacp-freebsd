@@ -1,6 +1,5 @@
 name: Build and Deploy FreeBSD pkg Repository
 
-# 触发时机：当发布新 Release、往 main/release 分支推送代码，或者手动点击运行
 on:
   release:
     types: [published]
@@ -39,6 +38,9 @@ jobs:
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
 
             export HESTIA_DEBUG=true
+            # 传递签名密钥给脚本
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
             chmod +x src/hst_autocompile.sh
 
             bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
@@ -55,49 +57,18 @@ jobs:
               exit 1
             fi
 
-            cd /tmp/hestiacp-src
-            mkdir -p keys
-            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
-            chmod 600 keys/hestiacp.key
-
-            echo "[ ✓ ] Private key imported for signing"
-            echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
-            ls -la keys/
-
-            cd pkg
+            cd /tmp/hestiacp-src/pkg
 
             echo "=== Current directory: $(pwd) ==="
             echo "=== Package files ==="
             ls -la
-
-            pkg update -f
-            pkg upgrade -y pkg
-
-            echo "[ * ] Signing repository with private key..."
-            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              echo "=== Debug information ==="
-              echo "Key file exists:"
-              ls -la /tmp/hestiacp-src/keys/
-              echo "=== meta.conf content ==="
-              cat meta.conf || echo "meta.conf not found"
-              echo "=== Directory contents ==="
-              ls -la
-              exit 1
-            fi
-
-            echo "[ ✓ ] Repository signed successfully!"
-
-            # 创建公钥
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > hestiacp.pub
 
             # 复制 web 文件
             cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html .
             cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html .
             echo "=== Verifying signature ==="
             ls -la | grep -E "(digests|meta|packagesite)"
+
             # 创建版本目录并复制所有文件到 artifacts
             FREEBSD_VERSION="${{ matrix.freebsd_version }}"
             mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest
@@ -113,12 +84,8 @@ jobs:
         run: |
           if [ ! -f "build.log" ]; then
             echo "❌ build.log not found!"
-            echo "Current directory contents:"
-            ls -la
             exit 0
           fi
-
-          echo "✅ build.log found, size: $(wc -l < build.log) lines"
 
           cat > build-report-FreeBSD${{ matrix.freebsd_version }}.md << 'EOF'
           # HestiaCP FreeBSD Build Report - FreeBSD ${{ matrix.freebsd_version }}
@@ -135,7 +102,7 @@ jobs:
 
           echo "## Version Information" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息"
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
@@ -187,16 +154,14 @@ jobs:
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Exit Code" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码"
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "---" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "*报告由 GitHub Actions 自动生成*" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-
           echo "✅ Build report generated: build-report-FreeBSD${{ matrix.freebsd_version }}.md"
           cat build-report-FreeBSD${{ matrix.freebsd_version }}.md
-
       - name: Upload build report
         if: always()
         uses: actions/upload-artifact@v7
@@ -220,8 +185,6 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Syncing to endpoint: $ENDPOINT"
-
           aws s3 sync artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ s3://fbsd-repo/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
@@ -238,7 +201,6 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Verifying uploaded files for FreeBSD ${{ matrix.freebsd_version }}..."
           aws s3 ls s3://fbsd-repo/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ --endpoint-url "$ENDPOINT" --recursive --human-readable
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -316,7 +278,6 @@ jobs:
           bucket_name = "fbsd-repo"
           TOML_EOF
 
-          echo "[ * ] Dispatching clean Cloudflare Worker code deployment with HTTP/3 support..."
           npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
