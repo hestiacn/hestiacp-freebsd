@@ -2097,13 +2097,21 @@ EOF
 
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
-
+    echo "[ * ] Fixing ICU link order in Makefile..."
+    if [ -f "Makefile" ]; then
+        # 移除 ICU 库的旧引用（避免重复）
+        sed -i '' 's|-licui18n||g' Makefile
+        sed -i '' 's|-licuuc||g' Makefile
+        sed -i '' 's|-licudata||g' Makefile
+        sed -i '' 's|-licuio||g' Makefile
+        echo "  ✅ Removed ICU libraries from EXTRA_LIBS"
+    fi
     # ============================================================
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
     OLD_LD_PRELOAD="${LD_PRELOAD:-}"
-    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    gmake -j "$NUM_CPUS" LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib" LIBS="-licui18n -licuuc -licudata -licuio" > "$LOG_DIR/build-${PHP_VERSION}.log"
     BUILD_STATUS=$?
 
     # 恢复 LD_PRELOAD（如果需要）

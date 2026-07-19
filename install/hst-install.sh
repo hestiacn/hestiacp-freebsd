@@ -176,7 +176,7 @@ check_wget_curl() {
 	
 	# FreeBSD: 使用 fetch
 	if [ "$type" = "freebsd" ]; then
-		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh
+		fetch -o "hst-install-$type.sh" "https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh"
 		if [ "$?" -eq '0' ]; then
 			bash hst-install-$type.sh "$@"
 			exit
@@ -190,7 +190,7 @@ check_wget_curl() {
 # Check for supported operating system
 if [ "$type" = "freebsd" ]; then
 	case "$release" in
-		13|14|15) check_wget_curl "$@" ;;
+		14|15) check_wget_curl "$@" ;;
 		*)        no_support_message ;;
 	esac
 else
