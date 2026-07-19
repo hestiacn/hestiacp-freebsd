@@ -2095,26 +2095,29 @@ EOF
     echo "[ * ] Fixing ICU link order in Makefile..."
     if [ -f "Makefile" ]; then
         echo "  📋 BEFORE modification:"
-        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    /'
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
         sed -i '' -e 's|-licui18n||g' \
                 -e 's|-licuuc||g' \
                 -e 's|-licudata||g' \
                 -e 's|-licuio||g' Makefile
-        echo "  ✅ Removed ICU libraries from EXTRA_LIBS"
+        echo "  ✅ Removed ICU library flags from Makefile"
         sed -i '' -e "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = ${ICU_PREFIX}/lib/libicui18n.so.74.2 ${ICU_PREFIX}/lib/libicuuc.so.74.2 ${ICU_PREFIX}/lib/libicudata.so.74.2 ${ICU_PREFIX}/lib/libicuio.so.74.2 \1|" Makefile
         echo "  ✅ ICU libraries added to EXTRA_LIBS"
+        sed -i '' -e "s|^LIBS = \(.*\)$|LIBS = ${ICU_PREFIX}/lib/libicui18n.so.74.2 ${ICU_PREFIX}/lib/libicuuc.so.74.2 ${ICU_PREFIX}/lib/libicudata.so.74.2 ${ICU_PREFIX}/lib/libicuio.so.74.2 \1|" Makefile
+        echo "  ✅ ICU libraries added to LIBS"
+        
         echo "  📋 AFTER modification:"
-        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    /'
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
     fi
 
     # ============================================================
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    OLD_LD_PRELOAD="${LD_PRELOAD:-}"
     gmake -j "$NUM_CPUS" \
         LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib -L/usr/local/lib" \
-        LIBS="-licui18n -licuuc -licudata -licuio -lm -lxml2 -lssl -lcrypto" \
         > "$LOG_DIR/build-${PHP_VERSION}.log"
     BUILD_STATUS=$?
 
