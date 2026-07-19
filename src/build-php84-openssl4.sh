@@ -771,7 +771,9 @@ build_php() {
     else
         echo "❌ libarchive 安装失败，文件不存在"
         exit 1
-    fi    # ============================================================
+    fi    
+
+    # ============================================================
     # 用 OpenSSL 4.x 重新编译所有依赖库
     # ============================================================
     if [ ! -d "/usr/ports" ]; then
@@ -2306,7 +2308,6 @@ extension=imagick.so
 zend_extension=opcache.so
 EOF
 
-    # 如果有 imap.so 则添加
     if [ -f "$EXT_DIR/imap.so" ]; then
         echo "extension=imap.so" >> "$test_php_ini"
     fi

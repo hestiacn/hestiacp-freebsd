@@ -71,13 +71,36 @@ jobs:
 
             # 进入源码目录
             cd ${REPO_ROOT}
-            
-            # 导入签名密钥
+
+            # 确保 keys 目录存在
             mkdir -p keys
+
+            # 导入签名密钥（私钥）
+            echo "导入私钥..."
             echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
-            echo "[ ✓ ] Private key imported for signing"
+
+            # 导入公钥
+            echo "导入公钥..."
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > keys/hestiacp.pub
+            chmod 644 keys/hestiacp.pub
+
+            # 验证密钥文件
+            if [ ! -f "keys/hestiacp.key" ]; then
+                echo "[ ✗ ] Failed to create signing key!"
+                exit 1
+            fi
+
+            if [ ! -f "keys/hestiacp.pub" ]; then
+                echo "[ ✗ ] Failed to create public key!"
+                exit 1
+            fi
+
+            echo "[ ✓ ] Private key created at: $(pwd)/keys/hestiacp.key"
+            echo "[ ✓ ] Public key created at: $(pwd)/keys/hestiacp.pub"
+            echo "=== Key files ==="
             ls -la keys/
+            cat keys/hestiacp.pub | head -10
 
             # 进入包目录
             cd pkg
@@ -92,23 +115,24 @@ jobs:
 
             # 签名仓库
             echo "[ * ] Signing repository with private key..."
+            # 使用私钥签名
             if [ -f "${REPO_ROOT}/keys/hestiacp.key" ]; then
-              pkg repo . ${REPO_ROOT}/keys/hestiacp.key
+                echo "[ * ] Signing repository with private key..."
+                pkg repo . ${REPO_ROOT}/keys/hestiacp.key
+                if [ $? -ne 0 ]; then
+                    echo "[ ✗ ] Failed to sign repository!"
+                    echo "=== Debug information ==="
+                    echo "Key file:"
+                    ls -la ${REPO_ROOT}/keys/
+                    echo "=== meta.conf content ==="
+                    cat meta.conf || echo "meta.conf not found"
+                    echo "=== Directory contents ==="
+                    ls -la
+                    exit 1
+                fi
             else
-              echo "⚠️  No signing key found, creating repository without signature"
-              pkg repo .
-            fi
-
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              echo "=== Debug information ==="
-              echo "Key file exists:"
-              ls -la ${REPO_ROOT}/keys/
-              echo "=== meta.conf content ==="
-              cat meta.conf || echo "meta.conf not found"
-              echo "=== Directory contents ==="
-              ls -la
-              exit 1
+                echo "[ ✗ ] Signing key not found at ${REPO_ROOT}/keys/hestiacp.key"
+                exit 1
             fi
 
             echo "[ ✓ ] Repository signed successfully!"
@@ -175,7 +199,7 @@ jobs:
 
           FREEBSD_VERSION=$(grep "FREEBSD_VERSION" artifacts/version.txt | cut -d'=' -f2 || echo "${{ matrix.freebsd_version }}")
 
-          cat > build-report-freebsd-${FREEBSD_VERSION}.md << 'EOF'
+          cat > build-report-freebsd-${FREEBSD_VERSION}.md << EOF
           # HestiaCP FreeBSD Build Report
 
           ## Build Information
@@ -188,6 +212,14 @@ jobs:
 
           EOF
 
+          # 提取版本信息
+          echo "## Version Information" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log 2>/dev/null | head -10 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "未找到版本信息" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          # 提取编译状态
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo "## Build Status" >> build-report-freebsd-${FREEBSD_VERSION}.md
           if grep -q "Compilation completed successfully" build.log 2>/dev/null; then
             echo "✅ **编译成功**" >> build-report-freebsd-${FREEBSD_VERSION}.md
@@ -195,21 +227,63 @@ jobs:
             echo "❌ **编译失败**" >> build-report-freebsd-${FREEBSD_VERSION}.md
           fi
 
+          # 提取错误和警告
           echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo "## Errors and Warnings" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
-          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed" build.log | head -30 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "无错误或警告" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log 2>/dev/null | head -30 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "无错误或警告" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
 
+          # 提取包文件大小
           echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
-          echo "## Package Files" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Package Sizes" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
-          ls -la artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/*.pkg || echo "未找到包文件" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          ls -la artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/*.pkg || echo "未找到包文件"
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          # 提取签名状态
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Signing Status" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          if grep -q "Repository signed successfully" build.log 2>/dev/null; then
+            echo "✅ **仓库签名成功**" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          else
+            echo "❌ **仓库签名失败**" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          fi
+
+          # 提取关键配置检查
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Key Checks" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "checking for|detected|found|using" build.log 2>/dev/null | head -20 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "未找到配置检查信息" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          # 提取依赖安装状态
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Dependencies" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "Installing|pkg install|oniguruma" build.log 2>/dev/null | head -15 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "未找到依赖安装信息" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          # 提取最终产物
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Build Artifacts" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "final-packages|artifacts|Build artifacts" build.log 2>/dev/null | head -10 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "未找到产物信息" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          # 添加退出码
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Exit Code" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep "Exit code:" build.log 2>/dev/null | tail -1 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "未找到退出码" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
 
           echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo "---" >> build-report-freebsd-${FREEBSD_VERSION}.md
           echo "*报告由 GitHub Actions 自动生成*" >> build-report-freebsd-${FREEBSD_VERSION}.md
+
+          echo "✅ Build report generated: build-report-freebsd-${FREEBSD_VERSION}.md"
+          cat build-report-freebsd-${FREEBSD_VERSION}.md
 
       - name: Upload build report
         if: always()
