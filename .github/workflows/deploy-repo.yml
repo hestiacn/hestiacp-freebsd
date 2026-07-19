@@ -81,6 +81,13 @@ jobs:
 
             if [ $? -ne 0 ]; then
               echo "[ ✗ ] Failed to sign repository!"
+              echo "=== Debug information ==="
+              echo "Key file exists:"
+              ls -la /tmp/hestiacp-src/keys/
+              echo "=== meta.conf content ==="
+              cat meta.conf 2>/dev/null || echo "meta.conf not found"
+              echo "=== Directory contents ==="
+              ls -la
               exit 1
             fi
 
@@ -229,7 +236,7 @@ jobs:
 
           echo "Syncing to endpoint: $ENDPOINT"
 
-          aws s3 sync artifacts/ s3://fbsd-repo/ \
+          aws s3 sync artifacts/ s3://fbsd-repo \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
             --region auto
@@ -303,7 +310,7 @@ jobs:
               const headers = new Headers();
               object.writeHttpMetadata(headers);
               headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
-              if (path.endsWith(".html") || path.endsWith(".htm")) {
+              if (path.endsWith(".html") || path.endsWith(".html")) {
                 headers.set("content-type", "text/html; charset=utf-8");
               } else if (path.endsWith(".sh") || path.endsWith(".pub") || path.endsWith(".conf")) {
                 headers.set("content-type", "text/plain; charset=utf-8");

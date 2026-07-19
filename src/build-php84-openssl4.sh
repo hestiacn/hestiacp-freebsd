@@ -197,7 +197,7 @@ get_config_args() {
 }
 
 # ============================================================
-# 编译和安装 ICU 74（用于 php 8.3）
+# 编译和安装 ICU 74（用于 php 8.4）
 # ============================================================
 build_icu74() {
     local icu_prefix="/usr/local/icu74"
@@ -217,7 +217,7 @@ build_icu74() {
     rm -rf "$icu_prefix"
 
     echo "[ * ] Copying ICU 74 from local file..."
-    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.4/icu-release-74-2.tar.gz"
+    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.3/icu-release-74-2.tar.gz"
     cp "$LOCAL_ICU_FILE" /tmp/icu-74.tar.gz || return 1
     tar -xf /tmp/icu-74.tar.gz -C /tmp || return 1
     
