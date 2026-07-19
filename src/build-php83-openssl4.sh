@@ -197,9 +197,6 @@ get_config_args() {
 }
 
 # ============================================================
-# 编译和安装 ICU 74（用于 PHP 8.3）
-# ============================================================
-# ============================================================
 # 编译和安装 ICU 74（用于 php 8.3）
 # ============================================================
 build_icu74() {
@@ -220,7 +217,7 @@ build_icu74() {
     rm -rf "$icu_prefix"
 
     echo "[ * ] Copying ICU 74 from local file..."
-    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.3/icu-release-74-2.tar.gz"
+    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.4/icu-release-74-2.tar.gz"
     cp "$LOCAL_ICU_FILE" /tmp/icu-74.tar.gz || return 1
     tar -xf /tmp/icu-74.tar.gz -C /tmp || return 1
     
@@ -252,32 +249,6 @@ build_icu74() {
         return 1
     fi
     
-    # ============================================================
-    # 检测 configure 生成的配置
-    # ============================================================
-    echo ""
-    echo "========================================"
-    echo "🔍 ICU Configure 检测"
-    echo "========================================"
-    
-    echo "[1] 检查 config.status 配置:"
-    grep -E "CFLAGS|CXXFLAGS|LDFLAGS|enable-export|visibility" config.status | head -20 | sed 's/^/    /'
-    
-    echo ""
-    echo "[2] 检查 Makefile 中的编译选项:"
-    grep -E "^CFLAGS|^CXXFLAGS|^LDFLAGS|^DEFS" Makefile | head -10 | sed 's/^/    /'
-    
-    echo ""
-    echo "[3] 检查 Makefile 中的目标:"
-    grep -E "all:|install:" Makefile | head -5 | sed 's/^/    /'
-    
-    echo ""
-    echo "[4] 检查 config.log 中的关键信息:"
-    grep -E "visibility|export|strip" config.log | tail -10 | sed 's/^/    /'
-    
-    echo "========================================"
-    echo ""
-    
     echo "[ * ] Building ICU 74 (this may take a while)..."
     mkdir -p ../lib
     
@@ -288,7 +259,8 @@ build_icu74() {
     fi
     
     echo "[ * ] Installing ICU 74..."
-    if ! gmake install | tee /tmp/icu74-install.log; then
+    # 🔥 关键：禁止 strip，保留符号
+    if ! gmake install INSTALL_STRIP_PROGRAM="" INSTALL_STRIP="" | tee /tmp/icu74-install.log; then
         echo "❌ ICU install failed"
         tail -50 /tmp/icu74-install.log
         return 1
@@ -296,98 +268,43 @@ build_icu74() {
     echo "[ ✓ ] ICU 74 installation completed successfully"
     
     # ============================================================
-    # 深入检测 ICU 编译结果
+    # 🔍 检查库是否被 strip
     # ============================================================
-    echo ""
-    echo "========================================"
-    echo "🔍 ICU 编译结果深度检测"
-    echo "========================================"
-    
-    echo "[1] 检查库文件类型:"
-    file "$icu_prefix/lib/libicuuc.so.74.2" | sed 's/^/    /'
-    
-    echo ""
-    echo "[2] 检查库文件大小:"
-    ls -lh "$icu_prefix/lib/libicuuc.so.74.2" | sed 's/^/    /'
-    
-    echo ""
-    echo "[3] 检查库文件是否有符号表:"
-    echo "    nm 输出统计:"
-    nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | wc -l | sed 's/^/        总符号数: /'
-    nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -c " T " | sed 's/^/        代码符号(T): /'
-    nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -c " D " | sed 's/^/        数据符号(D): /'
-    
-    echo ""
-    echo "[4] 检查是否有隐藏符号:"
-    nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | head -20 | sed 's/^/    /'
-    
-    echo ""
-    echo "[5] 检查是否被 strip:"
-    if file "$icu_prefix/lib/libicuuc.so.74.2" | grep -q "not stripped"; then
-        echo "    ✅ 未被 strip (包含调试信息)"
-    elif file "$icu_prefix/lib/libicuuc.so.74.2" | grep -q "stripped"; then
-        echo "    ❌ 已被 strip (符号被移除)"
-    else
-        echo "    ⚠️  无法确定"
+    echo "[ * ] Checking if ICU libraries were stripped..."
+    if [ -f "$icu_prefix/lib/libicuuc.so.74.2" ]; then
+        STRIP_CHECK=$(file "$icu_prefix/lib/libicuuc.so.74.2" | grep -i "not stripped\|stripped" || echo "unknown")
+        echo "  $STRIP_CHECK"
+        if echo "$STRIP_CHECK" | grep -q "stripped"; then
+            echo "  ⚠️  Library was stripped! Symbols may be missing."
+        elif echo "$STRIP_CHECK" | grep -q "not stripped"; then
+            echo "  ✅ Library was NOT stripped, symbols should be preserved."
+        else
+            echo "  ⚠️  Unable to determine strip status."
+        fi
     fi
     
-    echo ""
-    echo "[6] 检查动态链接库的导出表:"
-    if command -v objdump >/dev/null 2>&1; then
-        objdump -T "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | head -20 | sed 's/^/    /'
-    else
-        echo "    ⚠️  objdump 不可用"
-    fi
-    
-    echo ""
-    echo "[7] 检查系统 ICU 76 的符号作为对比:"
-    if [ -f "/usr/local/lib/libicuuc.so.76" ]; then
-        echo "    系统 ICU 76 符号数:"
-        nm -D "/usr/local/lib/libicuuc.so.76" 2>/dev/null | wc -l | sed 's/^/        总符号数: /'
-        echo "    系统 ICU 76 示例符号:"
-        nm -D "/usr/local/lib/libicuuc.so.76" 2>/dev/null | grep "uloc_getDefault" | sed 's/^/        /'
-    fi
-    
-    echo ""
-    echo "[8] 检查 C++ 符号 (因 ICU 使用 C++):"
-    nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -E "^[0-9a-f]+ [TtDd] " | head -30 | sed 's/^/    /'
-    
-    echo "========================================"
-    echo ""
-    
+    # ============================================================
     # 验证符号
+    # ============================================================
     echo "[ * ] Verifying ICU symbols..."
     if nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -q "uloc_getDefault"; then
         echo "  ✅ Symbols found in libicuuc.so.74.2"
-        return 0
     else
         echo "  ❌ Symbols NOT found in libicuuc.so.74.2"
         
+        # 尝试用 readelf 或 objdump 检查
+        if command -v objdump >/dev/null 2>&1; then
+            SYMBOL_COUNT=$(objdump -T "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | wc -l)
+            echo "  Objdump symbol count: $SYMBOL_COUNT"
+        fi
+        
         # 检查静态库
         if [ -f "$icu_prefix/lib/libicuuc.a" ]; then
-            echo "  [ * ] 检查静态库 libicuuc.a..."
             if nm "$icu_prefix/lib/libicuuc.a" 2>/dev/null | grep -q "uloc_getDefault"; then
                 echo "  ✅ Symbols found in libicuuc.a"
                 echo "  💡 建议: 使用静态库 (.a) 代替动态库 (.so)"
-            else
-                echo "  ❌ Symbols NOT found in libicuuc.a"
             fi
         fi
-        
-        # 检查是否 C++ 符号被 mangled
-        echo "  [ * ] 检查 C++ mangled 符号..."
-        if nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -q "_ZN"; then
-            echo "  ✅ 找到 C++ mangled 符号，说明库包含 C++ 代码"
-            echo "  ⚠️  但 C 符号 (uloc_getDefault) 未导出，可能是版本脚本限制了导出"
-        else
-            echo "  ❌ 没有任何符号，库可能被 strip 或编译有问题"
-        fi
-        
-        echo ""
-        echo "  🔧 修复建议:"
-        echo "    1. 检查编译日志: cat /tmp/icu74-build.log | grep -i error"
-        echo "    2. 检查安装脚本是否 strip 了库: grep -i strip /tmp/icu74-install.log"
-        echo "    3. 尝试用系统 ICU 76: export ICU_PREFIX=/usr/local"
         
         return 1
     fi

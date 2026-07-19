@@ -1215,18 +1215,8 @@ if [ "$WEB_TERMINAL_B" = "true" ]; then
 			fi
 
 			cd "${BUILD_DIR_HESTIA_TERMINAL}/usr/local/hestia/web-terminal" || exit 1
-			if [ ! -f "package-lock.json" ]; then
-				echo "[ * ] Generating package-lock.json..."
-				npm install --package-lock-only
-				if [ $? -ne 0 ]; then
-					echo "ERROR: Failed to generate package-lock.json"
-					exit 1
-				fi
-			fi
-			npm ci --dry-run --omit=dev > /dev/null 2>&1 || {
-				echo "[ ! ] npm ci validation failed, falling back to npm install..."
-				npm install --omit=dev
-			}
+			npm install --omit=dev
+			npm ci --omit=dev
 			rm -rf node_modules
 
 			mkdir -p "$BUILD_DIR_HESTIA_TERMINAL/usr/local/etc/rc.d"
