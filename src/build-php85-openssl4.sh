@@ -1,13 +1,14 @@
 #!/bin/bash
-# src/build-php85-openssl4-test.sh
-# Build PHP 8.5.7 with OpenSSL 4.x and create package
+# src/build-php85-openssl4.sh
+# Build PHP 8.5.8 with OpenSSL 4.x and create package
+# PHP 8.5 includes IMAP support in core (no PECL needed)
 
 set -e
 
 # ============================================================
 # 配置
 # ============================================================
-PHP_VERSION="8.5.7"
+PHP_VERSION="8.5.8"
 BUILD_DIR="/tmp/php-build-test"
 ARCHIVE_DIR="$BUILD_DIR/archive"
 PKG_DIR="$BUILD_DIR/pkg"
@@ -24,7 +25,8 @@ echo "========================================"
 echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
 echo "========================================"
 echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-echo "OpenSSL version: $(/usr/local/bin/openssl version || echo 'unknown')"
+echo "OpenSSL version: $(openssl version || echo 'unknown')"
+echo "System ICU: $(pkg info icu | grep Version || echo 'unknown')"
 echo "CFLAGS: $CFLAGS"
 echo "LDFLAGS: $LDFLAGS"
 echo "========================================"
@@ -54,25 +56,24 @@ download_php() {
 # 下载 ImageMagick 扩展源码
 # ============================================================
 download_imagick() {
-	local imagick_dir="$1/ext/imagick"
-	
-	[ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
-	
-	echo "[ * ] Downloading ImageMagick 3.8.1..."
-	fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
-	
-	echo "[ * ] Extracting..."
-	tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
-	
-	# 找到解压出来的目录并重命名
-	local extracted=$(find "$1/ext" -maxdepth 1 -type d -name "imagick-*" | head -1)
-	[ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
-	
-	mv "$extracted" "$imagick_dir"
-	rm -f "/tmp/imagick.tar.gz"
-	
-	echo "[ ✓ ] ImageMagick extension ready"
-	return 0
+    local imagick_dir="$1/ext/imagick"
+    
+    [ -d "$imagick_dir" ] && { echo "[ ✓ ] ImageMagick already exists"; return 0; }
+    
+    echo "[ * ] Downloading ImageMagick 3.8.1..."
+    fetch -o "/tmp/imagick.tar.gz" "https://github.com/Imagick/imagick/archive/refs/tags/3.8.1.tar.gz" || return 1
+    
+    echo "[ * ] Extracting..."
+    tar -xf "/tmp/imagick.tar.gz" -C "$1/ext"
+    
+    local extracted=$(find "$1/ext" -maxdepth 1 -type d -name "imagick-*" | head -1)
+    [ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
+    
+    mv "$extracted" "$imagick_dir"
+    rm -f "/tmp/imagick.tar.gz"
+    
+    echo "[ ✓ ] ImageMagick extension ready"
+    return 0
 }
 
 # ============================================================
@@ -109,7 +110,7 @@ extract_archive() {
 }
 
 # ============================================================
-# 获取配置参数
+# 获取配置参数 (PHP 8.5)
 # ============================================================
 get_config_args() {
     local version="$1"
@@ -133,7 +134,6 @@ get_config_args() {
         "--enable-fpm"
         "--enable-cli"
         "--enable-cgi"
-        "--enable-phpdbg"
         "--enable-mbstring"
         "--enable-bcmath"
         "--enable-session"
@@ -144,12 +144,10 @@ get_config_args() {
         "--enable-pcntl"
         "--enable-exif"
         "--enable-ftp"
-        "--enable-calendar"
-        "--enable-shmop"
-        "--enable-sysvmsg"
-        "--enable-sysvsem"
-        "--enable-sysvshm"
-        "--enable-tokenizer"
+        "--enable-static"
+        "--enable-static=yes"
+        "--enable-shared=yes"
+        "--enable-dtrace"
         "--enable-dom"
         "--enable-xml"
         "--enable-xmlreader"
@@ -157,189 +155,63 @@ get_config_args() {
         "--enable-simplexml"
         "--with-xsl"
         "--enable-opcache"
-        "--enable-static"
-        "--enable-static=yes"
-        "--enable-shared=yes"
-        "--with-pic"
-        "--with-mysqli=mysqlnd"
-        "--with-pdo-mysql=mysqlnd"
-        "--with-pgsql"
-        "--with-pdo-pgsql"
         "--enable-intl"
-        "--with-icu=/usr/local/icu78"
-        "--enable-gd"
-        "--with-freetype"
-        "--with-jpeg"
-        "--with-webp"
-        "--with-zip"
-        "--with-openssl=/usr/local"
-        "--with-sodium"
-        "--with-password-argon2"
+        "--enable-soap"
+        "--enable-posix"
+        "--enable-tokenizer"
+        "--with-readline"
+        "--enable-phar=shared"
+        "--enable-shmop"
+        "--enable-sysvmsg"
+        "--enable-sysvsem"
+        "--enable-sysvshm"
+        "--enable-calendar"
+        "--with-pic"
+        "--enable-phpdbg"
         "--with-gettext=/usr/local"
         "--with-curl"
         "--with-gmp=/usr/local"
         "--with-zlib=/usr"
         "--with-bz2=/usr"
+        "--with-mysqli=mysqlnd"
+        "--with-pdo-mysql=mysqlnd"
+        "--with-pgsql"
+        "--with-pdo-pgsql"
         "--with-iconv=/usr/local"
-        "--with-readline"
-        "--with-libedit"
-        "--with-ffi"
+        "--with-openssl=/usr/local"
+        "--with-sodium"
+        "--with-password-argon2"
         "--with-ldap=/usr/local"
         "--with-imap=/usr/local"
         "--with-imap-ssl=/usr/local"
         "--with-pspell=/usr/local"
-        "--enable-soap"
-        "--enable-dtrace"
-        "--enable-phar=shared"
+        "--with-libedit"
+        "--with-ffi"
+        "--enable-gd"
+        "--with-freetype"
+        "--with-jpeg"
+        "--with-webp"
+        "--with-zip"
+        "--enable-zend-signals"
+        "--enable-rtld-now"
     )
 
     printf "%s\n" "${args[@]}"
 }
 
 # ============================================================
-# 编译和安装 ICU 78（用于 PHP 8.2）
-# ============================================================
-build_icu78() {
-    local icu_prefix="/usr/local/icu78"
-    
-    if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.78.2" ]; then
-        echo "[ ✓ ] ICU 78 already installed at $icu_prefix"
-        return 0
-    fi
-    
-    echo "[ * ] Building ICU 78 for PHP 8.2 compatibility..."
-    rm -rf "$icu_prefix"
-
-    echo "[ * ] ICU 78 local file not found, downloading..."
-    fetch -o /tmp/icu-78.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-78-2.tar.gz" || return 1
-     echo "[ * ] Copying ICU 78 from local file..."
-    LOCAL_ICU_FILE="$SCRIPT_DIR/php8.3/icu-release-78-2.tar.gz"
-    cp "$LOCAL_ICU_FILE" /tmp/icu-78.tar.gz || return 1
-    tar -xf /tmp/icu-78.tar.gz -C /tmp || return 1
-    
-    cd /tmp/icu-release-78-2/icu4c/source || return 1
-    
-    make distclean || true
-    
-    export CC=gcc14
-    export CXX=g++14
-    
-    echo "[ * ] Configuring ICU 78..."
-    ./configure \
-        --prefix="$icu_prefix" \
-        --enable-shared=yes \
-        --enable-static=yes \
-        --disable-debug \
-        --enable-release \
-        --with-library-bits=64 \
-        --enable-icuio \
-        CFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing" \
-        CXXFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing -std=c++11" \
-        LDFLAGS="-lpthread -lm"
-    
-    if [ $? -ne 0 ]; then
-        echo "❌ ICU configure failed"
-        tail -50 config.log
-        return 1
-    fi
-    
-    echo "[ * ] Building ICU 78 (this may take a while)..."
-    mkdir -p ../lib
-    
-    if ! gmake -j"$NUM_CPUS" | tee /tmp/icu78-build.log; then
-        echo "❌ ICU build failed"
-        tail -50 /tmp/icu78-build.log
-        return 1
-    fi
-    
-    echo "[ * ] Installing ICU 78..."
-    if ! gmake install | tee /tmp/icu78-install.log; then
-        echo "❌ ICU install failed"
-        tail -50 /tmp/icu78-install.log
-        return 1
-    fi
-    echo "[ ✓ ] ICU 78 installation completed successfully"
-    
-    # 创建符号链接
-    echo "[ * ] Creating ICU 78 library symlinks..."
-    cd "$icu_prefix/lib"
-    for lib in libicuuc libicui18n libicudata libicuio; do
-        if [ -f "${lib}.so.78.2" ]; then
-            [ ! -f "${lib}.so" ] && ln -sf "${lib}.so.78.2" "${lib}.so"
-            [ ! -f "${lib}.so.78" ] && ln -sf "${lib}.so.78.2" "${lib}.so.78"
-            echo "  ✓ Created ${lib} links"
-        fi
-    done
-    cd -
-    
-    # 创建 icu-config
-    if [ ! -f "$icu_prefix/bin/icu-config" ]; then
-        echo "[ * ] Creating icu-config wrapper for ICU 78..."
-        cat > "$icu_prefix/bin/icu-config" << 'EOF'
-#!/bin/sh
-prefix=/usr/local/icu78
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-version=78.2
-
-case "$1" in
-    --version)
-        echo "$version"
-        ;;
-    --cc)
-        echo "gcc14"
-        ;;
-    --cxx)
-        echo "g++14"
-        ;;
-    --cppflags|--cflags)
-        echo "-I${includedir}"
-        ;;
-    --ldflags|--ldflags-libsonly)
-        echo "-L${libdir} -Wl,-rpath,${libdir}"
-        ;;
-    --libs)
-        echo "-L${libdir} -licui18n -licuuc -licudata"
-        ;;
-    --libs-icuio)
-        echo "-L${libdir} -licuio -licui18n -licuuc -licudata"
-        ;;
-    *)
-        echo "ICU ${version}"
-        ;;
-esac
-EOF
-        chmod +x "$icu_prefix/bin/icu-config"
-        echo "[ ✓ ] icu-config wrapper created"
-    fi
-    
-    # 验证
-    echo "[ * ] Verifying ICU 78 installation..."
-    if [ -f "$icu_prefix/bin/icu-config" ]; then
-        echo "  Version: $($icu_prefix/bin/icu-config --version || echo '78.2')"
-    fi
-    
-    cd /
-    rm -rf /tmp/icu-release-78-2 /tmp/icu-78.tar.gz
-    
-    echo "[ ✓ ] ICU 78 installed successfully"
-    return 0
-}
-
-# ============================================================
 # 应用补丁
 # ============================================================
 apply_patches() {
-	local build_dir=$1
+    local build_dir=$1
 
-	cd "$build_dir" || return 1
+    cd "$build_dir" || return 1
 
-	echo "[ * ] Applying patches for PHP ${PHP_VERSION}..."
+    echo "[ * ] Applying patches for PHP ${PHP_VERSION}..."
 
-	# 补丁4:更新版权年份
+    # 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
-        echo "[ * ] Updating copyright year to  2026..."
+        echo "[ * ] Updating copyright year to 2026..."
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group.*/| Copyright (c) 1997- 2026 The PHP Group                                |/' {} \;
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
@@ -348,21 +220,187 @@ apply_patches() {
             -exec sed -i '' 's/| Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies.*/| Copyright (c) 1998- 2026 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
         find ./main ./Zend ./ext ./sapi ./TSRM -type f \( -name "*.c" -o -name "*.h" \) \
             -exec sed -i '' 's/| Copyright (c) Zend Technologies.*/| Copyright (c) 1998- 2026 Zend Technologies Ltd. (http:\/\/www.zend.com) |/' {} \;
+        
         for file in sapi/cli/php_cli.c sapi/fpm/fpm/fpm_main.c sapi/cgi/cgi_main.c sapi/litespeed/lsapi_main.c sapi/phpdbg/phpdbg.c; do
-        if [ -f "$file" ]; then
-            sed -i '' 's/Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
-            sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
-        fi
+            if [ -f "$file" ]; then
+                sed -i '' 's/Copyright (c) [0-9]\{4\}-[0-9]\{4\} The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
+                sed -i '' 's/Copyright (c) The PHP Group/Copyright (c) 1997- 2026 The PHP Group/g' "$file"
+            fi
         done
+        
         sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) [0-9]\{4\}-[0-9]\{4\} Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2026 Zend Technologies\\n"/' ./Zend/zend.c
         sed -i '' 's/#define ZEND_CORE_VERSION_INFO.*"Zend Engine v" ZEND_VERSION ", Copyright (c) Zend Technologies\\n".*/#define ZEND_CORE_VERSION_INFO\t"Zend Engine v" ZEND_VERSION ", Copyright (c) 1998- 2026 Zend Technologies\\n"/' ./Zend/zend.c
-        echo "[ ✓ ] Copyright updated to  2026"
+        echo "[ ✓ ] Copyright updated to 2026"
         grep "Copyright" ./main/main.c || true
         grep "Copyright" ./Zend/zend.c || true
     fi
 
-	echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
-	cd - > /dev/null || return 1
+    echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
+    cd - > /dev/null || return 1
+}
+
+# ============================================================
+# 通过 PECL 安装 IMAP 扩展 (PHP 8.4 使用 PECL)
+# ============================================================
+install_imap_pecl() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Installing IMAP extension via PECL"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local pecl="$install_dir/usr/local/bin/pecl"
+    
+    if [ ! -f "$php_bin" ]; then
+        echo "❌ PHP binary not found: $php_bin"
+        return 1
+    fi
+    
+    # 检查 PECL 是否存在
+    if [ ! -f "$pecl" ]; then
+        echo "⚠️  PECL not found, installing PEAR..."
+        # 安装 PEAR
+        cd "$build_dir" || return 1
+        if [ -f "phpize" ]; then
+            ./phpize
+        fi
+        # 下载并安装 PEAR
+        fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar
+        "$php_bin" /tmp/go-pear.phar
+        export PATH="$install_dir/usr/local/bin:$PATH"
+    fi
+    
+    # 设置环境变量
+    export PATH="$install_dir/usr/local/bin:$PATH"
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export CFLAGS="-I/usr/local/include $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    export CPPFLAGS="-I/usr/local/include"
+    
+    # 获取扩展目录
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    echo "[ * ] Installing imap extension via PECL..."
+    echo "  Using PHP: $php_bin"
+    echo "  Extension dir: $ext_dir"
+    
+    # 尝试通过 PECL 安装
+    if pecl install imap <<< "yes" 2>&1 | tee -a "$LOG_DIR/imap-pecl.log"; then
+        echo "  ✅ IMAP extension installed via PECL"
+        
+        # 查找 imap.so
+        local imap_so=""
+        for path in "$ext_dir" "$install_dir/usr/local/lib/php/extensions" /usr/local/lib/php/extensions; do
+            if [ -d "$path" ]; then
+                found=$(find "$path" -name "imap.so" | head -1)
+                if [ -n "$found" ] && [ -f "$found" ]; then
+                    imap_so="$found"
+                    break
+                fi
+            fi
+        done
+        
+        if [ -n "$imap_so" ] && [ -f "$imap_so" ]; then
+            mkdir -p "$ext_dir"
+            cp "$imap_so" "$ext_dir/"
+            echo "  ✅ imap.so copied to $ext_dir"
+            
+            # 添加到 php.ini
+            local php_ini="$install_dir/usr/local/etc/php.ini"
+            mkdir -p "$(dirname "$php_ini")"
+            if [ -f "$php_ini" ]; then
+                if ! grep -q "^extension=imap.so" "$php_ini"; then
+                    echo "extension=imap.so" >> "$php_ini"
+                fi
+            else
+                echo "extension=imap.so" > "$php_ini"
+            fi
+            echo "  ✅ imap.so added to php.ini"
+            return 0
+        fi
+    fi
+    
+    echo "⚠️  PECL installation failed, trying manual build..."
+    return 1
+}
+
+# ============================================================
+# 从 PECL 源码手动编译 IMAP
+# ============================================================
+install_imap_manual() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Building IMAP extension from PECL source"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local phpize="$install_dir/usr/local/bin/phpize"
+    local php_config="$install_dir/usr/local/bin/php-config"
+    
+    if [ ! -f "$php_bin" ] || [ ! -f "$phpize" ]; then
+        echo "❌ PHP or phpize not found"
+        return 1
+    fi
+    
+    # 下载 IMAP PECL 源码
+    echo "[ * ] Downloading imap PECL source..."
+    cd /tmp
+    if [ ! -f "imap-1.0.3.tgz" ]; then
+        fetch -o imap-1.0.3.tgz https://pecl.php.net/get/imap-1.0.3.tgz || \
+        fetch -o imap-1.0.3.tgz https://github.com/php/pecl-mail-imap/archive/refs/tags/1.0.3.tar.gz
+    fi
+    
+    # 解压
+    rm -rf imap-1.0.3
+    tar -xzf imap-1.0.3.tgz || tar -xzf imap-1.0.3.tar.gz
+    cd imap-1.0.3 || cd pecl-mail-imap-1.0.3 || return 1
+    
+    echo "[ * ] Running phpize..."
+    "$phpize" --with-php-config="$php_config" 2>&1 | tee -a "$LOG_DIR/imap-manual-phpize.log"
+    
+    echo "[ * ] Configuring..."
+    ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local 2>&1 | tee -a "$LOG_DIR/imap-manual-configure.log"
+    
+    echo "[ * ] Compiling..."
+    make 2>&1 | tee -a "$LOG_DIR/imap-manual-make.log"
+    
+    # 获取扩展目录并安装
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    mkdir -p "$ext_dir"
+    
+    if [ -f "modules/imap.so" ]; then
+        cp modules/imap.so "$ext_dir/"
+        echo "  ✅ imap.so installed to $ext_dir"
+    elif [ -f ".libs/imap.so" ]; then
+        cp .libs/imap.so "$ext_dir/"
+        echo "  ✅ imap.so installed to $ext_dir"
+    else
+        echo "❌ imap.so not found"
+        find . -name "imap.so" 2>/dev/null
+        return 1
+    fi
+    
+    # 添加到 php.ini
+    local php_ini="$install_dir/usr/local/etc/php.ini"
+    mkdir -p "$(dirname "$php_ini")"
+    if [ -f "$php_ini" ]; then
+        if ! grep -q "^extension=imap.so" "$php_ini"; then
+            echo "extension=imap.so" >> "$php_ini"
+        fi
+    else
+        echo "extension=imap.so" > "$php_ini"
+    fi
+    
+    echo "  ✅ imap.so added to php.ini"
+    return 0
 }
 
 # ============================================================
@@ -392,17 +430,11 @@ build_imagick() {
 
     echo "[ * ] Creating symlinks to build files..."
     if [ -d "$build_dir/build" ]; then
-        # 确保 /usr/local/lib/php/build 存在
         mkdir -p /usr/local/lib/php/build
-        
-        # 删除旧的 build 目录（如果是软链接或目录）
         rm -rf /usr/local/lib/php/build || true
-        
-        # 创建软链接指向源码 build 目录
         ln -sf "$build_dir/build" /usr/local/lib/php/build
         echo "  ✅ Symlink: /usr/local/lib/php/build -> $build_dir/build"
         
-        # 在当前目录创建软链接
         for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
             if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
                 ln -sf "$build_dir/build/$file" ./
@@ -410,6 +442,7 @@ build_imagick() {
             fi
         done
     fi
+    
     echo "  [ * ] Creating symlinks for root build files..."
     for file in acinclude.m4 Makefile.global config.sub config.guess ltmain.sh run-tests.php; do
         if [ -f "$build_dir/$file" ]; then
@@ -418,7 +451,6 @@ build_imagick() {
         fi
     done
     
-    # 确保 phpize.m4 在根目录可访问
     if [ -f "$build_dir/scripts/phpize.m4" ]; then
         ln -sf "$build_dir/scripts/phpize.m4" "$build_dir/phpize.m4"
         ln -sf "$build_dir/scripts/phpize.m4" /usr/local/lib/php/build/phpize.m4
@@ -431,6 +463,7 @@ build_imagick() {
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     export CFLAGS="-I/usr/local/include $CFLAGS"
     export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    
     echo "[ * ] Running phpize..."
     "$phpize"
     echo "[ * ] Configuring ImageMagick extension..."
@@ -442,7 +475,6 @@ build_imagick() {
     echo "[ * ] Installing ImageMagick extension..."
     make install INSTALL_ROOT="$install_dir"
 
-    # 获取扩展目录
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
     local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
 
@@ -475,253 +507,46 @@ build_imagick() {
 }
 
 # ============================================================
-# 从 FreeBSD ports 或源码编译 IMAP 扩展
-# ============================================================
-build_imap_extension() {
-    local install_dir="$1"
-    local php_version="$2"
-    local build_dir="$3"
-    
-    echo ""
-    echo "========================================"
-    echo "[ * ] Building IMAP extension"
-    echo "========================================"
-    
-    local php_bin="$install_dir/usr/local/bin/php"
-    if [ ! -f "$php_bin" ]; then
-        echo "❌ PHP binary not found: $php_bin"
-        return 1
-    fi
-    
-    local php_ver=$(echo "$php_version" | cut -d. -f1-2 | tr -d '.')
-    echo "[ * ] PHP version: $php_ver"
-    local php_prefix="$install_dir/usr/local"
-    local ver_suffix="$php_ver"
-    local phpize=""
-    local php_config=""
-    
-    for path in "$php_prefix/bin/phpize" "$php_prefix/bin/phpize${ver_suffix}" \
-                 "/usr/local/bin/phpize" "/usr/local/bin/phpize${ver_suffix}" \
-                 "$build_dir/phpize" "$build_dir/scripts/phpize"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            phpize="$path"
-            break
-        fi
-    done
-    
-    for path in "$php_prefix/bin/php-config" "$php_prefix/bin/php-config${ver_suffix}" \
-                 "/usr/local/bin/php-config" "/usr/local/bin/php-config${ver_suffix}" \
-                 "$build_dir/php-config" "$build_dir/scripts/php-config"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            php_config="$path"
-            break
-        fi
-    done
-    
-    if [ -z "$phpize" ] || [ -z "$php_config" ]; then
-        echo "⚠️  phpize or php-config not found"
-        return 1
-    fi
-    
-    echo "  Using phpize: $phpize"
-    echo "  Using php-config: $php_config"
-    
-    # ============================================================
-    # 方法1: 尝试从 ports 安装
-    # ============================================================
-    local port_paths=(
-        "/usr/ports/mail/php${php_ver}-imap"
-        "/usr/ports/mail/php-imap"
-        "/usr/ports/mail/php${php_ver}-mail"
-        "/usr/ports/mail/php-mail"
-        "/usr/ports/mail/php${php_ver}-extensions"
-        "/usr/ports/lang/php${php_ver}-extensions"
-    )
-    
-    for port_path in "${port_paths[@]}"; do
-        if [ -d "$port_path" ]; then
-            echo "[ ✓ ] Found port: $port_path"
-            cd "$port_path" || continue
-            
-            export PHP_PREFIX="$install_dir/usr/local"
-            export PATH="$PHP_PREFIX/bin:$PATH"
-            export PKG_CONFIG_PATH="$PHP_PREFIX/lib/pkgconfig:/usr/local/lib/pkgconfig"
-            
-            echo "[ * ] Compiling IMAP extension from port..."
-            if make -DBATCH install clean | tee -a "$LOG_DIR/imap-extension.log"; then
-                echo "  ✅ IMAP extension installed from port"
-                if find_imap_so "$install_dir" "$build_dir"; then
-                    return 0
-                fi
-            fi
-        fi
-    done
-    
-    # ============================================================
-    # 方法2: 从 PHP 源码编译
-    # ============================================================
-    echo ""
-    echo "[ * ] Method 2: Building IMAP from PHP source..."
-    if [ -d "$build_dir/ext/imap" ]; then
-        cd "$build_dir/ext/imap" || return 1
-        
-        echo "  [ * ] Creating symlinks to build files..."
-        if [ -d "$build_dir/build" ]; then
-            for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
-                if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
-                    ln -sf "$build_dir/build/$file" ./
-                    echo "  ✅ $file -> build/$file"
-                fi
-            done
-        fi
-        
-        export PHP_PREFIX="$php_prefix"
-        export PHP_CONFIG="$php_config"
-        export PHPIZE="$phpize"
-        export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-        export CFLAGS="-I/usr/local/include $CFLAGS"
-        export LDFLAGS="-L/usr/local/lib $LDFLAGS"
-        
-        echo "  Running phpize..."
-        if ! "$phpize" | tee -a "$LOG_DIR/imap-phpize.log"; then
-            "$phpize" --with-php-config="$php_config" | tee -a "$LOG_DIR/imap-phpize.log" || {
-                echo "  ❌ phpize failed, skipping IMAP"
-                return 0
-            }
-        fi
-        
-        echo "  Configuring..."
-        ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local | tee -a "$LOG_DIR/imap-configure.log"
-        
-        echo "  Compiling..."
-        make | tee -a "$LOG_DIR/imap-make.log"
-        
-        echo "  Installing..."
-        make install INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/imap-install.log"
-        
-        if find_imap_so "$install_dir" "$build_dir"; then
-            return 0
-        fi
-    fi
-    
-    # ============================================================
-    # 方法3: 使用 pecl 安装
-    # ============================================================
-    echo ""
-    echo "[ * ] Method 3: Installing via pecl..."
-    
-    if [ -f "$install_dir/usr/local/bin/pecl" ]; then
-        export PATH="$install_dir/usr/local/bin:$PATH"
-        if pecl install imap | tee -a "$LOG_DIR/imap-extension.log"; then
-            echo "  ✅ IMAP extension installed via pecl"
-            if find_imap_so "$install_dir" "$build_dir"; then
-                return 0
-            fi
-        fi
-    fi
-    
-    echo "⚠️  IMAP extension could not be installed"
-    return 1
-}
-
-# ============================================================
-# 辅助函数：查找并复制 imap.so
-# ============================================================
-find_imap_so() {
-    local install_dir="$1"
-    local build_dir="$2"
-    local php_ini="$install_dir/usr/local/etc/php.ini"
-    
-    # 获取 ZEND_API_NO
-    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}' || echo "20151012")
-    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
-    
-    echo "  Looking for imap.so..."
-    local search_paths=(
-        "$ext_dir"
-        "$install_dir/usr/local/lib/php/extensions"
-        "$build_dir/ext/imap/modules"
-        "$build_dir/ext/imap/.libs"
-        "$build_dir/modules"
-        "/usr/local/lib/php/extensions"
-        "/usr/local/lib/php"
-    )
-    
-    local imap_so=""
-    for path in "${search_paths[@]}"; do
-        if [ -d "$path" ]; then
-            found=$(find "$path" -name "imap.so" | head -1)
-            if [ -n "$found" ] && [ -f "$found" ]; then
-                imap_so="$found"
-                break
-            fi
-        fi
-    done
-    
-    if [ -n "$imap_so" ] && [ -f "$imap_so" ]; then
-        echo "  ✅ imap.so found: $imap_so"
-        
-        mkdir -p "$ext_dir"
-        cp "$imap_so" "$ext_dir/"
-        echo "  ✅ imap.so copied to $ext_dir"
-        
-        mkdir -p "$(dirname "$php_ini")"
-        if [ -f "$php_ini" ]; then
-            if ! grep -q "^extension=imap.so" "$php_ini"; then
-                echo "extension=imap.so" >> "$php_ini"
-            fi
-        else
-            echo "extension=imap.so" > "$php_ini"
-        fi
-        
-        return 0
-    fi
-    
-    echo "  ⚠️  imap.so not found"
-    return 1
-}
-
-# ============================================================
 # 构建 PHP
 # ============================================================
 build_php() {
-	local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
-	local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
-	local major=$(echo "$PHP_VERSION" | cut -d. -f1)
-	local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
+    local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
+    local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
+    local major=$(echo "$PHP_VERSION" | cut -d. -f1)
+    local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
 
-	echo ""
-	echo "========================================"
-	echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
-	echo "========================================"
+    echo ""
+    echo "========================================"
+    echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "========================================"
 
-	if ! download_php; then
-		echo "❌ Failed to download PHP ${PHP_VERSION}"
-		return 1
-	fi
+    if ! download_php; then
+        echo "❌ Failed to download PHP ${PHP_VERSION}"
+        return 1
+    fi
 
-	if [ ! -d "$build_dir" ]; then
-		echo "[ * ] Extracting PHP ${PHP_VERSION}..."
-		tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
-		if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
-		elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
-		elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
-			mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
-		fi
-	fi
+    if [ ! -d "$build_dir" ]; then
+        echo "[ * ] Extracting PHP ${PHP_VERSION}..."
+        tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
+        if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
+            mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
+        fi
+    fi
 
-	# 下载 ImageMagick 扩展到
-	if ! download_imagick "$build_dir"; then
-		echo "⚠️  ImageMagick extension download failed, continuing without it"
-	fi
+    # 下载 ImageMagick 扩展
+    if ! download_imagick "$build_dir"; then
+        echo "⚠️  ImageMagick extension download failed, continuing without it"
+    fi
 
-	cd "$build_dir" || return 1
+    cd "$build_dir" || return 1
 
-	[ -f "Makefile" ] && gmake clean || true
+    [ -f "Makefile" ] && gmake clean || true
 
-	apply_patches "$build_dir"
+    apply_patches "$build_dir"
 
     # 确保 PHP 构建目录完整
     echo "[ * ] Ensuring PHP build structure..."
@@ -734,61 +559,74 @@ build_php() {
     fi
 
     # ============================================================
-    # PHP 8.2 特殊处理：使用 ICU 78
+    # 设置编译环境 - 使用系统 ICU
     # ============================================================
-    if [ "$major" = "8" ] && [ "$minor" = "5" ]; then
-        # 编译 ICU 78
-        if ! build_icu78; then
-            echo "❌ Failed to build ICU 78"
-            return 1
-        fi
-        
-        cd "$build_dir" || {
-            echo "❌ Failed to return to PHP source directory"
-            return 1
-        }
-        echo "[ * ] Current directory: $(pwd)"
-        
-        if [ ! -f "/usr/local/icu78/bin/icu-config" ]; then
-            echo "❌ icu-config not found at /usr/local/icu78/bin/icu-config"
-            return 1
-        fi
-        echo "[ ✓ ] icu-config found"
-        
-        export PATH="/usr/local/icu78/bin:$PATH"
-        
-        export CFLAGS="-I/usr/local/icu78/include -I/usr/local/include \
-            -Wno-deprecated-declarations \
-            -Wno-incompatible-pointer-types-discards-qualifiers \
-            -Wno-implicit-function-declaration \
-            -Wno-pointer-sign"
-        export PSPELL_LIBS="-laspell"
-        export LIBS="-laspell $LIBS"
-        export DTRACE="/usr/sbin/dtrace"
-        export ac_cv_prog_DTRACE="/usr/sbin/dtrace"
-        export CFLAGS="$CFLAGS -D_WANT_FREEBSD11_WAIT=1"
-        export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/icu78/lib:/usr/lib"
-        export CXXFLAGS="-std=c++11 -Wno-register -Wno-deprecated-declarations -fpermissive"
-        export LDFLAGS="-L/usr/local/icu78/lib -L/usr/local/lib -Wl,-rpath,/usr/local/icu78/lib -Wl,-rpath,/usr/local/lib"
-        export CPPFLAGS="-I/usr/local/icu78/include -I/usr/local/include -I/usr/local/include/freetype2"
-        export ICU_CONFIG="/usr/local/icu78/bin/icu-config"
-        export ICU_PREFIX="/usr/local/icu78"
-        export ICU_CFLAGS="-I/usr/local/icu78/include"
-        export ICU_LIBS="-L/usr/local/icu78/lib -licui18n -licuuc -licudata -licuio"
-        export LDFLAGS="$LDFLAGS -licuio"
-        export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
-        export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
-        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '78.2')"
+    cd "$build_dir" || {
+        echo "❌ Failed to return to PHP source directory"
+        return 1
+    }
+    echo "[ * ] Current directory: $(pwd)"
+    
+    # 检测系统 ICU
+    echo "[ * ] Detecting system ICU..."
+    ICU_SYSTEM_PREFIX="/usr/local"
+    ICU_LIB_DIR="/usr/local/lib"
+    ICU_INCLUDE_DIR="/usr/local/include"
+    
+    # 检查 ICU 库
+    if [ -f "$ICU_LIB_DIR/libicuuc.so.76" ]; then
+        echo "  ✅ Found ICU 76: $ICU_LIB_DIR/libicuuc.so.76"
+        ICU_VERSION="76"
+    elif [ -f "$ICU_LIB_DIR/libicuuc.so.75" ]; then
+        echo "  ✅ Found ICU 75: $ICU_LIB_DIR/libicuuc.so.75"
+        ICU_VERSION="75"
+    elif [ -f "$ICU_LIB_DIR/libicuuc.so.74" ]; then
+        echo "  ✅ Found ICU 74: $ICU_LIB_DIR/libicuuc.so.74"
+        ICU_VERSION="74"
+    else
+        echo "  ⚠️  System ICU not found, will use pkg-config"
+        ICU_VERSION="unknown"
     fi
-	
-    # ============================================================
+    
     # 设置编译环境
-    # ============================================================
-    export CC=gcc14
-    export CXX=g++14
+    export CC=clang
+    export CXX=clang++
+    export CXXFLAGS="-std=c++17 -Wno-register -Wno-deprecated-declarations"
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
-
+    
+    # 设置 ICU 环境变量（使用系统 ICU）
+    export ICU_CFLAGS="-I$ICU_INCLUDE_DIR"
+    export ICU_LIBS="-L$ICU_LIB_DIR -licui18n -licuuc -licudata -licuio"
+    export LDFLAGS="-L$ICU_LIB_DIR -Wl,-rpath,$ICU_LIB_DIR"
+    export CPPFLAGS="-I$ICU_INCLUDE_DIR -I$ICU_INCLUDE_DIR/freetype2"
+    export CFLAGS="-I$ICU_INCLUDE_DIR -I/usr/local/include \
+        -Wno-deprecated-declarations \
+        -Wno-incompatible-pointer-types-discards-qualifiers \
+        -Wno-implicit-function-declaration \
+        -Wno-pointer-sign \
+        -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE \
+        -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
+    
+    export LD_LIBRARY_PATH="/usr/local/lib:/usr/lib"
+    export DTRACE="/usr/sbin/dtrace"
+    export ac_cv_prog_DTRACE="/usr/sbin/dtrace"
+    
+    echo "[ ✓ ] ICU config: $ICU_VERSION"
+    
+    # ============================================================
+    # 设置 OpenSSL 环境
+    # ============================================================
     echo "[ * ] Setting OpenSSL 4.x environment..."
+    
+    export OPENSSL_CFLAGS="-I/usr/local/include"
+    export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
+    
+    if command -v openssl >/dev/null; then
+        OPENSSL_VER=$(openssl version | awk '{print $2}')
+        echo "  ✓ Using OpenSSL: $OPENSSL_VER"
+    fi
+    
+    echo "[ ✓ ] OpenSSL 4.x environment configured"
 
     # ============================================================
     # 检测并设置 DTrace
@@ -813,93 +651,6 @@ build_php() {
         export ac_cv_prog_DTRACE=no
         export enable_dtrace=no
     fi
-
-    # ============================================================
-    # 检查 OpenSSL（不创建任何符号链接）
-    # ============================================================
-    fix_openssl_links() {
-        echo "[ * ] Checking OpenSSL libraries..."
-        cd /usr/local/lib || return
-        if [ -f "libcrypto.so.30" ] && [ -f "libssl.so.30" ]; then
-            echo "  ✅ OpenSSL 4.x found: libcrypto.so.30, libssl.so.30"
-            export OPENSSL_CFLAGS="-I/usr/local/include"
-            export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
-            cd - > /dev/null
-            return 0
-        fi
-        echo "  ⚠️  OpenSSL 4.x not found, using default"
-        cd - > /dev/null
-    }
-
-    # 执行链接修复
-    fix_openssl_links
-
-    # ============================================================
-    # OpenSSL 环境设置（在链接修复之后执行）
-    # ============================================================
-    setup_openssl_env() {
-        echo "[ * ] Setting up OpenSSL 4.x environment..."
-        
-        # 设置库路径
-        export LD_LIBRARY_PATH="/usr/local/icu78/lib:/usr/local/lib:/usr/lib"
-        export LD_ELF_RPATH="/usr/local/lib"
-        
-        # 设置编译标志
-        export OPENSSL_CFLAGS="-I/usr/local/include"
-        export OPENSSL_LIBS="-L/usr/local/lib -lssl -lcrypto"
-        
-        # 检测 OpenSSL 版本
-        if command -v openssl >/dev/null; then
-            OPENSSL_VER=$(openssl version | awk '{print $2}')
-            echo "  ✓ Using OpenSSL: $OPENSSL_VER"
-            
-            if [[ "$OPENSSL_VER" == 4.* ]]; then
-                export ac_cv_openssl_version=0x40000000L
-                echo "  ✓ OpenSSL 4.x detected"
-            fi
-        fi
-        echo "[ ✓ ] OpenSSL 4.x environment configured"
-    }
-
-    # 执行环境设置
-    setup_openssl_env
-
-    # ============================================================
-    # 通用解压函数（避免 bsdtar 的 OpenSSL 依赖问题）
-    # ============================================================
-    extract_archive() {
-        local archive="$1"
-        local ext="${archive##*.}"
-        
-        echo "[ * ] 解压: $archive"
-        
-        # 方法1: 尝试 tar（FreeBSD 的 tar 实际上是 bsdtar）
-        if tar -xf "$archive"; then
-            echo "✅ 使用 tar 解压成功"
-            return 0
-        fi
-        
-        # 方法2: 使用 Python
-        if command -v python3 >/dev/null; then
-            echo "⚠️  tar 解压失败，使用 Python..."
-            if python3 -c "import tarfile; tarfile.open('$archive', 'r:gz').extractall()"; then
-                echo "✅ Python 解压成功"
-                return 0
-            fi
-        fi
-        
-        # 方法3: 使用 gtar (GNU tar)
-        if command -v gtar >/dev/null; then
-            echo "⚠️  尝试使用 GNU tar..."
-            if gtar -xf "$archive"; then
-                echo "✅ GNU tar 解压成功"
-                return 0
-            fi
-        fi
-        
-        echo "❌ 所有解压方法都失败: $archive"
-        return 1
-    }
 
     # ============================================================
     # 从源码编译 libarchive（链接 OpenSSL 4.x）
@@ -992,27 +743,20 @@ build_php() {
     cd /tmp
     rm -rf libarchive-3.7.2 libarchive-3.7.2.tar.gz
 
-    # 验证
     if [ -f "/usr/local/lib/libarchive.so" ]; then
         echo "✅ libarchive 编译成功"
         echo "   文件: /usr/local/lib/libarchive.so"
-        
-        # 使用多种方式检查文件大小
         echo "   大小: $(stat -f %z /usr/local/lib/libarchive.so) bytes"
-        echo "   实际大小: $(ls -lh /usr/local/lib/libarchive.so | awk '{print $5}')"
         echo "   du -h: $(du -h /usr/local/lib/libarchive.so | cut -f1)"
         
-        # 检查是否是符号链接
         if [ -L "/usr/local/lib/libarchive.so" ]; then
             echo "   ⚠️  这是一个符号链接，指向: $(readlink /usr/local/lib/libarchive.so)"
-            # 检查实际目标文件
             TARGET=$(readlink /usr/local/lib/libarchive.so)
             if [ -f "$TARGET" ]; then
                 echo "   目标文件大小: $(stat -f %z "$TARGET") bytes"
             fi
         fi
         
-        # 检查 OpenSSL 依赖
         echo "[ * ] Checking OpenSSL dependencies..."
         if ldd /usr/local/lib/libarchive.so | grep -q "libcrypto.so"; then
             echo "  libarchive links to:"
@@ -1021,7 +765,6 @@ build_php() {
             echo "  ✅ libarchive has no direct OpenSSL dependency"
         fi
         
-        # 检查是否依赖旧的 OpenSSL 符号
         if objdump -p /usr/local/lib/libarchive.so | grep -q "OPENSSL_1_1_0"; then
             echo "  ⚠️  libarchive still requires OPENSSL_1_1_0"
         else
@@ -1058,7 +801,6 @@ build_php() {
         unset LIBS
         export LIBS="-lssl -lcrypto"
         
-        # 备份并删除旧的 libssh2
         if [ -f "/usr/local/lib/libssh2.so" ]; then
             echo "[ * ] 删除旧的 libssh2..."
             rm -f /usr/local/lib/libssh2.so
@@ -1114,7 +856,6 @@ build_php() {
         echo "[3/7] 编译 curl"
         echo "========================================"
         
-        # 备份并删除旧的 curl
         if [ -f "/usr/local/lib/libcurl.so" ]; then
             echo "[ * ] 删除旧的 curl..."
             rm -f /usr/local/lib/libcurl.so /usr/local/lib/libcurl.so.4
@@ -1162,7 +903,6 @@ build_php() {
             echo "   文件: /usr/local/lib/libcurl.so"
             echo "   大小: $(du -h /usr/local/lib/libcurl.so | cut -f1)"
             
-            # 检查 OpenSSL 依赖
             if ldd /usr/local/lib/libcurl.so | grep -q "libcrypto.so"; then
                 echo "  链接到 OpenSSL:"
                 ldd /usr/local/lib/libcurl.so | grep -E "(crypto|ssl)"
@@ -1178,7 +918,6 @@ build_php() {
         echo "[4/7] 编译 openldap"
         echo "========================================"
         
-        # 备份并删除旧的 openldap
         if [ -f "/usr/local/lib/libldap.so" ]; then
             echo "[ * ] 删除旧的 openldap..."
             rm -f /usr/local/lib/libldap.so
@@ -1241,7 +980,6 @@ build_php() {
         echo "[5/7] 编译 postgresql 客户端"
         echo "========================================"
         
-        # 备份并删除旧的 postgresql
         if [ -f "/usr/local/lib/libpq.so" ]; then
             echo "[ * ] 删除旧的 postgresql..."
             rm -f /usr/local/lib/libpq.so /usr/local/lib/libpq.so.5
@@ -1330,21 +1068,16 @@ build_php() {
             exit 1
         fi
 
-        # ============================================================
-        # 使用 makemd5 生成 md5global.h
-        # ============================================================
+        # 生成 md5global.h
         echo "[ * ] Generating md5global.h using makemd5..."
-
         cd include
 
-        # 编译 makemd5
         if [ ! -f "makemd5.c" ]; then
             echo "❌ makemd5.c not found!"
             exit 1
         fi
 
         echo "  Compiling makemd5..."
-        # 尝试不同的编译器
         if command -v gcc14 >/dev/null; then
             gcc14 -o makemd5 makemd5.c || cc -o makemd5 makemd5.c
         else
@@ -1353,7 +1086,6 @@ build_php() {
 
         if [ ! -f "makemd5" ] || [ ! -x "makemd5" ]; then
             echo "❌ Failed to compile makemd5"
-            # 检查是否已有 md5global.h（源码中可能已经存在）
             if [ -f "md5global.h" ] && [ -s "md5global.h" ]; then
                 echo "  ⚠️  Using existing md5global.h from source"
             else
@@ -1372,7 +1104,6 @@ build_php() {
 
         cd ..
 
-        # 修复 Makefile
         for makefile in include/Makefile include/Makefile.in; do
             if [ -f "$makefile" ]; then
                 sed -i '' 's|\./ md5global\.h|./makemd5$(BUILD_EXEEXT) > md5global.h|g' "$makefile"
@@ -1404,13 +1135,11 @@ build_php() {
             echo "   文件: /usr/local/lib/libsasl2.so"
             echo "   大小: $(du -h /usr/local/lib/libsasl2.so | cut -f1)"
             
-            # 检查 OpenSSL 依赖
             if ldd /usr/local/lib/libsasl2.so | grep -q "libcrypto.so"; then
                 echo "  链接到 OpenSSL:"
                 ldd /usr/local/lib/libsasl2.so | grep -E "(crypto|ssl)"
             fi
             
-            # 检查是否依赖旧的 OpenSSL 符号
             if objdump -p /usr/local/lib/libsasl2.so | grep -q "OPENSSL_1_1_0"; then
                 echo "  ⚠️  libsasl2.so 仍然依赖 OPENSSL_1_1_0"
             else
@@ -1421,7 +1150,7 @@ build_php() {
             exit 1
         fi
 
-        # 6. c-client (IMAP) - 从源码编译链接 OpenSSL 4.x
+        # 6. c-client (IMAP) - PHP 8.5 需要
         echo ""
         echo "========================================"
         echo "[7/7] 编译 c-client (IMAP library)"
@@ -1457,7 +1186,6 @@ build_php() {
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
 
-        # ✅ 立即保存 make 的退出码
         MAKE_EXIT=$?
         find /tmp/imap-imap-2007f_upstream -name "libc-client.a" -ls
         echo "========================================"
@@ -1473,7 +1201,6 @@ build_php() {
             LS_RESULT=1
         fi
 
-        # ✅ 使用保存的退出码和文件检查结果
         if [ $MAKE_EXIT -ne 0 ] || [ $LS_RESULT -ne 0 ]; then
             echo "❌ c-client 编译失败"
             echo "   Make 退出码: $MAKE_EXIT"
@@ -1484,16 +1211,13 @@ build_php() {
         echo "✅ c-client 编译成功！"
         echo "[ * ] 安装 c-client..."
 
-        # 复制头文件
         mkdir -p /usr/local/include/c-client
         cp c-client/*.h /usr/local/include/c-client/
         cp c-client/*.h /usr/local/include/
 
-        # 复制静态库
         cp c-client/c-client.a /usr/local/lib/libc-client.a
         echo "  ✅ libc-client.a installed"
 
-        # 创建共享库
         echo "[ * ] Creating shared library..."
         cd c-client || exit 1
 
@@ -1507,11 +1231,9 @@ build_php() {
                 -L/usr/local/lib -lssl -lcrypto -pthread
             
             if [ -f "libc-client.so" ]; then
-                # 复制到系统目录
                 cp libc-client.so /usr/local/lib/
                 echo "  ✅ libc-client.so created and installed"
                 
-                # 验证
                 if [ -f "/usr/local/lib/libc-client.so" ]; then
                     SIZE=$(du -h /usr/local/lib/libc-client.so | cut -f1)
                     echo "  ✅ libc-client.so installed ($SIZE)"
@@ -1526,7 +1248,6 @@ build_php() {
 
         echo "✅ c-client 安装完成"
 
-        # 验证
         echo "[ * ] Verifying c-client installation..."
 
         if [ -f "/usr/local/lib/libc-client.a" ]; then
@@ -1548,7 +1269,7 @@ build_php() {
         else
             echo "⚠️  动态库不存在（只有静态库）"
         fi
-        # 清理
+        
         cd /tmp
         rm -rf imap-imap-2007f_upstream
         echo "  ✅ Cleaned up temporary files"
@@ -1563,7 +1284,6 @@ build_php() {
         ALL_SUCCESS=1
         for lib in libarchive.so libssh2.so libcurl.so libldap.so libpq.so libsasl2.so libc-client.so; do
             if [ -f "/usr/local/lib/$lib" ]; then
-                # 获取实际文件大小（如果是符号链接）
                 if [ -L "/usr/local/lib/$lib" ]; then
                     TARGET=$(readlink "/usr/local/lib/$lib")
                     SIZE=$(stat -f %z "/usr/local/lib/$TARGET" || echo "0")
@@ -1669,7 +1389,6 @@ EOF
             done
         fi
         
-        # 验证
         echo ""
         echo "========================================"
         echo "验证编译结果"
@@ -1697,15 +1416,13 @@ EOF
     echo "[ * ] Current directory: $(pwd)"
 
     # ============================================================
-    # 修复 cURL OpenSSL 4.x 兼容性（在配置 PHP 之前）
+    # 修复 cURL OpenSSL 4.x 兼容性
     # ============================================================
     echo "[ * ] Fixing cURL for OpenSSL 4.x..."
 
-    # 1. 设置 cURL 编译标志
     export CURL_CFLAGS="-I/usr/local/include"
     export CURL_LIBS="-L/usr/local/lib -lcurl -lssl -lcrypto"
 
-    # 2. 创建 cURL 配置包装器
     cat > /tmp/curl-config << 'EOF'
 #!/bin/sh
 prefix=/usr/local
@@ -1737,15 +1454,13 @@ EOF
     chmod +x /tmp/curl-config
     export PATH="/tmp:$PATH"
 
-    # 3. 强制 cURL 检测通过
     export ac_cv_lib_curl_curl_easy_perform=yes
-
-    # 4. 确保 PKG_CONFIG_PATH 包含 cURL
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
 
     echo "[ ✓ ] cURL environment configured for OpenSSL 4.x"
+
     # ============================================================
-    # 检测 gettext（FreeBSD 标准路径）
+    # 检测 gettext
     # ============================================================
     echo "[ * ] Checking gettext..."
 
@@ -1774,37 +1489,29 @@ EOF
         echo "   Please install: pkg install gettext"
         exit 1
     fi
+
+    # ============================================================
+    # 配置 GMP
+    # ============================================================
     echo "[ * ] Configuring GMP..."
 
-    # 获取 GMP 参数
     GMP_CFLAGS=$(pkg-config --cflags gmp || echo "-I/usr/local/include")
     GMP_LIBS=$(pkg-config --libs gmp || echo "-L/usr/local/lib -lgmp")
 
     echo "    CFLAGS: $GMP_CFLAGS"
     echo "    LIBS:   $GMP_LIBS"
 
-    # 导出
     export GMP_CFLAGS="$GMP_CFLAGS"
     export GMP_LIBS="$GMP_LIBS"
-
-    # 强制通过
     export ac_cv_lib_gmp___gmpz_rootrem=yes
     export ac_cv_lib_gmp___gmpz_root=yes
     export LIBS="-lgmp $LIBS"
 
     echo "[ ✓ ] GMP configured"
 
-    # 导出 GMP 和 ICU 变量供 configure 使用
-    export GMP_CFLAGS="$(pkg-config --cflags gmp)"
-    export GMP_LIBS="$(pkg-config --libs gmp)"
-    export ICU_CFLAGS="-I/usr/local/icu78/include"
-    export ICU_LIBS="-L/usr/local/icu78/lib -licui18n -licuuc -licudata"
-    export GMP_DIR=/usr/local
-    
     # ============================================================
-    # 创建 config.cache 强制 iconv 检测通过
+    # 设置 iconv 检测环境变量
     # ============================================================
-    # 使用环境变量而不是 cache 文件，避免编译器测试失败
     echo "[ * ] Setting iconv detection environment variables..."
     export ac_cv_func_iconv=yes
     export ac_cv_func_iconv_open=yes
@@ -1813,7 +1520,7 @@ EOF
     echo "[ ✓ ] iconv environment variables set"
 
     # ============================================================
-    # 修复 LDAP 检测
+    # 配置 LDAP
     # ============================================================
     echo "[ * ] Configuring LDAP..."
     export LDAP_CFLAGS="-I/usr/local/include"
@@ -1824,7 +1531,7 @@ EOF
     export ac_cv_func_ldap_start_tls_s=yes
 
     # ============================================================
-    # 修复 flock 检测（FreeBSD 14 兼容）
+    # 修复 flock 检测
     # ============================================================
     echo "[ * ] Fixing flock detection for FreeBSD 14..."
 
@@ -1837,23 +1544,25 @@ EOF
     rm -f config.cache
 
     echo "[ ✓ ] Flock detection configured"
+
     # ============================================================
-    # 强制 flock 检测通过（直接修改 configure）
+    # 强制 flock 检测通过
     # ============================================================
     echo "[ * ] Forcing flock detection by patching configure..."
     
     if [ -f "configure" ]; then
-        # 在 configure 开头插入强制设置
         echo 'php_cv_struct_flock_bsd=yes' >> configure
         echo 'PHP_STRUCT_FLOCK=BSD' >> configure
         echo 'force_flock_bsd=yes' >> configure
         
-        # 替换错误退出
         sed -i '' 's/as_fn_error \$? "Don'\''t know how to define struct flock on this system, set --enable-opcache=no"/echo "WARNING: flock detection failed, assuming BSD order (FreeBSD 14)"; php_cv_struct_flock_bsd="yes"; PHP_STRUCT_FLOCK="BSD"/g' configure
         
         echo "[ ✓ ] Configure patched for flock detection"
     fi
 
+    # ============================================================
+    # 强制 pcntl 函数检测
+    # ============================================================
     echo "[ * ] Forcing all pcntl functions detection..."
     export php_cv_func_fork=yes
     export php_cv_func_waitpid=yes
@@ -1877,36 +1586,31 @@ EOF
     # 修复 off_t 检测
     # ============================================================
     echo "[ * ] Fixing off_t detection..."
-
-    # 强制 off_t 大小为 8 字节（64位系统）
     export ac_cv_sizeof_off_t=8
     export ac_cv_type_off_t=yes
-
     echo "[ ✓ ] off_t detection configured"
 
     # ============================================================
-    # 配置编译环境（使用 OpenSSL 4.x）
+    # 配置环境
     # ============================================================
     echo "[ * ] Configuring environment for OpenSSL 4.x..."
-    export LD_LIBRARY_PATH="/usr/local/icu78/lib:/usr/local/lib:/usr/lib"
+    export LD_LIBRARY_PATH="/usr/local/lib:/usr/lib"
 
-    # 验证 OpenSSL 存在
     if [ -f "/usr/local/lib/libcrypto.so.30" ]; then
         echo "  ✅ OpenSSL 4.x found: /usr/local/lib/libcrypto.so.30"
     else
         echo "  ⚠️  OpenSSL 4.x not found"
     fi
-    # 3. 确保 objcopy 使用正确的库路径
+
     if command -v objcopy >/dev/null; then
         echo "  ✓ objcopy found: $(which objcopy)"
-        # 使用 ldd 检查 objcopy 的依赖
         ldd $(which objcopy) | grep -E "ssl|crypto" || echo "  ✓ objcopy does not directly depend on OpenSSL"
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
-    
+
     # ============================================================
-    # 生成 configure 脚本（如果不存在）
+    # 生成 configure 脚本
     # ============================================================
     if [ ! -f "configure" ]; then
         echo "[ * ] Generating configure script with buildconf..."
@@ -1916,7 +1620,25 @@ EOF
         fi
         echo "  ✅ configure generated"
     fi
-    
+
+    export CC="clang"
+    export CXX="clang++"
+    export CXXFLAGS="-std=c++17"
+    echo "  CC=$CC"
+    echo "  CXX=$CXX"
+    echo "  CXXFLAGS=$CXXFLAGS"
+
+    echo ""
+    echo "========================================"
+    echo "[ * ] 使用系统 ICU"
+    echo "========================================"
+
+    echo "ICU_PREFIX: $ICU_SYSTEM_PREFIX"
+    echo "ICU_CFLAGS: $ICU_CFLAGS"
+    echo "ICU_LIBS: $ICU_LIBS"
+    echo "LDFLAGS: $LDFLAGS"
+    echo "========================================"
+
     # ============================================================
     # 配置 PHP
     # ============================================================
@@ -1926,12 +1648,13 @@ EOF
         return 1
     }
 
-	echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-	echo "CFLAGS: $CFLAGS"
-    export LDFLAGS="-L/usr/local/icu78/lib -L/usr/local/lib ${LDFLAGS}"
+    echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
+    echo "CFLAGS: $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib ${LDFLAGS}"
     echo "LDFLAGS (without rpath for configure): $LDFLAGS"
+
     # ============================================================
-    # 修复 bzip2 pkg-config（FreeType 2 依赖）
+    # 修复 bzip2 pkg-config
     # ============================================================
     echo "[ * ] Creating bzip2.pc for pkg-config..."
 
@@ -1951,19 +1674,45 @@ EOF
 
     export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     echo "  ✅ bzip2.pc created and PKG_CONFIG_PATH updated"
+
     # 获取基础配置参数
     mapfile -t CONFIG_ARGS < <(get_config_args)
     echo "Config args: ${CONFIG_ARGS[*]}"
     CONFIG_ARGS_WITH_PHAR_SHARED=("${CONFIG_ARGS[@]}")
     CONFIG_ARGS_WITH_PHAR_SHARED+=("--enable-phar=shared")
     echo "Final config args: ${CONFIG_ARGS_WITH_PHAR_SHARED[*]}"
+    echo ""
+    echo "========================================"
+    echo "[ DEBUG ] 编译前检查"
+    echo "========================================"
+    echo "  当前目录: $(pwd)"
+    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
+    echo "  gmake 路径: $(which gmake || echo '❌ 未找到 gmake')"
+    echo "  make 路径: $(which make || echo '❌ 未找到 make')"
+    echo "========================================"
+    echo ""
 
     # ============================================================
-    # 运行 configure
+    # 运行 configure - 使用系统 ICU
     # ============================================================
+    echo "[ * ] Running configure..."
+
+    echo "=== DEBUG: CONFIG_ARGS_WITH_PHAR_SHARED ==="
+    echo "Length: ${#CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
+    for i in "${!CONFIG_ARGS_WITH_PHAR_SHARED[@]}"; do
+        echo "  [$i] ${CONFIG_ARGS_WITH_PHAR_SHARED[$i]}"
+    done
+    echo "=== END DEBUG ==="
+
+    set +e
     ./configure \
         "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}" \
-        LIBS="-licuio" \
+        CC="clang" \
+        CXX="clang++" \
+        CXXFLAGS="-std=c++17" \
+        LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
+        LIBS="-licui18n -licuuc -licudata -licuio" \
+        --with-icu=/usr/local \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
         LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
@@ -2006,7 +1755,7 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
-    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/icu78/lib -Wl,-rpath,/usr/local/lib"
+    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2014,81 +1763,65 @@ EOF
         return 1
     fi
 
-    # 在 configure 之后修复 php_config.h
-    echo "[ * ] Fixing zend_sprintf in php_config.h after configure..."
-    if [ -f "main/php_config.h" ]; then
-        sed -i '' '/zend_sprintf/d' main/php_config.h
-        echo "#define zend_sprintf sprintf" >> main/php_config.h
-        echo "  ✓ Fixed zend_sprintf in php_config.h (post-configure)"
-    fi
-
-    # 修复 ps_title.c
-    echo "[ * ] Fixing ps_title.c (force setproctitle)..."
-    if [ -f "sapi/cli/ps_title.c" ]; then
-        echo "  Before patch (first 10 lines):"
-        head -10 sapi/cli/ps_title.c
-        echo ""
-        perl -pi -e 'print "/* Force setproctitle for FreeBSD */\n#ifndef HAVE_SETPROCTITLE\n#define HAVE_SETPROCTITLE 1\n#endif\n#include <unistd.h>\n\n" if $. == 1' sapi/cli/ps_title.c
-        echo "  After patch (first 15 lines):"
-        head -15 sapi/cli/ps_title.c
-        echo ""
-        echo "  ✓ Patched ps_title.c"
-    fi
-    
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
-    
-    # ============================================================
-    # 修复 Makefile 链接问题
-    # ============================================================
-    echo "[ * ] Fixing link flags in Makefile..."
 
+    # ============================================================
+    # 修复 Makefile 中的 ICU 库路径（使用系统 ICU）
+    # ============================================================
+    echo "[ * ] Fixing ICU link order in Makefile..."
     if [ -f "Makefile" ]; then
-        if ! grep -q "\-lc++" Makefile; then
-            sed -i '' 's/^EXTRA_LIBS = \(.*\)$/EXTRA_LIBS = \1 -lc++/' Makefile
-            echo "[ ✓ ] Added -lc++ to EXTRA_LIBS"
-        fi
+        echo "  📋 BEFORE modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
         
-        echo "[ * ] Forcing ICU 78 library paths..."
-        sed -i '' 's|-licuio|/usr/local/icu78/lib/libicuio.so.78.2|g' Makefile
-        sed -i '' 's|-licui18n|/usr/local/icu78/lib/libicui18n.so.78.2|g' Makefile
-        sed -i '' 's|-licuuc|/usr/local/icu78/lib/libicuuc.so.78.2|g' Makefile
-        sed -i '' 's|-licudata|/usr/local/icu78/lib/libicudata.so.78.2|g' Makefile
-
-        if ! grep -q "/usr/local/icu78/lib" Makefile; then
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = -L/usr/local/icu78/lib \1|' Makefile
-            sed -i '' 's|^LDFLAGS = \(.*\)$|LDFLAGS = \1 -Wl,-rpath,/usr/local/icu78/lib|' Makefile
-        fi
+        # 移除旧的 ICU 库标志
+        sed -i '' -e 's|-licui18n||g' \
+                -e 's|-licuuc||g' \
+                -e 's|-licudata||g' \
+                -e 's|-licuio||g' Makefile
+        echo "  ✅ Removed ICU library flags from Makefile"
         
-        echo "[ ✓ ] Makefile updated to use ICU 78"
+        # 添加系统 ICU 库
+        sed -i '' -e "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/lib -licui18n -licuuc -licudata -licuio \1|" Makefile
+        echo "  ✅ ICU libraries added to EXTRA_LIBS"
+        
+        sed -i '' -e "s|^LIBS = \(.*\)$|LIBS = -L/usr/local/lib -licui18n -licuuc -licudata -licuio \1|" Makefile
+        echo "  ✅ ICU libraries added to LIBS"
+        
+        echo "  📋 AFTER modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
     fi
 
     # ============================================================
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
-    OLD_LD_PRELOAD="${LD_PRELOAD:-}"
-    gmake -j "$NUM_CPUS" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    CURRENT_LIBS=$(grep "^LIBS" Makefile | head -1 | sed 's/^LIBS = //')
+    gmake -j "$NUM_CPUS" \
+        LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
+        LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
+        > "$LOG_DIR/build-${PHP_VERSION}.log"
     BUILD_STATUS=$?
 
-    # 恢复 LD_PRELOAD（如果需要）
     if [ -n "$OLD_LD_PRELOAD" ]; then
         export LD_PRELOAD="$OLD_LD_PRELOAD"
     fi
 
-	if [ $BUILD_STATUS -ne 0 ]; then
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "=== All errors ==="
-		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-		echo ""
-		echo "========================================"
-		echo "Last 100 lines:"
-		echo "========================================"
-		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+    if [ $BUILD_STATUS -ne 0 ]; then
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "=== All errors ==="
+        grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_VERSION}.log" | head -200
+        echo ""
+        echo "========================================"
+        echo "Last 200 lines:"
+        echo "========================================"
+        tail -200 "$LOG_DIR/build-${PHP_VERSION}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
         gmake clean
@@ -2099,7 +1832,6 @@ EOF
         fi
     fi
 
-    
     # ============================================================
     # 生成 phar.phar
     # ============================================================
@@ -2108,18 +1840,15 @@ EOF
     
     cd "$build_dir" || return 1
     
-    # 确保 phar.so 存在
     if [ ! -f "modules/phar.so" ] && [ ! -f "ext/phar/.libs/phar.so" ]; then
         echo "❌ phar.so not found! phar extension was not built."
         echo "   Check: configure --enable-phar=shared"
         return 1
     fi
     
-    # 方法1：尝试用 make 生成
     echo "  Attempt 1: make ext/phar/phar.phar"
     make ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
     
-    # 最终验证
     if [ ! -f "ext/phar/phar.phar" ] || [ ! -s "ext/phar/phar.phar" ]; then
         echo "❌ phar.phar not generated or empty"
         return 1
@@ -2135,10 +1864,8 @@ EOF
     mkdir -p "$install_dir"
     echo "[ * ] Installing phpize and php-config..."
     if [ -f "Makefile" ]; then
-        # 先尝试用 make 安装
         if ! gmake install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
             echo "  ⚠️  make install-programs failed, copying from source..."
-            # 从源码目录复制
             if [ -f "$build_dir/phpize" ]; then
                 mkdir -p "$install_dir/usr/local/bin"
                 cp "$build_dir/phpize" "$install_dir/usr/local/bin/"
@@ -2154,7 +1881,6 @@ EOF
             echo "  ✅ phpize and php-config installed"
         fi
         
-        # 验证
         if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
             echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
             echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
@@ -2165,7 +1891,6 @@ EOF
     
     echo "[ * ] Step 1: Installing PHP (without PEAR)..."
     
-    # 备份并修改 Makefile
     if [ -f "Makefile" ]; then
         echo "  Makefile targets (before):"
         grep -E "^install:|^install-|^pharcmd:" Makefile | head -10 | sed 's/^/    /'
@@ -2194,7 +1919,6 @@ EOF
         echo "  ✓ PEAR disabled in Makefile"
     fi
     
-    # 执行完整安装
     echo ""
     echo "  Running: gmake install INSTALL_ROOT=\"$install_dir\""
     if ! gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log" 2>&1; then
@@ -2203,7 +1927,6 @@ EOF
         echo "--- Last 50 lines of install log ---"
         tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
         
-        # 尝试组件安装
         echo ""
         echo "--- Trying component installation ---"
         for target in install-cli install-cgi install-fpm install-build install-pdo-headers; do
@@ -2211,7 +1934,6 @@ EOF
             gmake $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_VERSION}.log" || true
         done
         
-        # 手动复制扩展
         if [ -d "modules" ]; then
             ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" Zend/zend_modules.h | awk '{print $3}')
             EXT_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
@@ -2220,13 +1942,11 @@ EOF
             echo "  ✓ Extensions copied manually"
         fi
         
-        # 手动复制 PHP 二进制
         mkdir -p "$install_dir/usr/local/bin"
         [ -f "sapi/cli/php" ] && cp sapi/cli/php "$install_dir/usr/local/bin/" && chmod 755 "$install_dir/usr/local/bin/php"
         [ -f "sapi/cgi/php-cgi" ] && cp sapi/cgi/php-cgi "$install_dir/usr/local/bin/" && chmod 755 "$install_dir/usr/local/bin/php-cgi"
         [ -f "sapi/fpm/php-fpm" ] && cp sapi/fpm/php-fpm "$install_dir/usr/local/bin/" && chmod 755 "$install_dir/usr/local/bin/php-fpm"
         
-        # 再次确保 phpize 存在
         if [ ! -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$build_dir/phpize" ]; then
             cp "$build_dir/phpize" "$install_dir/usr/local/bin/"
             chmod 755 "$install_dir/usr/local/bin/phpize"
@@ -2239,7 +1959,6 @@ EOF
         fi
     fi
     
-    # 验证 PHP 是否安装成功
     if [ ! -f "$install_dir/usr/local/bin/php" ]; then
         echo "❌ PHP binary not found!"
         echo "Contents of $install_dir/usr/local/bin:"
@@ -2251,13 +1970,11 @@ EOF
     echo "  ✅ PHP installed successfully"
     echo "  PHP version: $($install_dir/usr/local/bin/php -v | head -1)"
     
-    # 恢复 Makefile
     if [ -f "Makefile.bak" ]; then
         mv Makefile.bak Makefile
         echo "  ✓ Restored Makefile"
     fi
     
-    # 创建 php-cgi 软链接
     if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
         ln -sf php "$install_dir/usr/local/bin/php-cgi"
         echo "  ✓ Created php-cgi symlink"
@@ -2275,113 +1992,161 @@ EOF
     fi
     
     # ============================================================
-    # 编译 ImageMagick 扩展
+    # 编译 ImageMagick 扩展（打包前安装）
     # ============================================================
     if ! build_imagick "$build_dir" "$install_dir"; then
         echo "⚠️  ImageMagick extension build failed"
     fi
 
+    # ============================================================
+    # 安装 IMAP 扩展（PHP 8.4 使用 PECL）
+    # ============================================================
+    IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
-        if ! build_imap_extension "$install_dir" "$PHP_VERSION" "$build_dir"; then
-            echo "⚠️  IMAP extension build failed, continuing without it"
+        # 首先尝试 PECL 安装
+        if install_imap_pecl "$install_dir" "$build_dir"; then
+            IMAP_INSTALLED=1
+        else
+            echo "⚠️  PECL installation failed, trying manual build..."
+            if install_imap_manual "$install_dir" "$build_dir"; then
+                IMAP_INSTALLED=1
+            else
+                echo "⚠️  IMAP extension build failed, continuing without it"
+            fi
         fi
     else
         echo "[ * ] IMAP extension disabled (BUILD_IMAP=no)"
     fi
 
-    # 验证 PHP 安装
-	if [ -f "$install_dir/usr/local/bin/php" ]; then
-		echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
-		"$install_dir/usr/local/bin/php" -v || true
-		return 0
-	else
-		echo "❌ PHP binary not found!"
-		return 1
-	fi
+    # ============================================================
+    # 验证所有扩展已安装
+    # ============================================================
+    echo ""
+    echo "========================================"
+    echo "[ * ] Verifying installed extensions"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    echo "Extension directory: $ext_dir"
+    echo ""
+    echo "Installed extensions:"
+    if [ -d "$ext_dir" ]; then
+        ls -la "$ext_dir/" | grep -E "\.so$" | sed 's/^/  /'
+    fi
+    
+    echo ""
+    echo "PHP modules:"
+    "$php_bin" -m | grep -E "^(imagick|imap|phar|opcache|intl)" | sed 's/^/  /'
+    
+    if [ -f "$install_dir/usr/local/bin/php" ]; then
+        echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
+        "$install_dir/usr/local/bin/php" -v || true
+        return 0
+    else
+        echo "❌ PHP binary not found!"
+        return 1
+    fi
 }
 
 # ============================================================
 # 创建 FreeBSD 包
 # ============================================================
 create_package() {
-	local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
-	local php_bin="$install_dir/usr/local/bin/php"
-	local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
+    local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
+    local php_bin="$install_dir/usr/local/bin/php"
+    local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
     local php_ini="$install_dir/usr/local/etc/php.ini"
-	
-	echo ""
-	echo "========================================"
-	echo "[ * ] Creating FreeBSD package..."
-	echo "========================================"
-	
-	if [ ! -f "$php_bin" ]; then
-		echo "❌ PHP binary not found at $php_bin!"
-		return 1
-	fi
-	
-	# 验证 PHP
-	echo "[ * ] Verifying PHP binary..."
-	"$php_bin" -v || {
-		echo "❌ PHP binary verification failed!"
-		return 1
-	}
-	
-	# 验证 OpenSSL 扩展
-	echo "[ * ] Verifying OpenSSL extension..."
-	"$php_bin" -m | grep -i openssl || {
-		echo "❌ OpenSSL extension not loaded!"
-		return 1
-	}
-	
-	# 验证 ImageMagick 扩展并运行测试
-	echo "[ * ] Verifying ImageMagick extension and running tests..."
-	PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
-	ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
-	EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Creating FreeBSD package..."
+    echo "========================================"
+    
+    if [ ! -f "$php_bin" ]; then
+        echo "❌ PHP binary not found at $php_bin!"
+        return 1
+    fi
+    
+    echo "[ * ] Verifying PHP binary..."
+    "$php_bin" -v || {
+        echo "❌ PHP binary verification failed!"
+        return 1
+    }
+    
+    echo "[ * ] Verifying OpenSSL extension..."
+    "$php_bin" -m | grep -i openssl || {
+        echo "❌ OpenSSL extension not loaded!"
+        return 1
+    }
+    
+    echo "[ * ] Verifying all extensions..."
+    PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
+    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
+    EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-	if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-		echo "✅ ImageMagick extension found"
-		
-		# 运行完整测试
-		"$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-			$imagick_loaded = extension_loaded("imagick");
-			echo "PHP Version: " . PHP_VERSION . "\n";
-			echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-			echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
-			echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
-			if ($imagick_loaded) {
-				$formats = Imagick::queryFormats("*");
-				echo "ImageMagick supports " . count($formats) . " formats\n";
-			}
-		'
-	else
-		echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
-	fi
-	
-	# 创建包目录结构
-	PKG_NAME="php${ver_suffix}-openssl4"
-	
-	rm -rf "${PKG_DIR}"
-	mkdir -p "${PKG_DIR}/usr/local"
-	mkdir -p "${ARTIFACT_DIR}"
-	
-	echo "[ * ] Copying PHP files to ${PKG_DIR}..."
-	cp -r "${install_dir}/usr/local/"* "${PKG_DIR}/usr/local/"
-	
-	# 验证复制
-	if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
-		echo "❌ PHP binary not found after copy!"
-		echo "  Expected: ${PKG_DIR}/usr/local/bin/php"
-		echo "  Files in PKG_DIR:"
-		find "${PKG_DIR}" -type f | head -10
-		return 1
-	fi
-	
-	echo "[ ✓ ] Files copied successfully"
-	
-	# 创建 PLIST（列出所有文件）
+    # 测试所有扩展
+    local extensions=("imagick")
+    if [ "$BUILD_IMAP" = "yes" ]; then
+        extensions+=("imap")
+    fi
+    
+    for ext in "${extensions[@]}"; do
+        if [ -f "$EXTENSION_DIR/${ext}.so" ]; then
+            echo "✅ ${ext}.so found"
+        else
+            echo "⚠️  ${ext}.so not found (PHP 8.5 includes imap in core)"
+        fi
+    done
+
+    # 运行完整测试
+    local ext_list=""
+    for ext in "${extensions[@]}"; do
+        ext_list="$ext_list -d extension=$ext.so"
+    done
+    
+    "$php_bin" $ext_list -r '
+        $extensions = ["imagick", "openssl", "intl"];
+        if (extension_loaded("imap")) {
+            $extensions[] = "imap";
+        }
+        echo "PHP Version: " . PHP_VERSION . "\n";
+        echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+        echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
+        foreach ($extensions as $ext) {
+            $loaded = extension_loaded($ext);
+            echo "$ext extension: " . ($loaded ? "✅" : "❌") . "\n";
+        }
+        if (extension_loaded("imagick")) {
+            $formats = Imagick::queryFormats("*");
+            echo "ImageMagick supports " . count($formats) . " formats\n";
+        }
+        if (extension_loaded("imap")) {
+            echo "IMAP functions: " . (function_exists("imap_open") ? "✅" : "❌") . "\n";
+        }
+    '
+    
+    PKG_NAME="php${ver_suffix}-openssl4"
+    
+    rm -rf "${PKG_DIR}"
+    mkdir -p "${PKG_DIR}/usr/local"
+    mkdir -p "${ARTIFACT_DIR}"
+    
+    echo "[ * ] Copying PHP files to ${PKG_DIR}..."
+    cp -r "${install_dir}/usr/local/"* "${PKG_DIR}/usr/local/"
+    
+    if [ ! -f "${PKG_DIR}/usr/local/bin/php" ]; then
+        echo "❌ PHP binary not found after copy!"
+        echo "  Expected: ${PKG_DIR}/usr/local/bin/php"
+        echo "  Files in PKG_DIR:"
+        find "${PKG_DIR}" -type f | head -10
+        return 1
+    fi
+    
     echo "[ ✓ ] Files copied successfully"
-    # 删除不需要的目录（检查是否存在）
+    
     echo "[ * ] Cleaning up unnecessary files..."
     for dir in "${PKG_DIR}/usr/local/lib/php/php/test" \
                "${PKG_DIR}/usr/local/lib/php/php/doc" \
@@ -2395,18 +2160,12 @@ create_package() {
         fi
     done
     
-    echo "[ * ] Copying ICU 78 libraries..."
-    mkdir -p "${PKG_DIR}/usr/local/icu78/lib"
-    if [ -d "/usr/local/icu78/lib" ]; then
-        cp -r /usr/local/icu78/lib/libicu*.so* "${PKG_DIR}/usr/local/icu78/lib/" || true
-    fi
-	echo "[ * ] Creating file list..."
-	cd "${PKG_DIR}"
-	find . -type f | sed 's|^\.||' > +PLIST
-	
-	# 创建 MANIFEST
-	echo "[ * ] Creating package metadata..."
-	cat > "+MANIFEST" << EOF
+    echo "[ * ] Creating file list..."
+    cd "${PKG_DIR}"
+    find . -type f | sed 's|^\.||' > +PLIST
+    
+    echo "[ * ] Creating package metadata..."
+    cat > "+MANIFEST" << EOF
 name: ${PKG_NAME}
 version: ${PHP_VERSION}
 origin: local/php${ver_suffix}-openssl4
@@ -2418,9 +2177,10 @@ prefix: /usr/local
 desc: <<EOD
 PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 
-This is a custom build of PHP 8.2.31 that includes:
+This is a custom build of PHP 8.5.8 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
+- IMAP extension (built-in core support)
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - Argon2 password hashing support
@@ -2431,15 +2191,19 @@ This is a custom build of PHP 8.2.31 that includes:
 - Readonly classes
 - Disjunctive Normal Form (DNF) types
 
-IMPORTANT: PHP 8.2 is end-of-life. Use at your own risk.
+PHP 8.5 is the latest stable release with many new features including:
+- Property hooks
+- Asymmetric visibility
+- #[\Deprecated] attribute
+- New random number generator
+- Improved performance and security
 EOD
 EOF
-	
-	# 创建安装后脚本
-	cat > "+POST_INSTALL" << 'EOF'
+    
+    cat > "+POST_INSTALL" << EOF
 #!/bin/sh
 echo "========================================"
-echo "PHP 8.2.31 with OpenSSL 4.x installed"
+echo "PHP ${PHP_VERSION} with OpenSSL 4.x installed"
 echo "========================================"
 echo "Location: /usr/local"
 echo "Binary:   /usr/local/bin/php${ver_suffix}"
@@ -2447,27 +2211,21 @@ echo ""
 echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
-echo "Verify ImageMagick:"
-/usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
+echo "Verify extensions:"
+/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|imap|openssl|intl)" || echo "Some extensions not loaded"
 echo "========================================"
 EOF
-	chmod +x "+POST_INSTALL"
-	
-	# 创建包
-	echo "[ * ] Creating package..."
-	echo "  Metadata dir: ${PKG_DIR}"
-	echo "  PLIST: ${PKG_DIR}/+PLIST"
-	echo "  Root dir: ${PKG_DIR}"
-	echo "  Output: ${ARTIFACT_DIR}"
-	
-	pkg create \
-		-m "${PKG_DIR}" \
-		-p "${PKG_DIR}/+PLIST" \
-		-r "${PKG_DIR}" \
-		-o "${ARTIFACT_DIR}"
-	
-	PKG_FILE="${ARTIFACT_DIR}/${PKG_NAME}-${PHP_VERSION}.pkg"
-	
+    chmod +x "+POST_INSTALL"
+    
+    echo "[ * ] Creating package..."
+    pkg create \
+        -m "${PKG_DIR}" \
+        -p "${PKG_DIR}/+PLIST" \
+        -r "${PKG_DIR}" \
+        -o "${ARTIFACT_DIR}"
+    
+    PKG_FILE="${ARTIFACT_DIR}/${PKG_NAME}-${PHP_VERSION}.pkg"
+    
     if [ ! -f "${PKG_FILE}" ]; then
         echo "❌ Failed to create package!"
         echo "Files in ${ARTIFACT_DIR}:"
@@ -2475,25 +2233,21 @@ EOF
         return 1
     fi
 
-		FILE_SIZE=$(du -h "${PKG_FILE}" | cut -f1)
-		echo ""
-		echo "========================================"
-		echo "✅ Package created successfully!"
-		echo "========================================"
-		echo "Package: ${PKG_FILE}"
-		echo "Size: ${FILE_SIZE}"
-		echo "========================================"
+    FILE_SIZE=$(du -h "${PKG_FILE}" | cut -f1)
+    echo ""
+    echo "========================================"
+    echo "✅ Package created successfully!"
+    echo "========================================"
+    echo "Package: ${PKG_FILE}"
+    echo "Size: ${FILE_SIZE}"
+    echo "========================================"
 
-
-    # ============================================================
-    # 安装验证（包创建完成后）
-    # ============================================================
+    # 验证包
     echo ""
     echo "========================================"
     echo "[ * ] Verifying package installation..."
     echo "========================================"
 
-    # 创建临时测试根目录
     TEST_ROOT="/tmp/php-pkg-test-$$"
     mkdir -p "$TEST_ROOT"
     mkdir -p "$TEST_ROOT/usr/local"
@@ -2501,15 +2255,11 @@ EOF
 
     echo "[ * ] Installing package to test root: $TEST_ROOT"
 
-    # 方法1: 使用 tar 直接解压
-    echo "[ * ] Method 1: Extracting package with tar..."
     if tar -xf "$PKG_FILE" -C "$TEST_ROOT"; then
         echo "  ✅ Package extracted with tar"
     else
         echo "  ⚠️  tar extraction failed, trying pkg..."
         
-        # 方法2: 使用 pkg 安装到临时根目录
-        # 创建 pkg 配置
         mkdir -p "$TEST_ROOT/etc/pkg"
         cat > "$TEST_ROOT/etc/pkg/FreeBSD.conf" << EOF
 FreeBSD: {
@@ -2528,20 +2278,17 @@ EOF
             echo "  ✅ Package installed with pkg"
         else
             echo "  ❌ Package installation failed"
-            echo "  Trying fallback: extracting with bsdtar..."
             if bsdtar -xf "$PKG_FILE" -C "$TEST_ROOT"; then
                 echo "  ✅ Package extracted with bsdtar"
             else
                 echo "  ❌ All extraction methods failed"
                 rm -rf "$TEST_ROOT"
-                # 不返回错误，因为包已经创建成功
                 echo "  ⚠️  Package verification skipped, but package exists"
                 return 0
             fi
         fi
     fi
 
-    # 查找 PHP 二进制
     PHP_TEST_BIN="$TEST_ROOT/usr/local/bin/php${ver_suffix}"
     if [ ! -f "$PHP_TEST_BIN" ]; then
         PHP_TEST_BIN="$TEST_ROOT/usr/local/bin/php"
@@ -2557,26 +2304,23 @@ EOF
 
     echo "  ✅ PHP binary found: $PHP_TEST_BIN"
 
-    # 获取扩展目录
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
     local EXT_DIR="$TEST_ROOT/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
     
-    # 创建测试用的 php.ini
     local test_php_ini="$TEST_ROOT/usr/local/etc/php.ini"
     mkdir -p "$(dirname "$test_php_ini")"
     cat > "$test_php_ini" << EOF
 extension_dir=${EXT_DIR}
-; openssl, intl and phar are built-in, not .so files
-; Only load standalone extensions
 extension=imagick.so
-extension=imap.so
 zend_extension=opcache.so
 EOF
 
-    # 设置库路径
-    export LD_LIBRARY_PATH="$TEST_ROOT/usr/local/lib:$TEST_ROOT/usr/local/icu78/lib:/usr/local/lib"
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        echo "extension=imap.so" >> "$test_php_ini"
+    fi
 
-    # 测试 PHP 版本
+    export LD_LIBRARY_PATH="$TEST_ROOT/usr/local/lib:/usr/local/lib"
+
     echo ""
     echo "[ * ] Testing PHP version..."
     if "$PHP_TEST_BIN" -c "$test_php_ini" -v | head -1; then
@@ -2587,11 +2331,14 @@ EOF
         return 0
     fi
 
-    # 测试扩展
     echo ""
     echo "[ * ] Testing extensions..."
 
-    local extensions=("openssl" "intl" "imagick" "imap" "phar" "opcache")
+    local extensions=("openssl" "intl" "imagick" "phar" "opcache")
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        extensions+=("imap")
+    fi
+
     local all_ok=1
 
     for ext in "${extensions[@]}"; do
@@ -2604,7 +2351,6 @@ EOF
         fi
     done
 
-    # 测试 Imagick 类
     echo ""
     echo "[ * ] Testing Imagick class..."
     if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (class_exists("Imagick")) { echo "  ✅ Imagick class exists\n"; } else { echo "  ❌ Imagick class not found\n"; exit(1); }'; then
@@ -2614,24 +2360,23 @@ EOF
         all_ok=0
     fi
 
-    # 测试 IMAP 函数
-    echo ""
-    echo "[ * ] Testing IMAP functions..."
-    if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (function_exists("imap_open")) { echo "  ✅ imap_open exists\n"; } else { echo "  ❌ imap_open not found\n"; exit(1); }'; then
-        echo "  ✅ IMAP works"
-    else
-        echo "  ❌ IMAP test failed"
-        all_ok=0
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        echo ""
+        echo "[ * ] Testing IMAP functions..."
+        if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (function_exists("imap_open")) { echo "  ✅ imap_open exists\n"; } else { echo "  ❌ imap_open not found\n"; exit(1); }'; then
+            echo "  ✅ IMAP works"
+        else
+            echo "  ❌ IMAP test failed"
+            all_ok=0
+        fi
     fi
 
-    # 显示扩展文件
     echo ""
     echo "[ * ] Extension files in package:"
     if [ -d "$EXT_DIR" ]; then
         ls -la "$EXT_DIR/" | grep -E "\.so$" | sed 's/^/    /'
     fi
 
-    # 清理测试环境
     echo ""
     echo "[ * ] Cleaning up test environment..."
     rm -rf "$TEST_ROOT"
@@ -2649,74 +2394,71 @@ EOF
         echo "========================================"
     fi
 
-    # ============================================================
-    # 打印包信息
-    # ============================================================		
-		echo ""
-		echo "========================================"
-		echo "📦 Package Contents (${PKG_FILE})"
-		echo "========================================"
-		echo ""
-		echo "Package Name: ${PKG_NAME}"
-		echo "Version: ${PHP_VERSION}"
-		echo "Size: ${FILE_SIZE}"
-		echo "Location: ${PKG_FILE}"
-		echo ""
-		echo "--- Files in package ---"
-		pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
-			echo "⚠️  Cannot list package contents (pkg info not available)"
-			echo "Files in ${PKG_DIR}:"
-			find "${PKG_DIR}" -type f | sort
-		}
-		echo "========================================"
-		
-		return 0
+    echo ""
+    echo "========================================"
+    echo "📦 Package Contents (${PKG_FILE})"
+    echo "========================================"
+    echo ""
+    echo "Package Name: ${PKG_NAME}"
+    echo "Version: ${PHP_VERSION}"
+    echo "Size: ${FILE_SIZE}"
+    echo "Location: ${PKG_FILE}"
+    echo ""
+    echo "--- Files in package ---"
+    pkg info -l "${PKG_FILE}" || tar -tf "${PKG_FILE}" || {
+        echo "⚠️  Cannot list package contents (pkg info not available)"
+        echo "Files in ${PKG_DIR}:"
+        find "${PKG_DIR}" -type f | sort
+    }
+    echo "========================================"
+    
+    return 0
 }
 
 # ============================================================
 # 主函数
 # ============================================================
 main() {
-	echo ""
-	echo "========================================"
-	echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
-	echo "========================================"
-	echo "Start time: $(date)"
-	echo ""
+    echo ""
+    echo "========================================"
+    echo "Build PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "========================================"
+    echo "Start time: $(date)"
+    echo ""
 
-	if build_php; then
-		echo ""
-		echo "========================================"
-		echo "✅ BUILD SUCCESSFUL"
-		echo "========================================"
-		echo ""
-		echo "PHP binary: $BUILD_DIR/php-${PHP_VERSION}/usr/local/bin/php"
-		
-		if create_package; then
-			echo ""
-			echo "========================================"
-			echo "✅ ALL COMPLETED"
-			echo "========================================"
-			local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
-			echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
-			echo "========================================"
-			exit 0
-		else
-			echo ""
-			echo "========================================"
-			echo "❌ PACKAGE CREATION FAILED"
-			echo "========================================"
-			exit 1
-		fi
-	else
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "Check the build log: $LOG_DIR/build-${PHP_VERSION}.log"
-		exit 1
-	fi
+    if build_php; then
+        echo ""
+        echo "========================================"
+        echo "✅ BUILD SUCCESSFUL"
+        echo "========================================"
+        echo ""
+        echo "PHP binary: $BUILD_DIR/php-${PHP_VERSION}/usr/local/bin/php"
+        
+        if create_package; then
+            echo ""
+            echo "========================================"
+            echo "✅ ALL COMPLETED"
+            echo "========================================"
+            local ver_suffix=$(echo "$PHP_VERSION" | cut -d. -f1-2 | tr -d '.')
+            echo "Package: ${ARTIFACT_DIR}/php${ver_suffix}-openssl4-${PHP_VERSION}.pkg"
+            echo "========================================"
+            exit 0
+        else
+            echo ""
+            echo "========================================"
+            echo "❌ PACKAGE CREATION FAILED"
+            echo "========================================"
+            exit 1
+        fi
+    else
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "Check the build log: $LOG_DIR/build-${PHP_VERSION}.log"
+        exit 1
+    fi
 }
 
 main "$@"

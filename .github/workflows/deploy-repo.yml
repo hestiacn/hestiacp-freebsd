@@ -100,7 +100,7 @@ jobs:
             echo "[ ✓ ] Public key created at: $(pwd)/keys/hestiacp.pub"
             echo "=== Key files ==="
             ls -la keys/
-            cat keys/hestiacp.pub | head -10
+            cat keys/hestiacp.pub
 
             # 进入包目录
             cd pkg
