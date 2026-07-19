@@ -890,9 +890,11 @@ echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/repos
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
 hestia: {
-  url: "https://$RHOST/freebsd/\${ABI}/latest",
+  url: "pkg+https://$RHOST/freebsd/\${ABI}/latest",
   mirror_type: "srv",
-  enabled: yes
+  enabled: yes,
+  signature_type: "pubkey",
+  pubkey: "/usr/local/etc/pkg/keys/hestia.pub"
 }
 EOF
 

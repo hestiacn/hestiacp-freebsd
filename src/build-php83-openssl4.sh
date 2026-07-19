@@ -203,16 +203,22 @@ build_icu74() {
     local icu_prefix="/usr/local/icu74"
     
     if [ -d "$icu_prefix" ] && [ -f "$icu_prefix/lib/libicuuc.so.74.2" ]; then
-        echo "[ ✓ ] ICU 74 already installed at $icu_prefix"
-        return 0
+        # 验证符号是否存在
+        if nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -q "uloc_getDefault"; then
+            echo "[ ✓ ] ICU 74 already installed with symbols"
+            return 0
+        else
+            echo "[ ! ] ICU 74 exists but missing symbols, rebuilding..."
+            rm -rf "$icu_prefix"
+        fi
     fi
     
-    echo "[ * ] Building ICU 74 for PHP 8.3 compatibility..."
+    echo "[ * ] Building ICU 74 with symbols..."
     rm -rf "$icu_prefix"
-
+    
     echo "[ * ] ICU 74 local file not found, downloading..."
     #fetch -o /tmp/icu-74.tar.gz "https://github.com/unicode-org/icu/archive/refs/tags/release-74-2.tar.gz" || return 1
-     echo "[ * ] Copying ICU 74 from local file..."
+    echo "[ * ] Copying ICU 74 from local file..."
     LOCAL_ICU_FILE="$SCRIPT_DIR/php8.3/icu-release-74-2.tar.gz"
     cp "$LOCAL_ICU_FILE" /tmp/icu-74.tar.gz || return 1
     tar -xf /tmp/icu-74.tar.gz -C /tmp || return 1
@@ -224,17 +230,19 @@ build_icu74() {
     export CC=gcc14
     export CXX=g++14
     
-    echo "[ * ] Configuring ICU 74..."
+    echo "[ * ] Configuring ICU 74 with export symbols..."
     ./configure \
         --prefix="$icu_prefix" \
         --enable-shared=yes \
         --enable-static=yes \
+        --enable-export=yes \
+        --enable-icu-config=yes \
         --disable-debug \
         --enable-release \
         --with-library-bits=64 \
         --enable-icuio \
-        CFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing" \
-        CXXFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing -std=c++11" \
+        CFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing -fvisibility=default" \
+        CXXFLAGS="-O2 -pipe -fstack-protector-strong -fno-strict-aliasing -std=c++11 -fvisibility=default" \
         LDFLAGS="-lpthread -lm"
     
     if [ $? -ne 0 ]; then
@@ -259,6 +267,18 @@ build_icu74() {
         return 1
     fi
     echo "[ ✓ ] ICU 74 installation completed successfully"
+    
+    # 验证符号
+    echo "[ * ] Verifying ICU symbols..."
+    if nm -D "$icu_prefix/lib/libicuuc.so.74.2" 2>/dev/null | grep -q "uloc_getDefault"; then
+        echo "  ✅ Symbols found in libicuuc.so.74.2"
+    else
+        echo "  ⚠️  Symbols not found in libicuuc.so.74.2 - trying to use .a file"
+        # 如果 .so 没有符号，尝试使用 .a 静态库
+        if nm "$icu_prefix/lib/libicuuc.a" 2>/dev/null | grep -q "uloc_getDefault"; then
+            echo "  ✅ Symbols found in libicuuc.a"
+        fi
+    fi
     
     # 创建符号链接
     echo "[ * ] Creating ICU 74 library symlinks..."
@@ -312,12 +332,6 @@ esac
 EOF
         chmod +x "$icu_prefix/bin/icu-config"
         echo "[ ✓ ] icu-config wrapper created"
-    fi
-    
-    # 验证
-    echo "[ * ] Verifying ICU 74 installation..."
-    if [ -f "$icu_prefix/bin/icu-config" ]; then
-        echo "  Version: $($icu_prefix/bin/icu-config --version || echo '74.2')"
     fi
     
     cd /
@@ -2116,8 +2130,10 @@ EOF
     # 编译 PHP
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
+    CURRENT_LIBS=$(grep "^LIBS" Makefile | head -1 | sed 's/^LIBS = //')
     gmake -j "$NUM_CPUS" \
         LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib -L/usr/local/lib" \
+        LIBS="${ICU_LIBS_FULL} ${CURRENT_LIBS}" \
         > "$LOG_DIR/build-${PHP_VERSION}.log"
     BUILD_STATUS=$?
 
