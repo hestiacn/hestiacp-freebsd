@@ -55,11 +55,9 @@ jobs:
               exit 1
             fi
 
-            # 准备签名密钥目录
             cd /tmp/hestiacp-src
             mkdir -p keys
 
-            # 导入私钥用于签名
             echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
@@ -73,11 +71,9 @@ jobs:
             echo "=== Package files ==="
             ls -la
 
-            # 更新 pkg 并重试
             pkg update -f
             pkg upgrade -y pkg
 
-            # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
             pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
 
@@ -95,22 +91,15 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 准备产物
             mkdir -p final-packages
-
-            # 复制签名后的包文件到 final-packages
             cp -R ./* final-packages/
 
-            # 复制公钥到产物目录（客户端需要）
             echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
 
-            # 验证签名文件
             echo "=== Verifying signature ==="
             ls -la final-packages/ | grep -E "(digests|meta|packagesite)"
-
             cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/
             cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/
-
             if [ -f "final-packages/digests.sig" ] || [ -f "final-packages/packagesite.sig" ]; then
               echo "[ ✓ ] Repository signed successfully! Signature files found."
             else
@@ -139,8 +128,12 @@ jobs:
         run: |
           if [ ! -f "build.log" ]; then
             echo "❌ build.log not found!"
+            echo "Current directory contents:"
+            ls -la
             exit 0
           fi
+
+          echo "✅ build.log found, size: $(wc -l < build.log) lines"
 
           cat > build-report-FreeBSD${{ matrix.freebsd_version }}.md << 'EOF'
           # HestiaCP FreeBSD Build Report - FreeBSD ${{ matrix.freebsd_version }}
@@ -203,7 +196,7 @@ jobs:
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Build Artifacts" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息"
+          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息"
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
@@ -215,6 +208,7 @@ jobs:
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "---" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "*报告由 GitHub Actions 自动生成*" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+
           echo "✅ Build report generated: build-report-FreeBSD${{ matrix.freebsd_version }}.md"
           cat build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
@@ -322,8 +316,6 @@ jobs:
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
-              } else if (path.endsWith(".sig")) {
-                headers.set("content-type", "text/plain; charset=utf-8");
               }
               
               return new Response(object.body, { headers });
@@ -334,7 +326,6 @@ jobs:
             worker_default as default
           };
           WORKER_EOF
-          
           cat > wrangler.toml << 'TOML_EOF'
           name = "hestiacp-repo"
           main = "worker.js"
@@ -346,7 +337,7 @@ jobs:
           bucket_name = "fbsd-repo"
           TOML_EOF
 
-          echo "[ * ] Deploying Cloudflare Worker with HTTP/3 support..."
+          echo "[ * ] Dispatching clean Cloudflare Worker code deployment with HTTP/3 support..."
           npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
