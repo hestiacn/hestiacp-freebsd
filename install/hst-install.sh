@@ -150,6 +150,17 @@ ensure_utf8_locale() {
 ensure_utf8_locale
 
 check_wget_curl() {
+	# FreeBSD: 使用 fetch
+	if [ -f /etc/freebsd-version ] || [ -e '/usr/bin/fetch' ]; then
+		fetch -o "hst-install-$type.sh" "https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh"
+		if [ "$?" -eq '0' ]; then
+			bash hst-install-$type.sh "$@"
+			exit
+		else
+			echo "Error: hst-install-$type.sh download failed fetch."
+			exit 1
+		fi
+	fi
 	# Check wget
 	if [ -e '/usr/bin/wget' ] || [ -e '/usr/local/bin/wget' ]; then
 		wget -q https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-$type.sh -O hst-install-$type.sh
@@ -157,7 +168,7 @@ check_wget_curl() {
 			bash hst-install-$type.sh "$@"
 			exit
 		else
-			echo "Error: hst-install-$type.sh download failed."
+			echo "Error: hst-install-$type.sh download failed wget."
 			exit 1
 		fi
 	fi
@@ -169,22 +180,11 @@ check_wget_curl() {
 			bash hst-install-$type.sh "$@"
 			exit
 		else
-			echo "Error: hst-install-$type.sh download failed."
+			echo "Error: hst-install-$type.sh download failed curl."
 			exit 1
 		fi
 	fi
 	
-	# FreeBSD: 使用 fetch
-	if [ "$type" = "freebsd" ]; then
-		fetch -o "hst-install-$type.sh" "https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh"
-		if [ "$?" -eq '0' ]; then
-			bash hst-install-$type.sh "$@"
-			exit
-		else
-			echo "Error: hst-install-$type.sh download failed."
-			exit 1
-		fi
-	fi
 }
 
 # Check for supported operating system
