@@ -579,25 +579,40 @@ if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
 	fi
 fi
 
-case $architecture in
-	x86_64)
-		ARCH="amd64"
-		;;
-	aarch64)
-		ARCH="arm64"
-		;;
-	*)
-		echo
-		echo -e "\e[91mInstallation aborted\e[0m"
-		echo "===================================================================="
-		echo -e "\e[33mERROR: $architecture is currently not supported!\e[0m"
-		echo -e "\e[33mPlease verify the achitecture used is currenlty supported\e[0m"
-		echo ""
-		echo -e "\e[33mhttps://github.com/hestiacp/hestiacp/blob/main/README.md\e[0m"
-		echo ""
-		check_result 1 "Installation aborted"
-		;;
-esac
+if [ "$(uname -s)" = "FreeBSD" ]; then
+    case $architecture in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            echo "ERROR: $architecture is not supported on FreeBSD!"
+            check_result 1 "Installation aborted"
+            ;;
+    esac
+else
+    case $architecture in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64)
+            ARCH="arm64"
+            ;;
+        *)
+            echo
+            echo -e "\e[91mInstallation aborted\e[0m"
+            echo "===================================================================="
+            echo -e "\e[33mERROR: $architecture is currently not supported!\e[0m"
+            echo -e "\e[33mPlease verify the achitecture used is currenlty supported\e[0m"
+            echo ""
+            echo -e "\e[33mhttps://github.com/hestiacp/hestiacp/blob/main/README.md\e[0m"
+            echo ""
+            check_result 1 "Installation aborted"
+            ;;
+    esac
+fi
 
 #----------------------------------------------------------#
 #                       Brief Info                         #
@@ -606,11 +621,11 @@ esac
 install_welcome_message() {
 	DISPLAY_VER=$(echo $HESTIA_INSTALL_VER | sed "s|~alpha||g" | sed "s|~beta||g")
 	echo
-	echo '                _   _           _   _        ____ ____                  '
-	echo '               | | | | ___  ___| |_(_) __ _ / ___|  _ \                 '
-	echo '               | |_| |/ _ \/ __| __| |/ _` | |   | |_) |                '
-	echo '               |  _  |  __/\__ \ |_| | (_| | |___|  __/                 '
-	echo '               |_| |_|\___||___/\__|_|\__,_|\____|_|                    '
+	echo '          _   _                _     _           _____   ____           '
+	echo '         | | | |  ___   ___  _| |_  (_)   __ _  /  ___| |  _ \          '
+	echo '         | |_| | / _ \ / __||_  __| | |  / _  | | |     | |_) |         '
+	echo '         |  _  ||  __/ \__ \  | |_  | | | (_| | | |___  |  __/          '
+	echo '         |_| |_| \___| |___/  \___| |_|  \____| \_____| |_|             '
 	echo "                                                                        "
 	echo "                          Hestia Control Panel                          "
 	if [[ "$HESTIA_INSTALL_VER" =~ "beta" ]]; then

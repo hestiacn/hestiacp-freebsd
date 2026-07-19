@@ -2126,13 +2126,13 @@ EOF
         export LD_PRELOAD="$OLD_LD_PRELOAD"
     fi
 
-	if [ $BUILD_STATUS -ne 0 ]; then
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "=== All errors ==="
+    if [ $BUILD_STATUS -ne 0 ]; then
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "=== All errors ==="
         grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_VERSION}.log" | head -200
         echo ""
         echo "========================================"
@@ -2145,6 +2145,163 @@ EOF
         if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
+            # ============================================================
+            # 诊断信息收集
+            # ============================================================
+            echo ""
+            echo "========================================"
+            echo "🔍 BUILD FAILED - 收集诊断信息"
+            echo "========================================"
+            
+            # 1. 检查 ICU 74 库是否存在
+            echo ""
+            echo "[1] ICU 74 库文件检查:"
+            echo "----------------------------------------"
+            ICU_LIB="/usr/local/icu74/lib"
+            if [ -d "$ICU_LIB" ]; then
+                ls -la "$ICU_LIB"/libicu*.so* 2>/dev/null || echo "  ❌ 没有找到 ICU 库文件"
+            else
+                echo "  ❌ ICU 目录不存在: $ICU_LIB"
+            fi
+            
+            # 2. 检查 ICU 符号
+            echo ""
+            echo "[2] ICU 符号检查:"
+            echo "----------------------------------------"
+            ICU_SYMBOLS=(
+                "uloc_getDefault"
+                "uloc_canonicalize"
+                "u_errorName"
+                "u_cleanup"
+                "u_strFromUTF8"
+                "u_strToUTF8"
+                "u_isspace"
+                "ucol_close"
+                "ucol_open"
+                "ucol_strcoll"
+                "ucol_getSortKey"
+                "ucol_getAttribute"
+                "ucol_setAttribute"
+                "ucol_getStrength"
+                "ucol_setStrength"
+                "ucol_getLocaleByType"
+                "ucal_getTZDataVersion"
+                "unum_getAttribute"
+                "unum_setAttribute"
+                "unum_getSymbol"
+                "umsg_applyPattern"
+                "umsg_getLocale"
+                "udat_toPattern"
+                "udat_applyPattern"
+                "udat_clone"
+                "ucnv_getSubstChars"
+                "ucnv_getName"
+                "ucnv_getType"
+            )
+            
+            MISSING_COUNT=0
+            FOUND_COUNT=0
+            
+            for sym in "${ICU_SYMBOLS[@]}"; do
+                # 在 libicuuc 和 libicui18n 中搜索
+                if nm -D "$ICU_LIB/libicuuc.so.74.2" 2>/dev/null | grep -q " $sym$" || \
+                nm -D "$ICU_LIB/libicui18n.so.74.2" 2>/dev/null | grep -q " $sym$"; then
+                    echo "  ✅ $sym"
+                    ((FOUND_COUNT++))
+                else
+                    echo "  ❌ $sym"
+                    ((MISSING_COUNT++))
+                fi
+            done
+            
+            echo ""
+            echo "  统计: 找到 $FOUND_COUNT 个符号，缺失 $MISSING_COUNT 个符号"
+            
+            if [ $MISSING_COUNT -gt 0 ]; then
+                echo "  ⚠️  有 $MISSING_COUNT 个 ICU 符号未找到！"
+            fi
+            
+            # 3. 检查 Makefile 中的链接配置
+            echo ""
+            echo "[3] Makefile 链接配置检查:"
+            echo "----------------------------------------"
+            if [ -f "Makefile" ]; then
+                echo "  LIBS 中的 ICU 库:"
+                grep "^LIBS" Makefile | grep -o "/usr/local/icu74/lib/libicu[^ ]*\.so\.[0-9.]*" | sed 's/^/    /' || echo "    未找到 ICU 库"
+                
+                echo "  EXTRA_LIBS 中的 ICU 库:"
+                grep "^EXTRA_LIBS" Makefile | grep -o "/usr/local/icu74/lib/libicu[^ ]*\.so\.[0-9.]*" | sed 's/^/    /' || echo "    未找到 ICU 库"
+                
+                echo "  LDFLAGS:"
+                grep "^LDFLAGS" Makefile | head -1 | cut -c1-200 | sed 's/^/    /'
+            else
+                echo "  ❌ Makefile 不存在"
+            fi
+            
+            # 4. 检查 PHP configure 检测到的 ICU
+            echo ""
+            echo "[4] PHP Configure ICU 检测:"
+            echo "----------------------------------------"
+            if [ -f "$LOG_DIR/configure-${PHP_VERSION}.log" ]; then
+                grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | tail -20 | sed 's/^/    /'
+            else
+                echo "  ❌ configure 日志不存在"
+            fi
+            
+            # 5. 检查 OpenSSL 版本
+            echo ""
+            echo "[5] OpenSSL 版本:"
+            echo "----------------------------------------"
+            openssl version 2>/dev/null || echo "  ❌ openssl 命令不存在"
+            pkg info openssl 2>/dev/null | grep -E "Name|Version" | sed 's/^/    /' || echo "  ⚠️  openssl 包未安装"
+            
+            # 6. 检查 libfetch 依赖
+            echo ""
+            echo "[6] libfetch OpenSSL 依赖:"
+            echo "----------------------------------------"
+            ldd /usr/lib/libfetch.so 2>/dev/null | grep -E "ssl|crypto" | sed 's/^/    /' || echo "  ⚠️  无法检查 libfetch"
+            
+            # 7. 检查系统其他 ICU 版本冲突
+            echo ""
+            echo "[7] 系统其他 ICU 版本冲突检查:"
+            echo "----------------------------------------"
+            OTHER_ICU=$(find /usr/local/lib /usr/lib -name "libicuuc.so*" 2>/dev/null | grep -v "/usr/local/icu74/" | head -5)
+            if [ -n "$OTHER_ICU" ]; then
+                echo "  ⚠️  发现其他 ICU 库:"
+                for lib in $OTHER_ICU; do
+                    echo "    - $lib"
+                done
+            else
+                echo "  ✅ 没有发现冲突的 ICU 库"
+            fi
+            
+            # 8. 检查链接器使用的库路径
+            echo ""
+            echo "[8] 链接器库路径检查:"
+            echo "----------------------------------------"
+            echo "  LD_LIBRARY_PATH: ${LD_LIBRARY_PATH:-未设置}"
+            echo "  LD_ELF_RPATH: ${LD_ELF_RPATH:-未设置}"
+            
+            echo ""
+            echo "========================================"
+            echo "📋 诊断信息收集完成"
+            echo "========================================"
+            
+            # 如果缺失符号，给出修复建议
+            if [ $MISSING_COUNT -gt 0 ]; then
+                echo ""
+                echo "🔧 修复建议:"
+                echo "  1. ICU 库不完整，需要重新编译 ICU 74:"
+                echo "     cd /tmp/icu-release-74-2/icu4c/source"
+                echo "     gmake clean && gmake && gmake install"
+                echo ""
+                echo "  2. 检查 Makefile 中的 LIBS 是否包含完整的 ICU 库路径"
+                echo "     grep '^LIBS' Makefile"
+                echo ""
+                echo "  3. 在 gmake 时强制覆盖 LIBS:"
+                echo "     gmake LIBS='/usr/local/icu74/lib/libicui18n.so.74.2 /usr/local/icu74/lib/libicuuc.so.74.2 /usr/local/icu74/lib/libicudata.so.74.2 /usr/local/icu74/lib/libicuio.so.74.2 ...'"
+            fi
+            
             return 1
         fi
     fi
