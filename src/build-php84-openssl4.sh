@@ -1989,7 +1989,7 @@ EOF
     echo "[ * ] Creating bzip2.pc for pkg-config..."
 
     mkdir -p /usr/local/libdata/pkgconfig
-    cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
+cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
 prefix=/usr
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
@@ -2017,8 +2017,8 @@ EOF
     echo "========================================"
     echo "  当前目录: $(pwd)"
     echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
-    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
-    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
+    echo "  gmake 路径: $(which gmake || echo '❌ 未找到 gmake')"
+    echo "  make 路径: $(which make || echo '❌ 未找到 make')"
     echo "========================================"
     echo ""
     # ============================================================
@@ -2098,17 +2098,6 @@ EOF
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
-    echo ""
-    echo "========================================"
-    echo "[ DEBUG ] 编译前检查"
-    echo "========================================"
-    echo "  当前目录: $(pwd)"
-    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
-    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
-    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
-    echo "========================================"
-    echo ""
-
     # ============================================================
     # 编译 PHP
     # ============================================================
@@ -2122,27 +2111,27 @@ EOF
         export LD_PRELOAD="$OLD_LD_PRELOAD"
     fi
 
-	if [ $BUILD_STATUS -ne 0 ]; then
-		echo ""
-		echo "========================================"
-		echo "❌ BUILD FAILED"
-		echo "========================================"
-		echo ""
-		echo "=== All errors ==="
-		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-		echo ""
-		echo "========================================"
-		echo "Last 100 lines:"
-		echo "========================================"
-		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+    if [ $BUILD_STATUS -ne 0 ]; then
+        echo ""
+        echo "========================================"
+        echo "❌ BUILD FAILED"
+        echo "========================================"
+        echo ""
+        echo "=== All errors ==="
+        grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_VERSION}.log" | head -200
+        echo ""
+        echo "========================================"
+        echo "Last 200 lines:"
+        echo "========================================"
+        tail -200 "$LOG_DIR/build-${PHP_VERSION}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
         gmake clean
         if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
-            # 1. 检查 ICU 66 库是否存在及符号
-            echo "=== ICU 66 检查 ==="
+            # 1. 检查 ICU 74 库是否存在及符号
+            echo "=== ICU 74 检查 ==="
             ls -la /usr/local/icu74/lib/libicu*.so*
             nm -D /usr/local/icu74/lib/libicuuc.so.74.2 | grep u_sprintf
 
@@ -2167,7 +2156,6 @@ EOF
         fi
     fi
 
-    
     # ============================================================
     # 生成 phar.phar
     # ============================================================

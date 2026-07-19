@@ -176,7 +176,7 @@ check_wget_curl() {
 	
 	# FreeBSD: 使用 fetch
 	if [ "$type" = "freebsd" ]; then
-		fetch -o hst-install-$type.sh https://gh.felicity.ac.cn/https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh
+		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh
 		if [ "$?" -eq '0' ]; then
 			bash hst-install-$type.sh "$@"
 			exit

@@ -1942,7 +1942,7 @@ EOF
     else
         echo "⚠️  未找到 ICU 74，尝试查找其他版本..."
         # 查找任何 ICU 版本
-        ICU_LIB=$(find /usr -name "libicuuc.so*" -type f 2>/dev/null | head -1)
+        ICU_LIB=$(find /usr -name "libicuuc.so*" -type f | head -1)
         if [ -n "$ICU_LIB" ]; then
             ICU_PREFIX=$(dirname $(dirname "$ICU_LIB"))
             echo "  找到 ICU: $ICU_LIB"
@@ -2013,8 +2013,8 @@ EOF
     echo "========================================"
     echo "  当前目录: $(pwd)"
     echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
-    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
-    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
+    echo "  gmake 路径: $(which gmake || echo '❌ 未找到 gmake')"
+    echo "  make 路径: $(which make || echo '❌ 未找到 make')"
     echo "========================================"
     echo ""
     # ============================================================
@@ -2093,17 +2093,6 @@ EOF
     
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
-    
-    echo ""
-    echo "========================================"
-    echo "[ DEBUG ] 编译前检查"
-    echo "========================================"
-    echo "  当前目录: $(pwd)"
-    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
-    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
-    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
-    echo "========================================"
-    echo ""
 
     # ============================================================
     # 编译 PHP
@@ -2125,12 +2114,12 @@ EOF
 		echo "========================================"
 		echo ""
 		echo "=== All errors ==="
-		grep -E "error:" "$LOG_DIR/build-${PHP_VERSION}.log" | head -50
-		echo ""
-		echo "========================================"
-		echo "Last 100 lines:"
-		echo "========================================"
-		tail -100 "$LOG_DIR/build-${PHP_VERSION}.log"
+        grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_VERSION}.log" | head -200
+        echo ""
+        echo "========================================"
+        echo "Last 200 lines:"
+        echo "========================================"
+        tail -200 "$LOG_DIR/build-${PHP_VERSION}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
         gmake clean
@@ -2141,7 +2130,6 @@ EOF
         fi
     fi
 
-    
     # ============================================================
     # 生成 phar.phar
     # ============================================================
