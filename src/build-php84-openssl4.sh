@@ -1,7 +1,7 @@
 #!/bin/bash
 # src/build-php84-openssl4.sh
 # Build PHP 8.4.23 with OpenSSL 4.x and create package
-# UPDATED: Use system ICU 76 instead of custom ICU 74
+# UPDATED: Install all extensions before packaging
 
 set -e
 
@@ -238,6 +238,135 @@ apply_patches() {
 }
 
 # ============================================================
+# 编译和安装 IMAP 扩展（打包前安装）
+# ============================================================
+install_imap_extension() {
+    local install_dir="$1"
+    local php_version="$2"
+    local build_dir="$3"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Building and installing IMAP extension"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    if [ ! -f "$php_bin" ]; then
+        echo "❌ PHP binary not found: $php_bin"
+        return 1
+    fi
+    
+    local php_ver=$(echo "$php_version" | cut -d. -f1-2 | tr -d '.')
+    echo "[ * ] PHP version: $php_ver"
+    local php_prefix="$install_dir/usr/local"
+    local ver_suffix="$php_ver"
+    local phpize=""
+    local php_config=""
+    
+    # 查找 phpize
+    for path in "$php_prefix/bin/phpize" "$php_prefix/bin/phpize${ver_suffix}" \
+                 "/usr/local/bin/phpize" "/usr/local/bin/phpize${ver_suffix}" \
+                 "$build_dir/phpize" "$build_dir/scripts/phpize"; do
+        if [ -f "$path" ] && [ -x "$path" ]; then
+            phpize="$path"
+            break
+        fi
+    done
+    
+    # 查找 php-config
+    for path in "$php_prefix/bin/php-config" "$php_prefix/bin/php-config${ver_suffix}" \
+                 "/usr/local/bin/php-config" "/usr/local/bin/php-config${ver_suffix}" \
+                 "$build_dir/php-config" "$build_dir/scripts/php-config"; do
+        if [ -f "$path" ] && [ -x "$path" ]; then
+            php_config="$path"
+            break
+        fi
+    done
+    
+    if [ -z "$phpize" ] || [ -z "$php_config" ]; then
+        echo "⚠️  phpize or php-config not found"
+        return 1
+    fi
+    
+    echo "  Using phpize: $phpize"
+    echo "  Using php-config: $php_config"
+    
+    # 获取扩展目录
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    mkdir -p "$ext_dir"
+    
+    # 方法1: 从 PHP 源码编译 IMAP
+    echo ""
+    echo "[ * ] Building IMAP from PHP source..."
+    if [ -d "$build_dir/ext/imap" ]; then
+        cd "$build_dir/ext/imap" || return 1
+        
+        # 创建符号链接
+        if [ -d "$build_dir/build" ]; then
+            for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
+                if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
+                    ln -sf "$build_dir/build/$file" ./
+                fi
+            done
+        fi
+        
+        export PHP_PREFIX="$php_prefix"
+        export PHP_CONFIG="$php_config"
+        export PHPIZE="$phpize"
+        export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+        export CFLAGS="-I/usr/local/include $CFLAGS"
+        export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+        
+        echo "  Running phpize..."
+        "$phpize" --with-php-config="$php_config" 2>&1 | tee -a "$LOG_DIR/imap-phpize.log"
+        
+        echo "  Configuring..."
+        ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local 2>&1 | tee -a "$LOG_DIR/imap-configure.log"
+        
+        echo "  Compiling..."
+        make 2>&1 | tee -a "$LOG_DIR/imap-make.log"
+        
+        echo "  Installing to: $ext_dir"
+        # 直接复制到扩展目录
+        if [ -f "modules/imap.so" ]; then
+            cp modules/imap.so "$ext_dir/"
+            echo "  ✅ imap.so installed to $ext_dir"
+        elif [ -f ".libs/imap.so" ]; then
+            cp .libs/imap.so "$ext_dir/"
+            echo "  ✅ imap.so installed to $ext_dir"
+        else
+            echo "  ⚠️  imap.so not found in modules/"
+            find . -name "imap.so" 2>/dev/null
+            return 1
+        fi
+        
+        cd - > /dev/null
+    else
+        echo "❌ IMAP source directory not found: $build_dir/ext/imap"
+        return 1
+    fi
+    
+    # 添加到 php.ini
+    local php_ini="$install_dir/usr/local/etc/php.ini"
+    if [ -f "$ext_dir/imap.so" ]; then
+        mkdir -p "$(dirname "$php_ini")"
+        if [ -f "$php_ini" ]; then
+            if ! grep -q "^extension=imap.so" "$php_ini"; then
+                echo "extension=imap.so" >> "$php_ini"
+            fi
+        else
+            echo "extension=imap.so" > "$php_ini"
+        fi
+        echo "  ✅ imap.so added to php.ini"
+        return 0
+    else
+        echo "❌ imap.so not found after build"
+        return 1
+    fi
+}
+
+# ============================================================
 # 编译 ImageMagick 扩展
 # ============================================================
 build_imagick() {
@@ -338,206 +467,6 @@ build_imagick() {
     cd - > /dev/null
     echo "  ✅ ImageMagick extension build complete"
     return 0
-}
-
-# ============================================================
-# 从 FreeBSD ports 或源码编译 IMAP 扩展
-# ============================================================
-build_imap_extension() {
-    local install_dir="$1"
-    local php_version="$2"
-    local build_dir="$3"
-    
-    echo ""
-    echo "========================================"
-    echo "[ * ] Building IMAP extension"
-    echo "========================================"
-    
-    local php_bin="$install_dir/usr/local/bin/php"
-    if [ ! -f "$php_bin" ]; then
-        echo "❌ PHP binary not found: $php_bin"
-        return 1
-    fi
-    
-    local php_ver=$(echo "$php_version" | cut -d. -f1-2 | tr -d '.')
-    echo "[ * ] PHP version: $php_ver"
-    local php_prefix="$install_dir/usr/local"
-    local ver_suffix="$php_ver"
-    local phpize=""
-    local php_config=""
-    
-    for path in "$php_prefix/bin/phpize" "$php_prefix/bin/phpize${ver_suffix}" \
-                 "/usr/local/bin/phpize" "/usr/local/bin/phpize${ver_suffix}" \
-                 "$build_dir/phpize" "$build_dir/scripts/phpize"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            phpize="$path"
-            break
-        fi
-    done
-    
-    for path in "$php_prefix/bin/php-config" "$php_prefix/bin/php-config${ver_suffix}" \
-                 "/usr/local/bin/php-config" "/usr/local/bin/php-config${ver_suffix}" \
-                 "$build_dir/php-config" "$build_dir/scripts/php-config"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            php_config="$path"
-            break
-        fi
-    done
-    
-    if [ -z "$phpize" ] || [ -z "$php_config" ]; then
-        echo "⚠️  phpize or php-config not found"
-        return 1
-    fi
-    
-    echo "  Using phpize: $phpize"
-    echo "  Using php-config: $php_config"
-    
-    # 方法1: 尝试从 ports 安装
-    local port_paths=(
-        "/usr/ports/mail/php${php_ver}-imap"
-        "/usr/ports/mail/php-imap"
-        "/usr/ports/mail/php${php_ver}-mail"
-        "/usr/ports/mail/php-mail"
-        "/usr/ports/mail/php${php_ver}-extensions"
-        "/usr/ports/lang/php${php_ver}-extensions"
-    )
-    
-    for port_path in "${port_paths[@]}"; do
-        if [ -d "$port_path" ]; then
-            echo "[ ✓ ] Found port: $port_path"
-            cd "$port_path" || continue
-            
-            export PHP_PREFIX="$install_dir/usr/local"
-            export PATH="$PHP_PREFIX/bin:$PATH"
-            export PKG_CONFIG_PATH="$PHP_PREFIX/lib/pkgconfig:/usr/local/lib/pkgconfig"
-            
-            echo "[ * ] Compiling IMAP extension from port..."
-            if make -DBATCH install clean | tee -a "$LOG_DIR/imap-extension.log"; then
-                echo "  ✅ IMAP extension installed from port"
-                if find_imap_so "$install_dir" "$build_dir"; then
-                    return 0
-                fi
-            fi
-        fi
-    done
-    
-    # 方法2: 从 PHP 源码编译
-    echo ""
-    echo "[ * ] Method 2: Building IMAP from PHP source..."
-    if [ -d "$build_dir/ext/imap" ]; then
-        cd "$build_dir/ext/imap" || return 1
-        
-        echo "  [ * ] Creating symlinks to build files..."
-        if [ -d "$build_dir/build" ]; then
-            for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
-                if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
-                    ln -sf "$build_dir/build/$file" ./
-                    echo "  ✅ $file -> build/$file"
-                fi
-            done
-        fi
-        
-        export PHP_PREFIX="$php_prefix"
-        export PHP_CONFIG="$php_config"
-        export PHPIZE="$phpize"
-        export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-        export CFLAGS="-I/usr/local/include $CFLAGS"
-        export LDFLAGS="-L/usr/local/lib $LDFLAGS"
-        
-        echo "  Running phpize..."
-        if ! "$phpize" | tee -a "$LOG_DIR/imap-phpize.log"; then
-            "$phpize" --with-php-config="$php_config" | tee -a "$LOG_DIR/imap-phpize.log" || {
-                echo "  ❌ phpize failed, skipping IMAP"
-                return 0
-            }
-        fi
-        
-        echo "  Configuring..."
-        ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local | tee -a "$LOG_DIR/imap-configure.log"
-        
-        echo "  Compiling..."
-        make | tee -a "$LOG_DIR/imap-make.log"
-        
-        echo "  Installing..."
-        make install INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/imap-install.log"
-        
-        if find_imap_so "$install_dir" "$build_dir"; then
-            return 0
-        fi
-    fi
-    
-    # 方法3: 使用 pecl 安装
-    echo ""
-    echo "[ * ] Method 3: Installing via pecl..."
-    
-    if [ -f "$install_dir/usr/local/bin/pecl" ]; then
-        export PATH="$install_dir/usr/local/bin:$PATH"
-        if pecl install imap | tee -a "$LOG_DIR/imap-extension.log"; then
-            echo "  ✅ IMAP extension installed via pecl"
-            if find_imap_so "$install_dir" "$build_dir"; then
-                return 0
-            fi
-        fi
-    fi
-    
-    echo "⚠️  IMAP extension could not be installed"
-    return 1
-}
-
-# ============================================================
-# 辅助函数：查找并复制 imap.so
-# ============================================================
-find_imap_so() {
-    local install_dir="$1"
-    local build_dir="$2"
-    local php_ini="$install_dir/usr/local/etc/php.ini"
-    
-    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}' || echo "20151012")
-    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
-    
-    echo "  Looking for imap.so..."
-    local search_paths=(
-        "$ext_dir"
-        "$install_dir/usr/local/lib/php/extensions"
-        "$build_dir/ext/imap/modules"
-        "$build_dir/ext/imap/.libs"
-        "$build_dir/modules"
-        "/usr/local/lib/php/extensions"
-        "/usr/local/lib/php"
-    )
-    
-    local imap_so=""
-    for path in "${search_paths[@]}"; do
-        if [ -d "$path" ]; then
-            found=$(find "$path" -name "imap.so" | head -1)
-            if [ -n "$found" ] && [ -f "$found" ]; then
-                imap_so="$found"
-                break
-            fi
-        fi
-    done
-    
-    if [ -n "$imap_so" ] && [ -f "$imap_so" ]; then
-        echo "  ✅ imap.so found: $imap_so"
-        
-        mkdir -p "$ext_dir"
-        cp "$imap_so" "$ext_dir/"
-        echo "  ✅ imap.so copied to $ext_dir"
-        
-        mkdir -p "$(dirname "$php_ini")"
-        if [ -f "$php_ini" ]; then
-            if ! grep -q "^extension=imap.so" "$php_ini"; then
-                echo "extension=imap.so" >> "$php_ini"
-            fi
-        else
-            echo "extension=imap.so" > "$php_ini"
-        fi
-        
-        return 0
-    fi
-    
-    echo "  ⚠️  imap.so not found"
-    return 1
 }
 
 # ============================================================
@@ -1862,69 +1791,6 @@ EOF
         if gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"; then
             echo "[ ✓ ] Single core build succeeded!"
         else
-            echo ""
-            echo "========================================"
-            echo "🔍 BUILD FAILED - 收集诊断信息"
-            echo "========================================"
-            
-            echo ""
-            echo "[1] ICU 库文件检查:"
-            echo "----------------------------------------"
-            ICU_LIB="/usr/local/lib"
-            if [ -d "$ICU_LIB" ]; then
-                ls -la "$ICU_LIB"/libicu*.so* || echo "  ❌ 没有找到 ICU 库文件"
-            else
-                echo "  ❌ ICU 目录不存在: $ICU_LIB"
-            fi
-            
-            echo ""
-            echo "[2] ICU 符号检查:"
-            echo "----------------------------------------"
-            ICU_SYMBOLS=(
-                "uloc_getDefault"
-                "ucol_open"
-                "ucol_close"
-                "ucol_strcoll"
-                "u_errorName"
-                "u_isspace"
-            )
-            
-            MISSING_COUNT=0
-            FOUND_COUNT=0
-            
-            for sym in "${ICU_SYMBOLS[@]}"; do
-                if nm -D "$ICU_LIB/libicuuc.so" | grep -q " $sym$" || \
-                   nm -D "$ICU_LIB/libicui18n.so" | grep -q " $sym$"; then
-                    echo "  ✅ $sym"
-                    ((FOUND_COUNT++))
-                else
-                    echo "  ❌ $sym"
-                    ((MISSING_COUNT++))
-                fi
-            done
-            
-            echo ""
-            echo "  统计: 找到 $FOUND_COUNT 个符号，缺失 $MISSING_COUNT 个符号"
-            
-            if [ $MISSING_COUNT -gt 0 ]; then
-                echo "  ⚠️  有 $MISSING_COUNT 个 ICU 符号未找到！"
-                echo ""
-                echo "🔧 修复建议:"
-                echo "  1. 检查系统 ICU 是否完整安装: pkg info icu"
-                echo "  2. 如果 ICU 符号缺失，重新安装 ICU: pkg install icu"
-                echo "  3. 尝试使用静态库: 在 LIBS 中使用 libicuuc.a 代替 libicuuc.so"
-            fi
-            
-            echo ""
-            echo "[3] Makefile 链接配置检查:"
-            echo "----------------------------------------"
-            if [ -f "Makefile" ]; then
-                echo "  LIBS:"
-                grep "^LIBS" Makefile | head -1 | cut -c1-200 | sed 's/^/    /'
-                echo "  LDFLAGS:"
-                grep "^LDFLAGS" Makefile | head -1 | cut -c1-200 | sed 's/^/    /'
-            fi
-            
             return 1
         fi
     fi
@@ -2089,20 +1955,46 @@ EOF
     fi
     
     # ============================================================
-    # 编译 ImageMagick 扩展
+    # 编译 ImageMagick 扩展（打包前安装）
     # ============================================================
     if ! build_imagick "$build_dir" "$install_dir"; then
         echo "⚠️  ImageMagick extension build failed"
     fi
 
+    # ============================================================
+    # 安装 IMAP 扩展（打包前安装）
+    # ============================================================
     if [ "$BUILD_IMAP" = "yes" ]; then
-        if ! build_imap_extension "$install_dir" "$PHP_VERSION" "$build_dir"; then
+        if ! install_imap_extension "$install_dir" "$PHP_VERSION" "$build_dir"; then
             echo "⚠️  IMAP extension build failed, continuing without it"
         fi
     else
         echo "[ * ] IMAP extension disabled (BUILD_IMAP=no)"
     fi
 
+    # ============================================================
+    # 验证所有扩展已安装
+    # ============================================================
+    echo ""
+    echo "========================================"
+    echo "[ * ] Verifying installed extensions"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    echo "Extension directory: $ext_dir"
+    echo ""
+    echo "Installed extensions:"
+    if [ -d "$ext_dir" ]; then
+        ls -la "$ext_dir/" | grep -E "\.so$" | sed 's/^/  /'
+    fi
+    
+    echo ""
+    echo "PHP modules:"
+    "$php_bin" -m | grep -E "^(imagick|imap|phar|opcache|intl)" | sed 's/^/  /'
+    
     if [ -f "$install_dir/usr/local/bin/php" ]; then
         echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
         "$install_dir/usr/local/bin/php" -v || true
@@ -2144,28 +2036,39 @@ create_package() {
         return 1
     }
     
-    echo "[ * ] Verifying ImageMagick extension and running tests..."
+    echo "[ * ] Verifying all extensions..."
     PHP_SRC_DIR="$BUILD_DIR/php-src-${PHP_VERSION}"
     ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
     EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-    if [ -f "$EXTENSION_DIR/imagick.so" ]; then
-        echo "✅ ImageMagick extension found"
-        
-        "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -r '
-            $imagick_loaded = extension_loaded("imagick");
-            echo "PHP Version: " . PHP_VERSION . "\n";
-            echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
-            echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
-            echo "ImageMagick extension: " . ($imagick_loaded ? "✅" : "❌") . "\n";
-            if ($imagick_loaded) {
-                $formats = Imagick::queryFormats("*");
-                echo "ImageMagick supports " . count($formats) . " formats\n";
-            }
-        '
-    else
-        echo "⚠️  ImageMagick extension file not found at: $EXTENSION_DIR/imagick.so"
-    fi
+    # 测试所有扩展
+    local extensions=("imagick" "imap")
+    for ext in "${extensions[@]}"; do
+        if [ -f "$EXTENSION_DIR/${ext}.so" ]; then
+            echo "✅ ${ext}.so found"
+        else
+            echo "⚠️  ${ext}.so not found"
+        fi
+    done
+
+    # 运行完整测试
+    "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -d extension=imap.so -r '
+        $extensions = ["imagick", "imap", "openssl", "intl"];
+        echo "PHP Version: " . PHP_VERSION . "\n";
+        echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
+        echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
+        foreach ($extensions as $ext) {
+            $loaded = extension_loaded($ext);
+            echo "$ext extension: " . ($loaded ? "✅" : "❌") . "\n";
+        }
+        if (extension_loaded("imagick")) {
+            $formats = Imagick::queryFormats("*");
+            echo "ImageMagick supports " . count($formats) . " formats\n";
+        }
+        if (extension_loaded("imap")) {
+            echo "IMAP functions: " . (function_exists("imap_open") ? "✅" : "❌") . "\n";
+        }
+    '
     
     PKG_NAME="php${ver_suffix}-openssl4"
     
@@ -2219,6 +2122,7 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 This is a custom build of PHP 8.4.23 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
+- IMAP extension (imap) - built from source
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - Argon2 password hashing support
@@ -2244,8 +2148,8 @@ echo ""
 echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
-echo "Verify ImageMagick:"
-/usr/local/bin/php${ver_suffix} -m | grep imagick || echo "imagick not loaded"
+echo "Verify extensions:"
+/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|imap|openssl|intl)" || echo "Some extensions not loaded"
 echo "========================================"
 EOF
     chmod +x "+POST_INSTALL"
@@ -2349,8 +2253,6 @@ EOF
     mkdir -p "$(dirname "$test_php_ini")"
     cat > "$test_php_ini" << EOF
 extension_dir=${EXT_DIR}
-; openssl, intl and phar are built-in, not .so files
-; Only load standalone extensions
 extension=imagick.so
 extension=imap.so
 zend_extension=opcache.so

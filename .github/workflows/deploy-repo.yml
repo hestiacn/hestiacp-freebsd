@@ -37,9 +37,19 @@ jobs:
           run: |
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
-            FREEBSD_VERSION=$(uname -r | cut -d'.' -f1)
+            # 设置所有需要的环境变量
+            export FREEBSD_VERSION="${{ matrix.freebsd_version }}"
+            export UPLOAD_PATH="FreeBSD:${FREEBSD_VERSION}:amd64/latest"
+            export REPO_ROOT="/tmp/hestiacp-src"
+            export ARTIFACTS_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+            
             echo "FREEBSD_VERSION=${FREEBSD_VERSION}" >> $GITHUB_ENV
+            echo "UPLOAD_PATH=${UPLOAD_PATH}" >> $GITHUB_ENV
+            
+            echo "========================================"
             echo "Building on FreeBSD $FREEBSD_VERSION"
+            echo "Upload path: $UPLOAD_PATH"
+            echo "========================================"
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
 
@@ -60,57 +70,58 @@ jobs:
               exit 1
             fi
 
-              cd /tmp/hestiacp-src
-              mkdir -p keys
-              echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
-              chmod 600 keys/hestiacp.key
-              echo "[ ✓ ] Private key imported for signing"
-              echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
-              ls -la keys/
+            # 签名和打包
+            cd ${REPO_ROOT}
+            mkdir -p keys
+            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
+            echo "[ ✓ ] Private key imported for signing"
 
-              cd pkg
+            cd pkg
 
-              echo "=== Current directory: $(pwd) ==="
-              echo "=== Package files ==="
+            echo "=== Current directory: $(pwd) ==="
+            echo "=== Package files ==="
+            ls -la
+
+            pkg update -f
+            pkg upgrade -y pkg
+
+            echo "[ * ] Signing repository with private key..."
+            if [ -f "${REPO_ROOT}/keys/hestiacp.key" ]; then
+              pkg repo . ${REPO_ROOT}/keys/hestiacp.key
+            else
+              echo "⚠️  No signing key found, creating repository without signature"
+              pkg repo .
+            fi
+
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              echo "=== Debug information ==="
+              echo "Key file exists:"
+              ls -la ${REPO_ROOT}/keys/
+              echo "=== meta.conf content ==="
+              cat meta.conf || echo "meta.conf not found"
+              echo "=== Directory contents ==="
               ls -la
-
-              # 更新 pkg 并重试
-              pkg update -f
-              pkg upgrade -y pkg
-
-              # 使用绝对路径签名仓库
-              echo "[ * ] Signing repository with private key..."
-              pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-
-              if [ $? -ne 0 ]; then
-                echo "[ ✗ ] Failed to sign repository!"
-                echo "=== Debug information ==="
-                echo "Key file exists:"
-                ls -la /tmp/hestiacp-src/keys/
-                echo "=== meta.conf content ==="
-                cat meta.conf || echo "meta.conf not found"
-                echo "=== Directory contents ==="
-                ls -la
-                exit 1
-              fi
+              exit 1
+            fi
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 创建版本化目录: FreeBSD:14:amd64/latest/
-            UPLOAD_PATH="FreeBSD:${FREEBSD_VERSION}:amd64/latest"
+            # 创建版本化目录
             mkdir -p "/tmp/repo-upload/${UPLOAD_PATH}"
             
             echo "[ * ] Copying packages to: ${UPLOAD_PATH}"
             cp -v ./*.pkg "/tmp/repo-upload/${UPLOAD_PATH}/" || true
             cp -v meta meta.conf packagesite.pkg packagesite.yaml data.pkg "/tmp/repo-upload/${UPLOAD_PATH}/" || true
             
-            # 复制到根目录（pkg 自动检测用）
             cp -v ./*.pkg "/tmp/repo-upload/" || true
 
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
-            cp -r /tmp/repo-upload/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
+            mkdir -p ${ARTIFACTS_DIR}
+            cp -r /tmp/repo-upload/* ${ARTIFACTS_DIR}/
             
-            echo "FREEBSD_VERSION=${FREEBSD_VERSION}" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
+            echo "FREEBSD_VERSION=${FREEBSD_VERSION}" >> ${ARTIFACTS_DIR}/version.txt
+            echo "UPLOAD_PATH=${UPLOAD_PATH}" >> ${ARTIFACTS_DIR}/version.txt
 
       - name: Upload artifacts for FreeBSD ${{ matrix.freebsd_version }}
         if: always()
