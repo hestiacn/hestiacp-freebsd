@@ -2077,9 +2077,7 @@ EOF
         > "$LOG_DIR/configure-${PHP_VERSION}.log"
 
     CONFIGURE_STATUS=$?
-    set -e  # 恢复 set -e
-
-    echo "[ * ] configure 退出码: $CONFIGURE_STATUS"
+    export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/icu74/lib -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
@@ -2087,12 +2085,20 @@ EOF
         return 1
     fi
 
-    echo "✅ Configure completed successfully"
-
 
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
 
+    echo ""
+    echo "========================================"
+    echo "[ DEBUG ] 编译前检查"
+    echo "========================================"
+    echo "  当前目录: $(pwd)"
+    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
+    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
+    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
+    echo "========================================"
+    echo ""
 
     # ============================================================
     # 编译 PHP
@@ -2128,8 +2134,8 @@ EOF
         else
             # 1. 检查 ICU 66 库是否存在及符号
             echo "=== ICU 66 检查 ==="
-            ls -la /usr/local/icu66/lib/libicu*.so*
-            nm -D /usr/local/icu66/lib/libicuuc.so.74.2 | grep u_sprintf
+            ls -la /usr/local/icu74/lib/libicu*.so*
+            nm -D /usr/local/icu74/lib/libicuuc.so.74.2 | grep u_sprintf
 
             # 2. 检查系统 OpenSSL 版本
             echo "=== OpenSSL 版本 ==="
