@@ -19,44 +19,47 @@ jobs:
   build-and-deploy:
     name: Build pkg repository and deploy to Cloudflare
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: ["14.0", "15.0"]
+      fail-fast: false
     steps:
-        # 1. 检出最新源码
       - name: Checkout Repository
         uses: actions/checkout@v7
 
-      - name: Build HestiaCP packages
+      - name: Build HestiaCP packages on FreeBSD ${{ matrix.freebsd_version }}
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.0"
+          release: "${{ matrix.freebsd_version }}"
           usesh: true
           sync: rsync
           copyback: true
-          run: |
-            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
+        run: |
+          cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
-            FREEBSD_VERSION=$(uname -r | cut -d'-' -f1 | cut -d'.' -f1)
-            echo "FreeBSD version: $FREEBSD_VERSION"
+          FREEBSD_VERSION=$(uname -r | cut -d'.' -f1)
+          echo "FREEBSD_VERSION=${FREEBSD_VERSION}" >> $GITHUB_ENV
+          echo "Building on FreeBSD $FREEBSD_VERSION"
 
-            pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+          pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
 
-            export HESTIA_DEBUG=true
-            chmod +x src/hst_autocompile.sh
+          export HESTIA_DEBUG=true
+          chmod +x src/hst_autocompile.sh
 
-            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
-            EXIT_CODE=$?
+          bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+          EXIT_CODE=$?
 
-            echo "=== Exit code: $EXIT_CODE ==="
+          echo "=== Exit code: $EXIT_CODE ==="
 
-            if [ $EXIT_CODE -eq 0 ]; then
-              echo "[ ✓ ] Compilation completed successfully!"
-            else
-              echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
-              echo "=== Last 200 lines of build.log ==="
-              tail -200 build.log
-              exit 1
-            fi
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "[ ✓ ] Compilation completed successfully on FreeBSD ${FREEBSD_VERSION}!"
+          else
+            echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
+            echo "=== Last 200 lines of build.log ==="
+            tail -200 build.log
+            exit 1
+          fi
 
-            # 准备签名密钥目录
             cd /tmp/hestiacp-src
             mkdir -p keys
             echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
@@ -75,7 +78,7 @@ jobs:
             pkg update -f
             pkg upgrade -y pkg
 
-            # 签名仓库
+            # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
             pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
 
@@ -85,149 +88,125 @@ jobs:
               echo "Key file exists:"
               ls -la /tmp/hestiacp-src/keys/
               echo "=== meta.conf content ==="
-              cat meta.conf 2>/dev/null || echo "meta.conf not found"
+              cat meta.conf || echo "meta.conf not found"
               echo "=== Directory contents ==="
               ls -la
               exit 1
             fi
 
-            echo "[ ✓ ] Repository signed successfully!"
+          echo "[ ✓ ] Repository signed successfully!"
 
-            VERSION_DIR="${FREEBSD_VERSION}/latest"
-            mkdir -p "/tmp/repo-upload/${VERSION_DIR}"
-            
-            echo "[ * ] Copying packages to versioned directory: ${VERSION_DIR}"
-            cp -r ./* /tmp/repo-upload/${VERSION_DIR}/
-            
-            cp -r ./* /tmp/repo-upload/
-            
-            echo "[ * ] Final upload structure:"
-            ls -la /tmp/repo-upload/
+          # 创建版本化目录: FreeBSD:14:amd64/latest/
+          UPLOAD_PATH="FreeBSD:${FREEBSD_VERSION}:amd64/latest"
+          mkdir -p "/tmp/repo-upload/${UPLOAD_PATH}"
+          
+          echo "[ * ] Copying packages to: ${UPLOAD_PATH}"
+          cp -v ./*.pkg "/tmp/repo-upload/${UPLOAD_PATH}/" || true
+          cp -v meta meta.conf packagesite.pkg packagesite.yaml data.pkg "/tmp/repo-upload/${UPLOAD_PATH}/" || true
+          
+          # 复制到根目录（pkg 自动检测用）
+          cp -v ./*.pkg "/tmp/repo-upload/" || true
 
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
-            cp -r /tmp/repo-upload/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
-            echo "FREEBSD_VERSION=${FREEBSD_VERSION}" > /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
-            echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
-            echo "BRANCH=${{ github.ref_name }}" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
+          mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
+          cp -r /tmp/repo-upload/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
+          
+          echo "FREEBSD_VERSION=${FREEBSD_VERSION}" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
 
-            echo "[ ✓ ] Artifacts prepared with versioned structure"
+      - name: Upload artifacts for FreeBSD ${{ matrix.freebsd_version }}
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hestiacp-repo-freebsd-${{ matrix.freebsd_version }}
+          path: artifacts/
+          retention-days: 7
+
       - name: Extract and format build log
         if: always()
         run: |
-          # 检查 build.log 是否存在
           if [ ! -f "build.log" ]; then
             echo "❌ build.log not found!"
-            echo "Current directory contents:"
-            ls -la
             exit 0
           fi
 
-          echo "✅ build.log found, size: $(wc -l < build.log) lines"
+          FREEBSD_VERSION=$(grep "FREEBSD_VERSION" artifacts/version.txt | cut -d'=' -f2 || echo "${{ matrix.freebsd_version }}")
 
-          cat > build-report.md << 'EOF'
+          cat > build-report-freebsd-${FREEBSD_VERSION}.md << 'EOF'
           # HestiaCP FreeBSD Build Report
 
           ## Build Information
           | 项目 | 值 |
           |------|-----|
+          | FreeBSD 版本 | ${FREEBSD_VERSION} |
           | 构建时间 | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |
           | 分支 | ${{ github.ref_name }} |
           | 提交 | ${{ github.sha }} |
 
           EOF
 
-          # 提取版本信息
-          echo "## Version Information" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log 2>/dev/null | head -10 >> build-report.md || echo "未找到版本信息" >> build-report.md
-          echo '```' >> build-report.md
-
-          # 提取编译状态
-          echo "" >> build-report.md
-          echo "## Build Status" >> build-report.md
+          echo "## Build Status" >> build-report-freebsd-${FREEBSD_VERSION}.md
           if grep -q "Compilation completed successfully" build.log 2>/dev/null; then
-            echo "✅ **编译成功**" >> build-report.md
+            echo "✅ **编译成功**" >> build-report-freebsd-${FREEBSD_VERSION}.md
           else
-            echo "❌ **编译失败**" >> build-report.md
+            echo "❌ **编译失败**" >> build-report-freebsd-${FREEBSD_VERSION}.md
           fi
 
-          # 提取错误和警告
-          echo "" >> build-report.md
-          echo "## Errors and Warnings" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log 2>/dev/null | head -30 >> build-report.md || echo "无错误或警告" >> build-report.md
-          echo '```' >> build-report.md
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Errors and Warnings" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed" build.log | head -30 >> build-report-freebsd-${FREEBSD_VERSION}.md || echo "无错误或警告" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
 
-          # 提取包文件大小
-          echo "" >> build-report.md
-          echo "## Package Sizes" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "\.pkg" build.log 2>/dev/null | grep -E "rw-r|size" >> build-report.md || echo "未找到包文件信息" >> build-report.md
-          echo '```' >> build-report.md
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "## Package Files" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
+          ls -la artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/*.pkg || echo "未找到包文件" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo '```' >> build-report-freebsd-${FREEBSD_VERSION}.md
 
-          # 提取签名状态
-          echo "" >> build-report.md
-          echo "## Signing Status" >> build-report.md
-          if grep -q "Repository signed successfully" build.log 2>/dev/null; then
-            echo "✅ **仓库签名成功**" >> build-report.md
-          else
-            echo "❌ **仓库签名失败**" >> build-report.md
-          fi
+          echo "" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "---" >> build-report-freebsd-${FREEBSD_VERSION}.md
+          echo "*报告由 GitHub Actions 自动生成*" >> build-report-freebsd-${FREEBSD_VERSION}.md
 
-          # 提取关键配置检查
-          echo "" >> build-report.md
-          echo "## Key Checks" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "checking for|detected|found|using" build.log 2>/dev/null | head -20 >> build-report.md || echo "未找到配置检查信息" >> build-report.md
-          echo '```' >> build-report.md
-
-          # 提取依赖安装状态
-          echo "" >> build-report.md
-          echo "## Dependencies" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "Installing|pkg install|oniguruma" build.log 2>/dev/null | head -15 >> build-report.md || echo "未找到依赖安装信息" >> build-report.md
-          echo '```' >> build-report.md
-
-          # 提取最终产物
-          echo "" >> build-report.md
-          echo "## Build Artifacts" >> build-report.md
-          echo '```' >> build-report.md
-          grep -E "final-packages|artifacts|Build artifacts" build.log 2>/dev/null | head -10 >> build-report.md || echo "未找到产物信息" >> build-report.md
-          echo '```' >> build-report.md
-
-          # 添加退出码
-          echo "" >> build-report.md
-          echo "## Exit Code" >> build-report.md
-          echo '```' >> build-report.md
-          grep "Exit code:" build.log 2>/dev/null | tail -1 >> build-report.md || echo "未找到退出码" >> build-report.md
-          echo '```' >> build-report.md
-
-          echo "" >> build-report.md
-          echo "---" >> build-report.md
-          echo "*报告由 GitHub Actions 自动生成*" >> build-report.md
-
-          echo "✅ Build report generated: build-report.md"
-          cat build-report.md
-
-      # 上传报告作为 artifact
       - name: Upload build report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-report
-          path: build-report.md
+          name: build-report-freebsd-${{ matrix.freebsd_version }}
+          path: build-report-freebsd-*.md
           retention-days: 7
-          
-      # 上传到 Cloudflare R2
-      - name: Sync Packages to Cloudflare R2
+
+  deploy:
+    name: Deploy to Cloudflare R2
+    runs-on: ubuntu-latest
+    needs: build-and-deploy
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: ./downloaded-artifacts
+
+      - name: Merge artifacts
         run: |
-          if [ ! -d "artifacts" ]; then
-            echo "Error: artifacts directory not found!"
+          mkdir -p merged-artifacts
+          for artifact_dir in ./downloaded-artifacts/*/; do
+            if [ -d "$artifact_dir" ]; then
+              echo "Processing: $artifact_dir"
+              cp -r "$artifact_dir"/* merged-artifacts/ || true
+            fi
+          done
+          
+          echo "=== Merged artifacts structure ==="
+          ls -la merged-artifacts/
+          echo ""
+          echo "=== FreeBSD versions ==="
+          find merged-artifacts/ -name "version.txt" -exec cat {} \; || echo "No version files found"
+
+      - name: Sync to Cloudflare R2
+        run: |
+          if [ ! -d "merged-artifacts" ]; then
+            echo "Error: merged-artifacts directory not found!"
             exit 1
           fi
-
-          echo "=== Artifacts to upload ==="
-          ls -la artifacts/
 
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
@@ -235,15 +214,22 @@ jobs:
           fi
 
           echo "Syncing to endpoint: $ENDPOINT"
-
-          aws s3 sync artifacts/ s3://fbsd-repo \
+          aws s3 sync merged-artifacts/ s3://fbsd-repo/ \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
-            --region auto
+            --region auto \
+            --delete
+
+          echo "✅ Upload completed"
+          echo ""
+          echo "Repository URLs:"
+          echo "  Root: https://pkg.hestiamb.org/"
+          echo "  FreeBSD 14: https://pkg.hestiamb.org/FreeBSD:14:amd64/latest/"
+          echo "  FreeBSD 15: https://pkg.hestiamb.org/FreeBSD:15:amd64/latest/"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      # 3.5 验证上传（可选）
+
       - name: Verify upload
         run: |
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
@@ -263,13 +249,14 @@ jobs:
           mkdir -p /tmp/worker-deploy
           cd /tmp/worker-deploy
           cat > worker.js << 'WORKER_EOF'
-          export default {
+          var worker_default = {
             async fetch(request, env) {
               const url = new URL(request.url);
               if (url.hostname !== "pkg.hestiamb.org") {
                 const secureUrl = new URL(request.url);
                 secureUrl.protocol = "https:";
                 secureUrl.hostname = "pkg.hestiamb.org";
+                
                 return new Response(null, {
                   status: 301,
                   headers: {
@@ -286,14 +273,6 @@ jobs:
               } else {
                 path = path.startsWith("/") ? path.slice(1) : path;
               }
-              const versionMatch = path.match(/^(\d+)\/latest\//);
-              if (versionMatch) {
-                const version = versionMatch[1];
-                if (!["14", "15"].includes(version)) {
-                  return new Response("Unsupported FreeBSD version", { status: 404 });
-                }
-              }
-              
               const object = await env.FBSD_REPO.get(path);
               
               if (!object) {
@@ -310,16 +289,12 @@ jobs:
               const headers = new Headers();
               object.writeHttpMetadata(headers);
               headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
-              if (path.endsWith(".html") || path.endsWith(".html")) {
+              if (path.endsWith(".html")) {
                 headers.set("content-type", "text/html; charset=utf-8");
-              } else if (path.endsWith(".sh") || path.endsWith(".pub") || path.endsWith(".conf")) {
+              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
-              } else if (path.endsWith(".json")) {
-                headers.set("content-type", "application/json; charset=utf-8");
-              } else if (path.endsWith(".yaml") || path.endsWith(".yml")) {
-                headers.set("content-type", "text/yaml; charset=utf-8");
               }
               
               return new Response(object.body, { headers });
