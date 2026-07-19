@@ -58,12 +58,15 @@ jobs:
             cd /tmp/hestiacp-src
             mkdir -p keys
 
-            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
-            chmod 600 keys/hestiacp.key
-
-            echo "[ ✓ ] Private key imported for signing"
-            echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
-            ls -la keys/
+            # 如果有签名密钥则导入
+            if [ -n "${{ secrets.PKG_SIGNING_KEY }}" ]; then
+              echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+              chmod 600 keys/hestiacp.key
+              echo "[ ✓ ] Private key imported for signing"
+              ls -la keys/
+            else
+              echo "[ ⚠️ ] No signing key found"
+            fi
 
             cd pkg
 
@@ -71,39 +74,62 @@ jobs:
             echo "=== Package files ==="
             ls -la
 
-            pkg update -f
-            pkg upgrade -y pkg
+            # 如果有密钥则签名，否则创建未签名仓库
+            if [ -f /tmp/hestiacp-src/keys/hestiacp.key ]; then
+              echo "[ * ] Signing repository with private key..."
+              pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+              if [ $? -ne 0 ]; then
+                echo "[ ✗ ] Failed to sign repository!"
+                exit 1
+              fi
+              echo "[ ✓ ] Repository signed successfully!"
+            else
+              echo "[ * ] Creating repository without signature..."
+              pkg repo .
+            fi
 
-            echo "[ * ] Signing repository with private key..."
-            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            # 确保在正确的位置
+            echo "=== Current location: $(pwd) ==="
+            echo "=== Files before creating final-packages ==="
+            ls -la
 
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              echo "=== Debug information ==="
-              echo "Key file exists:"
-              ls -la /tmp/hestiacp-src/keys/
-              echo "=== meta.conf content ==="
-              cat meta.conf || echo "meta.conf not found"
-              echo "=== Directory contents ==="
-              ls -la
+            # 创建 final-packages 目录（确保成功）
+            mkdir -pv final-packages || {
+              echo "[ ✗ ] Failed to create final-packages directory!"
+              exit 1
+            }
+
+            # 验证目录创建成功
+            if [ ! -d "final-packages" ]; then
+              echo "[ ✗ ] final-packages directory still does not exist!"
               exit 1
             fi
 
-            echo "[ ✓ ] Repository signed successfully!"
+            echo "[ ✓ ] final-packages directory created successfully"
+            
+            # 复制所有文件到 final-packages
+            cp -Rv ./* final-packages/ || {
+              echo "[ ✗ ] Failed to copy files to final-packages!"
+              exit 1
+            }
 
-            mkdir -p final-packages
-            cp -R ./* final-packages/
+            # 如果有公钥则复制
+            if [ -n "${{ secrets.PKG_SIGNING_KEY_PUB }}" ]; then
+              echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
+              echo "[ ✓ ] Public key added"
+            fi
 
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
-
+            # 验证签名文件
             echo "=== Verifying signature ==="
-            ls -la final-packages/ | grep -E "(digests|meta|packagesite)"
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/
-            if [ -f "final-packages/digests.sig" ] || [ -f "final-packages/packagesite.sig" ]; then
-              echo "[ ✓ ] Repository signed successfully! Signature files found."
-            else
-              echo "[ ⚠️ ] Warning: No .sig files found, but continuing..."
+            ls -la final-packages/ | grep -E "(digests|meta|packagesite|.sig)" || echo "No signature files found"
+
+            # 复制 web 文件（如果存在）
+            if [ -f /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html ]; then
+              cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/ 2>/dev/null || echo "index.html not found"
+            fi
+            
+            if [ -f /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html ]; then
+              cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/ 2>/dev/null || echo "404.html not found"
             fi
 
             echo "=== Build artifacts ==="
@@ -112,10 +138,16 @@ jobs:
             # 创建版本特定的目录结构
             FREEBSD_VERSION="${{ matrix.freebsd_version }}"
             ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest"
-            mkdir -p "$ARTIFACT_DIR"
+            mkdir -pv "$ARTIFACT_DIR" || {
+              echo "[ ✗ ] Failed to create artifact directory!"
+              exit 1
+            }
             
             # 复制产物到版本特定目录
-            cp -R final-packages/* "$ARTIFACT_DIR/"
+            cp -Rv final-packages/* "$ARTIFACT_DIR/" || {
+              echo "[ ✗ ] Failed to copy artifacts!"
+              exit 1
+            }
 
             echo "[ ✓ ] Build artifacts ready at: $ARTIFACT_DIR"
             echo "=== Artifacts contents ==="
@@ -316,6 +348,8 @@ jobs:
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
+              } else if (path.endsWith(".sig")) {
+                headers.set("content-type", "text/plain; charset=utf-8");
               }
               
               return new Response(object.body, { headers });
