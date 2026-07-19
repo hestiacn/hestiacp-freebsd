@@ -90,29 +90,21 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 创建 FreeBSD 版本目录
-            FREEBSD_VERSION="${{ matrix.freebsd_version }}"
-            mkdir -p final-packages/FreeBSD:${FREEBSD_VERSION}:amd64/latest
-            
-            # 复制包文件到对应目录
-            cp -R ./* final-packages/FreeBSD:${FREEBSD_VERSION}:amd64/latest/
+            # 创建公钥
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > hestiacp.pub
 
-            # 复制公钥
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
-            # 验证签名文件
+            # 复制 web 文件
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html .
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html .
             echo "=== Verifying signature ==="
-            ls -la final-packages/ | grep -E "(digests|meta|packagesite)"
-
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/
+            ls -la | grep -E "(digests|meta|packagesite)"
+            # 创建版本目录并复制所有文件到 artifacts
+            FREEBSD_VERSION="${{ matrix.freebsd_version }}"
+            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest
+            cp -R ./* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/
 
             echo "=== Build artifacts ==="
-            ls -la final-packages/
-            echo "=== FreeBSD:${FREEBSD_VERSION}:amd64/latest/ contents ==="
-            ls -la final-packages/FreeBSD:${FREEBSD_VERSION}:amd64/latest/
-
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64
-            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/
+            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/
 
             echo "[ ✓ ] Build and sign completed successfully!"
 
@@ -189,7 +181,7 @@ jobs:
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Build Artifacts" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          grep -E "artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
@@ -215,13 +207,13 @@ jobs:
 
       - name: Sync Packages to Cloudflare R2
         run: |
-          if [ ! -d "artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64" ]; then
+          if [ ! -d "artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest" ]; then
             echo "Error: artifacts directory not found!"
             exit 1
           fi
 
           echo "=== Artifacts to upload for FreeBSD ${{ matrix.freebsd_version }} ==="
-          ls -la artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/
+          ls -la artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/
 
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
@@ -230,7 +222,7 @@ jobs:
 
           echo "Syncing to endpoint: $ENDPOINT"
 
-          aws s3 sync artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/ s3://fbsd-repo/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ \
+          aws s3 sync artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ s3://fbsd-repo/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
             --delete \

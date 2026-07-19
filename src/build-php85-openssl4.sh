@@ -240,7 +240,7 @@ apply_patches() {
 }
 
 # ============================================================
-# 通过 PECL 安装 IMAP 扩展 (PHP 8.4 使用 PECL)
+# 通过 PECL 安装 IMAP 扩展 (PHP 8.5 使用 PECL)
 # ============================================================
 install_imap_pecl() {
     local install_dir="$1"
@@ -262,12 +262,10 @@ install_imap_pecl() {
     # 检查 PECL 是否存在
     if [ ! -f "$pecl" ]; then
         echo "⚠️  PECL not found, installing PEAR..."
-        # 安装 PEAR
         cd "$build_dir" || return 1
         if [ -f "phpize" ]; then
             ./phpize
         fi
-        # 下载并安装 PEAR
         fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar
         "$php_bin" /tmp/go-pear.phar
         export PATH="$install_dir/usr/local/bin:$PATH"
@@ -288,11 +286,9 @@ install_imap_pecl() {
     echo "  Using PHP: $php_bin"
     echo "  Extension dir: $ext_dir"
     
-    # 尝试通过 PECL 安装
     if pecl install imap <<< "yes" 2>&1 | tee -a "$LOG_DIR/imap-pecl.log"; then
         echo "  ✅ IMAP extension installed via PECL"
         
-        # 查找 imap.so
         local imap_so=""
         for path in "$ext_dir" "$install_dir/usr/local/lib/php/extensions" /usr/local/lib/php/extensions; do
             if [ -d "$path" ]; then
@@ -309,7 +305,6 @@ install_imap_pecl() {
             cp "$imap_so" "$ext_dir/"
             echo "  ✅ imap.so copied to $ext_dir"
             
-            # 添加到 php.ini
             local php_ini="$install_dir/usr/local/etc/php.ini"
             mkdir -p "$(dirname "$php_ini")"
             if [ -f "$php_ini" ]; then
@@ -349,7 +344,6 @@ install_imap_manual() {
         return 1
     fi
     
-    # 下载 IMAP PECL 源码
     echo "[ * ] Downloading imap PECL source..."
     cd /tmp
     if [ ! -f "imap-1.0.3.tgz" ]; then
@@ -357,7 +351,6 @@ install_imap_manual() {
         fetch -o imap-1.0.3.tgz https://github.com/php/pecl-mail-imap/archive/refs/tags/1.0.3.tar.gz
     fi
     
-    # 解压
     rm -rf imap-1.0.3
     tar -xzf imap-1.0.3.tgz || tar -xzf imap-1.0.3.tar.gz
     cd imap-1.0.3 || cd pecl-mail-imap-1.0.3 || return 1
@@ -371,7 +364,6 @@ install_imap_manual() {
     echo "[ * ] Compiling..."
     make 2>&1 | tee -a "$LOG_DIR/imap-manual-make.log"
     
-    # 获取扩展目录并安装
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
     local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
     mkdir -p "$ext_dir"
@@ -388,7 +380,6 @@ install_imap_manual() {
         return 1
     fi
     
-    # 添加到 php.ini
     local php_ini="$install_dir/usr/local/etc/php.ini"
     mkdir -p "$(dirname "$php_ini")"
     if [ -f "$php_ini" ]; then
@@ -537,7 +528,6 @@ build_php() {
         fi
     fi
 
-    # 下载 ImageMagick 扩展
     if ! download_imagick "$build_dir"; then
         echo "⚠️  ImageMagick extension download failed, continuing without it"
     fi
@@ -548,7 +538,6 @@ build_php() {
 
     apply_patches "$build_dir"
 
-    # 确保 PHP 构建目录完整
     echo "[ * ] Ensuring PHP build structure..."
     if [ -d "$build_dir/build" ]; then
         echo "  ✓ Build directory exists"
@@ -558,22 +547,17 @@ build_php() {
         cp "$build_dir/configure" "$build_dir/build/" || true
     fi
 
-    # ============================================================
-    # 设置编译环境 - 使用系统 ICU
-    # ============================================================
     cd "$build_dir" || {
         echo "❌ Failed to return to PHP source directory"
         return 1
     }
     echo "[ * ] Current directory: $(pwd)"
     
-    # 检测系统 ICU
     echo "[ * ] Detecting system ICU..."
     ICU_SYSTEM_PREFIX="/usr/local"
     ICU_LIB_DIR="/usr/local/lib"
     ICU_INCLUDE_DIR="/usr/local/include"
     
-    # 检查 ICU 库
     if [ -f "$ICU_LIB_DIR/libicuuc.so.76" ]; then
         echo "  ✅ Found ICU 76: $ICU_LIB_DIR/libicuuc.so.76"
         ICU_VERSION="76"
@@ -588,13 +572,11 @@ build_php() {
         ICU_VERSION="unknown"
     fi
     
-    # 设置编译环境
     export CC=clang
     export CXX=clang++
     export CXXFLAGS="-std=c++17 -Wno-register -Wno-deprecated-declarations"
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
     
-    # 设置 ICU 环境变量（使用系统 ICU）
     export ICU_CFLAGS="-I$ICU_INCLUDE_DIR"
     export ICU_LIBS="-L$ICU_LIB_DIR -licui18n -licuuc -licudata -licuio"
     export LDFLAGS="-L$ICU_LIB_DIR -Wl,-rpath,$ICU_LIB_DIR"
@@ -613,9 +595,6 @@ build_php() {
     
     echo "[ ✓ ] ICU config: $ICU_VERSION"
     
-    # ============================================================
-    # 设置 OpenSSL 环境
-    # ============================================================
     echo "[ * ] Setting OpenSSL 4.x environment..."
     
     export OPENSSL_CFLAGS="-I/usr/local/include"
@@ -628,11 +607,7 @@ build_php() {
     
     echo "[ ✓ ] OpenSSL 4.x environment configured"
 
-    # ============================================================
-    # 检测并设置 DTrace
-    # ============================================================
     echo "[ * ] Detecting DTrace..."
-
     DT_PATH=""
     for path in /usr/sbin/dtrace /usr/bin/dtrace /sbin/dtrace /usr/local/bin/dtrace; do
         if [ -f "$path" ] && [ -x "$path" ]; then
@@ -784,7 +759,6 @@ build_php() {
         echo "从源码编译依赖库 (OpenSSL 4.x)"
         echo "========================================"
         
-        # 设置编译环境
         export CC=gcc14
         export CXX=g++14
         export CFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L"
@@ -850,7 +824,7 @@ build_php() {
             exit 1
         fi
         
-        # 2. curl - 强制重新编译
+        # 2. curl
         echo ""
         echo "========================================"
         echo "[3/7] 编译 curl"
@@ -1068,7 +1042,6 @@ build_php() {
             exit 1
         fi
 
-        # 生成 md5global.h
         echo "[ * ] Generating md5global.h using makemd5..."
         cd include
 
@@ -1150,7 +1123,7 @@ build_php() {
             exit 1
         fi
 
-        # 6. c-client (IMAP) - PHP 8.5 需要
+        # 6. c-client (IMAP)
         echo ""
         echo "========================================"
         echo "[7/7] 编译 c-client (IMAP library)"
@@ -1274,7 +1247,6 @@ build_php() {
         rm -rf imap-imap-2007f_upstream
         echo "  ✅ Cleaned up temporary files"
         
-        # 7. 验证所有库
         echo ""
         echo "========================================"
         echo "验证所有编译的库"
@@ -1775,14 +1747,12 @@ EOF
         grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
         grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
         
-        # 移除旧的 ICU 库标志
         sed -i '' -e 's|-licui18n||g' \
                 -e 's|-licuuc||g' \
                 -e 's|-licudata||g' \
                 -e 's|-licuio||g' Makefile
         echo "  ✅ Removed ICU library flags from Makefile"
         
-        # 添加系统 ICU 库
         sed -i '' -e "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/lib -licui18n -licuuc -licudata -licuio \1|" Makefile
         echo "  ✅ ICU libraries added to EXTRA_LIBS"
         
@@ -1990,7 +1960,57 @@ EOF
         ln -sf . php
         cd - > /dev/null
     fi
-    
+
+    # ============================================================
+    # 复制 opcache.so 到扩展目录（Zend 扩展）
+    # ============================================================
+    echo ""
+    echo "[ * ] Copying opcache.so to extension directory..."
+
+    ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    EXT_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
+    mkdir -p "$EXT_DIR"
+
+    # 查找 opcache.so
+    OPCACHE_SO=""
+    for path in "$build_dir/modules" "$build_dir/ext/opcache/.libs" "$build_dir/ext/opcache/modules"; do
+        if [ -f "$path/opcache.so" ]; then
+            OPCACHE_SO="$path/opcache.so"
+            break
+        fi
+    done
+
+    if [ -n "$OPCACHE_SO" ] && [ -f "$OPCACHE_SO" ]; then
+        cp "$OPCACHE_SO" "$EXT_DIR/"
+        echo "  ✅ opcache.so copied to $EXT_DIR"
+    else
+        echo "  ⚠️  opcache.so not found, skipping"
+    fi
+
+    # 更新 php.ini 使用 zend_extension
+    PHP_INI="$install_dir/usr/local/etc/php.ini"
+    if [ -f "$PHP_INI" ]; then
+        sed -i '' '/^zend_extension=opcache.so/d' "$PHP_INI" || true
+        sed -i '' '/^extension=opcache.so/d' "$PHP_INI" || true
+        if ! grep -q "^zend_extension=opcache.so" "$PHP_INI"; then
+            echo "zend_extension=opcache.so" >> "$PHP_INI"
+        fi
+        echo "  ✅ opcache configured as Zend extension in php.ini"
+    else
+        cat > "$PHP_INI" << 'EOF'
+zend_extension=opcache.so
+
+[opcache]
+opcache.enable=1
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=4000
+opcache.revalidate_freq=60
+opcache.fast_shutdown=1
+EOF
+        echo "  ✅ php.ini created with opcache Zend extension"
+    fi
+
     # ============================================================
     # 编译 ImageMagick 扩展（打包前安装）
     # ============================================================
@@ -1999,11 +2019,10 @@ EOF
     fi
 
     # ============================================================
-    # 安装 IMAP 扩展（PHP 8.4 使用 PECL）
+    # 安装 IMAP 扩展
     # ============================================================
     IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
-        # 首先尝试 PECL 安装
         if install_imap_pecl "$install_dir" "$build_dir"; then
             IMAP_INSTALLED=1
         else
@@ -2087,7 +2106,6 @@ create_package() {
     ZEND_API_NO=$(grep "^#define ZEND_MODULE_API_NO" "$PHP_SRC_DIR/Zend/zend_modules.h" | awk '{print $3}')
     EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
-    # 测试所有扩展
     local extensions=("imagick")
     if [ "$BUILD_IMAP" = "yes" ]; then
         extensions+=("imap")
@@ -2097,11 +2115,22 @@ create_package() {
         if [ -f "$EXTENSION_DIR/${ext}.so" ]; then
             echo "✅ ${ext}.so found"
         else
-            echo "⚠️  ${ext}.so not found (PHP 8.5 includes imap in core)"
+            echo "⚠️  ${ext}.so not found"
         fi
     done
+    
+    if [ -f "$EXTENSION_DIR/opcache.so" ]; then
+        echo "✅ opcache.so found"
+    else
+        echo "⚠️  opcache.so not found (check build)"
+    fi
+    
+    if [ -f "$php_ini" ] && grep -q "^zend_extension=opcache.so" "$php_ini"; then
+        echo "✅ opcache configured as Zend extension in php.ini"
+    else
+        echo "⚠️  opcache not configured in php.ini"
+    fi
 
-    # 运行完整测试
     local ext_list=""
     for ext in "${extensions[@]}"; do
         ext_list="$ext_list -d extension=$ext.so"
@@ -2125,6 +2154,9 @@ create_package() {
         }
         if (extension_loaded("imap")) {
             echo "IMAP functions: " . (function_exists("imap_open") ? "✅" : "❌") . "\n";
+        }
+        if (extension_loaded("opcache") || function_exists("opcache_get_status")) {
+            echo "OPcache: ✅\n";
         }
     '
     
@@ -2181,6 +2213,7 @@ This is a custom build of PHP 8.5.8 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
 - IMAP extension (built-in core support)
+- Zend OPcache (opcache)
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - Argon2 password hashing support
@@ -2212,7 +2245,7 @@ echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
 echo "Verify extensions:"
-/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|imap|openssl|intl)" || echo "Some extensions not loaded"
+/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|imap|openssl|intl|opcache)" || echo "Some extensions not loaded"
 echo "========================================"
 EOF
     chmod +x "+POST_INSTALL"
@@ -2334,7 +2367,7 @@ EOF
     echo ""
     echo "[ * ] Testing extensions..."
 
-    local extensions=("openssl" "intl" "imagick" "phar" "opcache")
+    local extensions=("openssl" "intl" "imagick" "phar")
     if [ -f "$EXT_DIR/imap.so" ]; then
         extensions+=("imap")
     fi
@@ -2350,6 +2383,14 @@ EOF
             all_ok=0
         fi
     done
+
+    echo -n "  opcache: "
+    if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (extension_loaded("Zend OPcache") || function_exists("opcache_get_status")) { echo "✅\n"; } else { echo "❌\n"; exit(1); }'; then
+        echo "✅"
+    else
+        echo "❌"
+        all_ok=0
+    fi
 
     echo ""
     echo "[ * ] Testing Imagick class..."
