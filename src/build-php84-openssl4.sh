@@ -2111,7 +2111,10 @@ EOF
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
     OLD_LD_PRELOAD="${LD_PRELOAD:-}"
-    gmake -j "$NUM_CPUS" LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib" LIBS="-licui18n -licuuc -licudata -licuio" > "$LOG_DIR/build-${PHP_VERSION}.log"
+    gmake -j "$NUM_CPUS" \
+        LDFLAGS="-L${ICU_PREFIX}/lib -Wl,-rpath,${ICU_PREFIX}/lib" \
+        EXTRA_LIBS="${ICU_PREFIX}/lib/libicui18n.so.74.2 ${ICU_PREFIX}/lib/libicuuc.so.74.2 ${ICU_PREFIX}/lib/libicudata.so.74.2 ${ICU_PREFIX}/lib/libicuio.so.74.2" \
+        > "$LOG_DIR/build-${PHP_VERSION}.log"
     BUILD_STATUS=$?
 
     # 恢复 LD_PRELOAD（如果需要）
