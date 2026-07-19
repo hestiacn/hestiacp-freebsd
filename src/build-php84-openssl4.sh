@@ -1981,7 +1981,7 @@ EOF
 
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CFLAGS: $CFLAGS"
-    export LDFLAGS="-L/usr/local/icu72/lib -L/usr/local/lib ${LDFLAGS}"
+    export LDFLAGS="-L/usr/local/icu74/lib -L/usr/local/lib ${LDFLAGS}"
     echo "LDFLAGS (without rpath for configure): $LDFLAGS"
     # ============================================================
     # 修复 bzip2 pkg-config（FreeType 2 依赖）
