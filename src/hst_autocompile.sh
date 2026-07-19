@@ -31,30 +31,37 @@ download_file() {
 			echo >&2 "[!] No filename was found in url, exiting ($url)"
 			exit 1
 		fi
-		if [ ! -z "$force" ] && [ -f "$ARCHIVE_DIR/$filename" ]; then
+		if [ ! -z "$force" ] && [ -n "$filename" ] && [ -f "$ARCHIVE_DIR/$filename" ]; then
 			rm -f "$ARCHIVE_DIR/$filename"
 		fi
 	elif [ ! -z "$destination" ]; then
 		dstopt="-O $destination"
-	fi
-
-	if [ -f "$ARCHIVE_DIR/$filename" ] && [ "$is_archive" = "true" ]; then
-		tar -tzf "$ARCHIVE_DIR/$filename" > /dev/null 2>&1
-		if [ $? -ne 0 ]; then
-			echo >&2 "[!] Archive $ARCHIVE_DIR/$filename is corrupted, redownloading"
-			rm -f "$ARCHIVE_DIR/$filename"
+		if [ -z "$filename" ]; then
+			filename=$(basename "$destination")
 		fi
 	fi
 
-	if [ ! -f "$ARCHIVE_DIR/$filename" ]; then
+	if [ -n "$filename" ] && [ -f "$ARCHIVE_DIR/$filename" ] && [ "$is_archive" = "true" ]; then
+		tar -tzf "$ARCHIVE_DIR/$filename" > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			echo >&2 "[!] Archive $ARCHIVE_DIR/$filename is corrupted, redownloading"
+			if [ -n "$filename" ]; then
+				rm -f "$ARCHIVE_DIR/$filename"
+			fi
+		fi
+	fi
+
+	if [ -z "$filename" ] || [ ! -f "$ARCHIVE_DIR/$filename" ]; then
 		[ "$HESTIA_DEBUG" ] && echo >&2 DEBUG: Fetching $url ...
 		if command -v wget > /dev/null 2>&1; then
 			wget "$url" -q $dstopt --show-progress --progress=bar:force --limit-rate=3m
 		elif command -v fetch > /dev/null 2>&1; then
-			if [ "$is_archive" = "true" ]; then
+			if [ "$is_archive" = "true" ] && [ -n "$filename" ]; then
 				fetch -q -o "$ARCHIVE_DIR/$filename" "$url"
 			elif [ ! -z "$destination" ]; then
 				fetch -q -o "$destination" "$url"
+			else
+				fetch -q -o "$ARCHIVE_DIR/temp_download" "$url"
 			fi
 		else
 			echo >&2 "[!] Error: Neither wget nor fetch is available in this VM sandboxing environment."
@@ -63,16 +70,20 @@ download_file() {
 
 		if [ $? -ne 0 ]; then
 			echo >&2 "[!] Archive $ARCHIVE_DIR/$filename is corrupted and exit script"
-			rm -f "$ARCHIVE_DIR/$filename"
+			if [ -n "$filename" ]; then
+				rm -f "$ARCHIVE_DIR/$filename"
+			fi
 			exit 1
 		fi
 	fi
 
 	if [ ! -z "$destination" ] && [ "$is_archive" = "true" ]; then
 		if [ "$destination" = "-" ]; then
-			cat "$ARCHIVE_DIR/$filename"
+			if [ -n "$filename" ] && [ -f "$ARCHIVE_DIR/$filename" ]; then
+				cat "$ARCHIVE_DIR/$filename"
+			fi
 		elif [ -d "$(dirname "$destination")" ]; then
-			if [ "$ARCHIVE_DIR/$filename" != "$destination" ]; then
+			if [ -n "$filename" ] && [ "$ARCHIVE_DIR/$filename" != "$destination" ] && [ -f "$ARCHIVE_DIR/$filename" ]; then
 				cp "$ARCHIVE_DIR/$filename" "$destination"
 			fi
 		fi
@@ -1204,7 +1215,18 @@ if [ "$WEB_TERMINAL_B" = "true" ]; then
 			fi
 
 			cd "${BUILD_DIR_HESTIA_TERMINAL}/usr/local/hestia/web-terminal" || exit 1
-			npm ci --omit=dev
+			if [ ! -f "package-lock.json" ]; then
+				echo "[ * ] Generating package-lock.json..."
+				npm install --package-lock-only
+				if [ $? -ne 0 ]; then
+					echo "ERROR: Failed to generate package-lock.json"
+					exit 1
+				fi
+			fi
+			npm ci --dry-run --omit=dev > /dev/null 2>&1 || {
+				echo "[ ! ] npm ci validation failed, falling back to npm install..."
+				npm install --omit=dev
+			}
 			rm -rf node_modules
 
 			mkdir -p "$BUILD_DIR_HESTIA_TERMINAL/usr/local/etc/rc.d"
