@@ -1981,8 +1981,8 @@ EOF
 
     echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
     echo "CFLAGS: $CFLAGS"
-    echo "LDFLAGS: $LDFLAGS"
-
+    export LDFLAGS="-L/usr/local/icu72/lib -L/usr/local/lib ${LDFLAGS}"
+    echo "LDFLAGS (without rpath for configure): $LDFLAGS"
     # ============================================================
     # 修复 bzip2 pkg-config（FreeType 2 依赖）
     # ============================================================
@@ -1990,17 +1990,17 @@ EOF
 
     mkdir -p /usr/local/libdata/pkgconfig
     cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
-    prefix=/usr
-    exec_prefix=${prefix}
-    libdir=${exec_prefix}/lib
-    includedir=${prefix}/include
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
 
-    Name: bzip2
-    Description: bzip2 compression library
-    Version: 1.0.8
-    Libs: -L${libdir} -lbz2
-    Cflags: -I${includedir}
-    EOF
+Name: bzip2
+Description: bzip2 compression library
+Version: 1.0.8
+Libs: -L${libdir} -lbz2
+Cflags: -I${includedir}
+EOF
 
     export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     echo "  ✅ bzip2.pc created and PKG_CONFIG_PATH updated"
@@ -2011,7 +2011,16 @@ EOF
     CONFIG_ARGS_WITH_PHAR_SHARED=("${CONFIG_ARGS[@]}")
     CONFIG_ARGS_WITH_PHAR_SHARED+=("--enable-phar=shared")
     echo "Final config args: ${CONFIG_ARGS_WITH_PHAR_SHARED[*]}"
-
+    echo ""
+    echo "========================================"
+    echo "[ DEBUG ] 编译前检查"
+    echo "========================================"
+    echo "  当前目录: $(pwd)"
+    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
+    echo "  gmake 路径: $(which gmake 2>/dev/null || echo '❌ 未找到 gmake')"
+    echo "  make 路径: $(which make 2>/dev/null || echo '❌ 未找到 make')"
+    echo "========================================"
+    echo ""
     # ============================================================
     # 运行 configure
     # ============================================================

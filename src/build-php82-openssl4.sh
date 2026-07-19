@@ -166,6 +166,7 @@ get_config_args() {
         "--enable-sysvshm"
         "--enable-calendar"
         "--with-pic"
+        "--enable-phpdbg"
         "--with-gettext=/usr/local"
         "--with-curl=/usr/local"
         "--with-gmp=/usr/local"
@@ -733,10 +734,6 @@ build_php() {
         cp "$build_dir/configure" "$build_dir/build/" || true
     fi
 
-    # ============================================================
-    # PHP 8.2 特殊处理：使用 ICU 72
-    # ============================================================
-    if [ "$major" = "8" ] && [ "$minor" = "2" ]; then
         # 编译 ICU 72
         if ! build_icu72; then
             echo "❌ Failed to build ICU 72"
@@ -778,9 +775,7 @@ build_php() {
         export LDFLAGS="$LDFLAGS -licuio"
         export CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE"
         export CFLAGS="$CFLAGS -DHAVE_IF_INDEXTONAME=1 -DHAVE_IF_NAMETOINDEX=1"
-        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '72.1')"
-    fi
-	
+        echo "[ ✓ ] ICU config version: $(icu-config --version || echo '72.1')"	
     # ============================================================
     # 设置编译环境
     # ============================================================
