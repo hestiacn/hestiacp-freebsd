@@ -31,79 +31,79 @@ jobs:
           usesh: true
           sync: rsync
           copyback: true
-        run: |
-          cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
+          run: |
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
-          FREEBSD_VERSION=$(uname -r | cut -d'-' -f1 | cut -d'.' -f1)
-          echo "FreeBSD version: $FREEBSD_VERSION"
+            FREEBSD_VERSION=$(uname -r | cut -d'-' -f1 | cut -d'.' -f1)
+            echo "FreeBSD version: $FREEBSD_VERSION"
 
-          pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+            pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
 
-          export HESTIA_DEBUG=true
-          chmod +x src/hst_autocompile.sh
+            export HESTIA_DEBUG=true
+            chmod +x src/hst_autocompile.sh
 
-          bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
-          EXIT_CODE=$?
+            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            EXIT_CODE=$?
 
-          echo "=== Exit code: $EXIT_CODE ==="
+            echo "=== Exit code: $EXIT_CODE ==="
 
-          if [ $EXIT_CODE -eq 0 ]; then
-            echo "[ ✓ ] Compilation completed successfully!"
-          else
-            echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
-            echo "=== Last 200 lines of build.log ==="
-            tail -200 build.log
-            exit 1
-          fi
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "[ ✓ ] Compilation completed successfully!"
+            else
+              echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
+              echo "=== Last 200 lines of build.log ==="
+              tail -200 build.log
+              exit 1
+            fi
 
-          # 准备签名密钥目录
-          cd /tmp/hestiacp-src
-          mkdir -p keys
-          echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
-          chmod 600 keys/hestiacp.key
-          echo "[ ✓ ] Private key imported for signing"
-          echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
-          ls -la keys/
+            # 准备签名密钥目录
+            cd /tmp/hestiacp-src
+            mkdir -p keys
+            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
+            echo "[ ✓ ] Private key imported for signing"
+            echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
+            ls -la keys/
 
-          cd pkg
+            cd pkg
 
-          echo "=== Current directory: $(pwd) ==="
-          echo "=== Package files ==="
-          ls -la
+            echo "=== Current directory: $(pwd) ==="
+            echo "=== Package files ==="
+            ls -la
 
-          # 更新 pkg 并重试
-          pkg update -f
-          pkg upgrade -y pkg
+            # 更新 pkg 并重试
+            pkg update -f
+            pkg upgrade -y pkg
 
-          # 签名仓库
-          echo "[ * ] Signing repository with private key..."
-          pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            # 签名仓库
+            echo "[ * ] Signing repository with private key..."
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
 
-          if [ $? -ne 0 ]; then
-            echo "[ ✗ ] Failed to sign repository!"
-            exit 1
-          fi
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              exit 1
+            fi
 
-          echo "[ ✓ ] Repository signed successfully!"
+            echo "[ ✓ ] Repository signed successfully!"
 
-          VERSION_DIR="${FREEBSD_VERSION}/latest"
-          mkdir -p "/tmp/repo-upload/${VERSION_DIR}"
-          
-          echo "[ * ] Copying packages to versioned directory: ${VERSION_DIR}"
-          cp -r ./* /tmp/repo-upload/${VERSION_DIR}/
-          
-          cp -r ./* /tmp/repo-upload/
-          
-          echo "[ * ] Final upload structure:"
-          ls -la /tmp/repo-upload/
+            VERSION_DIR="${FREEBSD_VERSION}/latest"
+            mkdir -p "/tmp/repo-upload/${VERSION_DIR}"
+            
+            echo "[ * ] Copying packages to versioned directory: ${VERSION_DIR}"
+            cp -r ./* /tmp/repo-upload/${VERSION_DIR}/
+            
+            cp -r ./* /tmp/repo-upload/
+            
+            echo "[ * ] Final upload structure:"
+            ls -la /tmp/repo-upload/
 
-          mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
-          cp -r /tmp/repo-upload/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
-          echo "FREEBSD_VERSION=${FREEBSD_VERSION}" > /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
-          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
-          echo "BRANCH=${{ github.ref_name }}" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
+            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
+            cp -r /tmp/repo-upload/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
+            echo "FREEBSD_VERSION=${FREEBSD_VERSION}" > /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
+            echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
+            echo "BRANCH=${{ github.ref_name }}" >> /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/version.txt
 
-          echo "[ ✓ ] Artifacts prepared with versioned structure"
+            echo "[ ✓ ] Artifacts prepared with versioned structure"
       - name: Extract and format build log
         if: always()
         run: |
