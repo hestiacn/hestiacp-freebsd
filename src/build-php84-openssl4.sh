@@ -1,7 +1,7 @@
 #!/bin/bash
 # src/build-php84-openssl4.sh
 # Build PHP 8.4.23 with OpenSSL 4.x and create package
-# UPDATED: Install all extensions before packaging
+# UPDATED: Install IMAP via PECL (since ext/imap removed in PHP 8.4)
 
 set -e
 
@@ -238,132 +238,167 @@ apply_patches() {
 }
 
 # ============================================================
-# 编译和安装 IMAP 扩展（打包前安装）
+# 通过 PECL 安装 IMAP 扩展 (PHP 8.4 使用 PECL)
 # ============================================================
-install_imap_extension() {
+install_imap_pecl() {
     local install_dir="$1"
-    local php_version="$2"
-    local build_dir="$3"
+    local build_dir="$2"
     
     echo ""
     echo "========================================"
-    echo "[ * ] Building and installing IMAP extension"
+    echo "[ * ] Installing IMAP extension via PECL"
     echo "========================================"
     
     local php_bin="$install_dir/usr/local/bin/php"
+    local pecl="$install_dir/usr/local/bin/pecl"
+    
     if [ ! -f "$php_bin" ]; then
         echo "❌ PHP binary not found: $php_bin"
         return 1
     fi
     
-    local php_ver=$(echo "$php_version" | cut -d. -f1-2 | tr -d '.')
-    echo "[ * ] PHP version: $php_ver"
-    local php_prefix="$install_dir/usr/local"
-    local ver_suffix="$php_ver"
-    local phpize=""
-    local php_config=""
-    
-    # 查找 phpize
-    for path in "$php_prefix/bin/phpize" "$php_prefix/bin/phpize${ver_suffix}" \
-                 "/usr/local/bin/phpize" "/usr/local/bin/phpize${ver_suffix}" \
-                 "$build_dir/phpize" "$build_dir/scripts/phpize"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            phpize="$path"
-            break
+    # 检查 PECL 是否存在
+    if [ ! -f "$pecl" ]; then
+        echo "⚠️  PECL not found, installing PEAR..."
+        # 安装 PEAR
+        cd "$build_dir" || return 1
+        if [ -f "phpize" ]; then
+            ./phpize
         fi
-    done
-    
-    # 查找 php-config
-    for path in "$php_prefix/bin/php-config" "$php_prefix/bin/php-config${ver_suffix}" \
-                 "/usr/local/bin/php-config" "/usr/local/bin/php-config${ver_suffix}" \
-                 "$build_dir/php-config" "$build_dir/scripts/php-config"; do
-        if [ -f "$path" ] && [ -x "$path" ]; then
-            php_config="$path"
-            break
-        fi
-    done
-    
-    if [ -z "$phpize" ] || [ -z "$php_config" ]; then
-        echo "⚠️  phpize or php-config not found"
-        return 1
+        # 下载并安装 PEAR
+        fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar
+        "$php_bin" /tmp/go-pear.phar
+        export PATH="$install_dir/usr/local/bin:$PATH"
     fi
     
-    echo "  Using phpize: $phpize"
-    echo "  Using php-config: $php_config"
+    # 设置环境变量
+    export PATH="$install_dir/usr/local/bin:$PATH"
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export CFLAGS="-I/usr/local/include $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    export CPPFLAGS="-I/usr/local/include"
     
     # 获取扩展目录
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
     local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    echo "[ * ] Installing imap extension via PECL..."
+    echo "  Using PHP: $php_bin"
+    echo "  Extension dir: $ext_dir"
+    
+    # 尝试通过 PECL 安装
+    if pecl install imap <<< "yes" 2>&1 | tee -a "$LOG_DIR/imap-pecl.log"; then
+        echo "  ✅ IMAP extension installed via PECL"
+        
+        # 查找 imap.so
+        local imap_so=""
+        for path in "$ext_dir" "$install_dir/usr/local/lib/php/extensions" /usr/local/lib/php/extensions; do
+            if [ -d "$path" ]; then
+                found=$(find "$path" -name "imap.so" | head -1)
+                if [ -n "$found" ] && [ -f "$found" ]; then
+                    imap_so="$found"
+                    break
+                fi
+            fi
+        done
+        
+        if [ -n "$imap_so" ] && [ -f "$imap_so" ]; then
+            mkdir -p "$ext_dir"
+            cp "$imap_so" "$ext_dir/"
+            echo "  ✅ imap.so copied to $ext_dir"
+            
+            # 添加到 php.ini
+            local php_ini="$install_dir/usr/local/etc/php.ini"
+            mkdir -p "$(dirname "$php_ini")"
+            if [ -f "$php_ini" ]; then
+                if ! grep -q "^extension=imap.so" "$php_ini"; then
+                    echo "extension=imap.so" >> "$php_ini"
+                fi
+            else
+                echo "extension=imap.so" > "$php_ini"
+            fi
+            echo "  ✅ imap.so added to php.ini"
+            return 0
+        fi
+    fi
+    
+    echo "⚠️  PECL installation failed, trying manual build..."
+    return 1
+}
+
+# ============================================================
+# 从 PECL 源码手动编译 IMAP
+# ============================================================
+install_imap_manual() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Building IMAP extension from PECL source"
+    echo "========================================"
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local phpize="$install_dir/usr/local/bin/phpize"
+    local php_config="$install_dir/usr/local/bin/php-config"
+    
+    if [ ! -f "$php_bin" ] || [ ! -f "$phpize" ]; then
+        echo "❌ PHP or phpize not found"
+        return 1
+    fi
+    
+    # 下载 IMAP PECL 源码
+    echo "[ * ] Downloading imap PECL source..."
+    cd /tmp
+    if [ ! -f "imap-1.0.3.tgz" ]; then
+        fetch -o imap-1.0.3.tgz https://pecl.php.net/get/imap-1.0.3.tgz || \
+        fetch -o imap-1.0.3.tgz https://github.com/php/pecl-mail-imap/archive/refs/tags/1.0.3.tar.gz
+    fi
+    
+    # 解压
+    rm -rf imap-1.0.3
+    tar -xzf imap-1.0.3.tgz || tar -xzf imap-1.0.3.tar.gz
+    cd imap-1.0.3 || cd pecl-mail-imap-1.0.3 || return 1
+    
+    echo "[ * ] Running phpize..."
+    "$phpize" --with-php-config="$php_config" 2>&1 | tee -a "$LOG_DIR/imap-manual-phpize.log"
+    
+    echo "[ * ] Configuring..."
+    ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local 2>&1 | tee -a "$LOG_DIR/imap-manual-configure.log"
+    
+    echo "[ * ] Compiling..."
+    make 2>&1 | tee -a "$LOG_DIR/imap-manual-make.log"
+    
+    # 获取扩展目录并安装
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
     mkdir -p "$ext_dir"
     
-    # 方法1: 从 PHP 源码编译 IMAP
-    echo ""
-    echo "[ * ] Building IMAP from PHP source..."
-    if [ -d "$build_dir/ext/imap" ]; then
-        cd "$build_dir/ext/imap" || return 1
-        
-        # 创建符号链接
-        if [ -d "$build_dir/build" ]; then
-            for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
-                if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
-                    ln -sf "$build_dir/build/$file" ./
-                fi
-            done
-        fi
-        
-        export PHP_PREFIX="$php_prefix"
-        export PHP_CONFIG="$php_config"
-        export PHPIZE="$phpize"
-        export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-        export CFLAGS="-I/usr/local/include $CFLAGS"
-        export LDFLAGS="-L/usr/local/lib $LDFLAGS"
-        
-        echo "  Running phpize..."
-        "$phpize" --with-php-config="$php_config" 2>&1 | tee -a "$LOG_DIR/imap-phpize.log"
-        
-        echo "  Configuring..."
-        ./configure --with-php-config="$php_config" --with-imap=/usr/local --with-imap-ssl=/usr/local 2>&1 | tee -a "$LOG_DIR/imap-configure.log"
-        
-        echo "  Compiling..."
-        make 2>&1 | tee -a "$LOG_DIR/imap-make.log"
-        
-        echo "  Installing to: $ext_dir"
-        # 直接复制到扩展目录
-        if [ -f "modules/imap.so" ]; then
-            cp modules/imap.so "$ext_dir/"
-            echo "  ✅ imap.so installed to $ext_dir"
-        elif [ -f ".libs/imap.so" ]; then
-            cp .libs/imap.so "$ext_dir/"
-            echo "  ✅ imap.so installed to $ext_dir"
-        else
-            echo "  ⚠️  imap.so not found in modules/"
-            find . -name "imap.so" 2>/dev/null
-            return 1
-        fi
-        
-        cd - > /dev/null
+    if [ -f "modules/imap.so" ]; then
+        cp modules/imap.so "$ext_dir/"
+        echo "  ✅ imap.so installed to $ext_dir"
+    elif [ -f ".libs/imap.so" ]; then
+        cp .libs/imap.so "$ext_dir/"
+        echo "  ✅ imap.so installed to $ext_dir"
     else
-        echo "❌ IMAP source directory not found: $build_dir/ext/imap"
+        echo "❌ imap.so not found"
+        find . -name "imap.so" 2>/dev/null
         return 1
     fi
     
     # 添加到 php.ini
     local php_ini="$install_dir/usr/local/etc/php.ini"
-    if [ -f "$ext_dir/imap.so" ]; then
-        mkdir -p "$(dirname "$php_ini")"
-        if [ -f "$php_ini" ]; then
-            if ! grep -q "^extension=imap.so" "$php_ini"; then
-                echo "extension=imap.so" >> "$php_ini"
-            fi
-        else
-            echo "extension=imap.so" > "$php_ini"
+    mkdir -p "$(dirname "$php_ini")"
+    if [ -f "$php_ini" ]; then
+        if ! grep -q "^extension=imap.so" "$php_ini"; then
+            echo "extension=imap.so" >> "$php_ini"
         fi
-        echo "  ✅ imap.so added to php.ini"
-        return 0
     else
-        echo "❌ imap.so not found after build"
-        return 1
+        echo "extension=imap.so" > "$php_ini"
     fi
+    
+    echo "  ✅ imap.so added to php.ini"
+    return 0
 }
 
 # ============================================================
@@ -736,9 +771,7 @@ build_php() {
     else
         echo "❌ libarchive 安装失败，文件不存在"
         exit 1
-    fi
-
-    # ============================================================
+    fi    # ============================================================
     # 用 OpenSSL 4.x 重新编译所有依赖库
     # ============================================================
     if [ ! -d "/usr/ports" ]; then
@@ -1962,11 +1995,20 @@ EOF
     fi
 
     # ============================================================
-    # 安装 IMAP 扩展（打包前安装）
+    # 安装 IMAP 扩展（PHP 8.4 使用 PECL）
     # ============================================================
+    IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
-        if ! install_imap_extension "$install_dir" "$PHP_VERSION" "$build_dir"; then
-            echo "⚠️  IMAP extension build failed, continuing without it"
+        # 首先尝试 PECL 安装
+        if install_imap_pecl "$install_dir" "$build_dir"; then
+            IMAP_INSTALLED=1
+        else
+            echo "⚠️  PECL installation failed, trying manual build..."
+            if install_imap_manual "$install_dir" "$build_dir"; then
+                IMAP_INSTALLED=1
+            else
+                echo "⚠️  IMAP extension build failed, continuing without it"
+            fi
         fi
     else
         echo "[ * ] IMAP extension disabled (BUILD_IMAP=no)"
@@ -2042,7 +2084,11 @@ create_package() {
     EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
     # 测试所有扩展
-    local extensions=("imagick" "imap")
+    local extensions=("imagick")
+    if [ "$BUILD_IMAP" = "yes" ]; then
+        extensions+=("imap")
+    fi
+    
     for ext in "${extensions[@]}"; do
         if [ -f "$EXTENSION_DIR/${ext}.so" ]; then
             echo "✅ ${ext}.so found"
@@ -2052,8 +2098,16 @@ create_package() {
     done
 
     # 运行完整测试
-    "$php_bin" -d extension_dir="$EXTENSION_DIR" -d extension=imagick.so -d extension=imap.so -r '
-        $extensions = ["imagick", "imap", "openssl", "intl"];
+    local ext_list=""
+    for ext in "${extensions[@]}"; do
+        ext_list="$ext_list -d extension=$ext.so"
+    done
+    
+    "$php_bin" $ext_list -r '
+        $extensions = ["imagick", "openssl", "intl"];
+        if (extension_loaded("imap")) {
+            $extensions[] = "imap";
+        }
         echo "PHP Version: " . PHP_VERSION . "\n";
         echo "OpenSSL Version: " . OPENSSL_VERSION_TEXT . "\n";
         echo "OpenSSL functions: " . (function_exists("openssl_encrypt") ? "✅" : "❌") . "\n";
@@ -2122,7 +2176,7 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 This is a custom build of PHP 8.4.23 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
-- IMAP extension (imap) - built from source
+- IMAP extension (imap) - via PECL
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
 - Argon2 password hashing support
@@ -2155,11 +2209,6 @@ EOF
     chmod +x "+POST_INSTALL"
     
     echo "[ * ] Creating package..."
-	echo "  Metadata dir: ${PKG_DIR}"
-	echo "  PLIST: ${PKG_DIR}/+PLIST"
-	echo "  Root dir: ${PKG_DIR}"
-	echo "  Output: ${ARTIFACT_DIR}"
-
     pkg create \
         -m "${PKG_DIR}" \
         -p "${PKG_DIR}/+PLIST" \
@@ -2254,9 +2303,13 @@ EOF
     cat > "$test_php_ini" << EOF
 extension_dir=${EXT_DIR}
 extension=imagick.so
-extension=imap.so
 zend_extension=opcache.so
 EOF
+
+    # 如果有 imap.so 则添加
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        echo "extension=imap.so" >> "$test_php_ini"
+    fi
 
     export LD_LIBRARY_PATH="$TEST_ROOT/usr/local/lib:/usr/local/lib"
 
@@ -2273,7 +2326,11 @@ EOF
     echo ""
     echo "[ * ] Testing extensions..."
 
-    local extensions=("openssl" "intl" "imagick" "imap" "phar" "opcache")
+    local extensions=("openssl" "intl" "imagick" "phar" "opcache")
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        extensions+=("imap")
+    fi
+    
     local all_ok=1
 
     for ext in "${extensions[@]}"; do
@@ -2295,13 +2352,15 @@ EOF
         all_ok=0
     fi
 
-    echo ""
-    echo "[ * ] Testing IMAP functions..."
-    if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (function_exists("imap_open")) { echo "  ✅ imap_open exists\n"; } else { echo "  ❌ imap_open not found\n"; exit(1); }'; then
-        echo "  ✅ IMAP works"
-    else
-        echo "  ❌ IMAP test failed"
-        all_ok=0
+    if [ -f "$EXT_DIR/imap.so" ]; then
+        echo ""
+        echo "[ * ] Testing IMAP functions..."
+        if "$PHP_TEST_BIN" -c "$test_php_ini" -r 'if (function_exists("imap_open")) { echo "  ✅ imap_open exists\n"; } else { echo "  ❌ imap_open not found\n"; exit(1); }'; then
+            echo "  ✅ IMAP works"
+        else
+            echo "  ❌ IMAP test failed"
+            all_ok=0
+        fi
     fi
 
     echo ""

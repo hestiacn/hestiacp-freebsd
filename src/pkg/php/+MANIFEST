@@ -1,5 +1,5 @@
 name: hestia-php
-version: "8.5.7"
+version: "8.4.23"
 origin: lang/hestia-php
 comment: HestiaCP PHP-FPM backend for FreeBSD
 maintainer: HestiaCP <info@hestiacp.com>
