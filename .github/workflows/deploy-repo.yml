@@ -64,8 +64,8 @@ jobs:
             ls -la
 
             # 复制 web 文件
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html .
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html .
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html ./
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html ./
             echo "=== Verifying signature ==="
             ls -la | grep -E "(digests|meta|packagesite)"
 
