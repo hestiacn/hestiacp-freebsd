@@ -2094,20 +2094,23 @@ EOF
         return 1
     fi
 
-
     echo "[ * ] Checking ICU used:"
     grep -i "icu" "$LOG_DIR/configure-${PHP_VERSION}.log" | head -20 || true
     echo "[ * ] Fixing ICU link order in Makefile..."
     if [ -f "Makefile" ]; then
-        # 移除 ICU 库的旧引用（避免重复）
-        sed -i '' 's|-licui18n||g' Makefile
-        sed -i '' 's|-licuuc||g' Makefile
-        sed -i '' 's|-licudata||g' Makefile
-        sed -i '' 's|-licuio||g' Makefile
+        echo "  📋 BEFORE modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    /'
+        sed -i '' -e 's|-licui18n||g' \
+                -e 's|-licuuc||g' \
+                -e 's|-licudata||g' \
+                -e 's|-licuio||g' Makefile
         echo "  ✅ Removed ICU libraries from EXTRA_LIBS"
-        sed -i '' "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = ${ICU_PREFIX}/lib/libicui18n.so.74.2 ${ICU_PREFIX}/lib/libicuuc.so.74.2 ${ICU_PREFIX}/lib/libicudata.so.74.2 ${ICU_PREFIX}/lib/libicuio.so.74.2 \1|" Makefile
+        sed -i '' -e "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = ${ICU_PREFIX}/lib/libicui18n.so.74.2 ${ICU_PREFIX}/lib/libicuuc.so.74.2 ${ICU_PREFIX}/lib/libicudata.so.74.2 ${ICU_PREFIX}/lib/libicuio.so.74.2 \1|" Makefile
         echo "  ✅ ICU libraries added to EXTRA_LIBS"
+        echo "  📋 AFTER modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    /'
     fi
+
     # ============================================================
     # 编译 PHP
     # ============================================================
