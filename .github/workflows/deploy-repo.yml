@@ -125,7 +125,7 @@ jobs:
 
       # 3. 利用官方 Artifact 将这个桥接目录安全暂存（彻底洗净虚拟机路径污染）
       - name: Stash Packages to GitHub Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
           path: artifacts-bridge/
@@ -133,7 +133,7 @@ jobs:
 
       # 4. 下载暂存资产，直接落地到宿主机标准的 artifacts/ 目录下
       - name: Download and Re-align Assets on Host
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
           path: artifacts-bridge/
