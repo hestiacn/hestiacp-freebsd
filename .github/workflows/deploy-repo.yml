@@ -107,55 +107,33 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            EXPORT_PATH="/tmp/hestiacp-src/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            mkdir -p "$EXPORT_PATH"
-            cp -R /tmp/hestiacp-src/pkg/* "$EXPORT_PATH/"
-            printf "%s" "$PKG_SIGNING_KEY_PUB" > "$EXPORT_PATH/hestia.pub"
-            VM_BRIDGE="/tmp/hestiacp-src/final-r2-tree"
-            mkdir -p "$VM_BRIDGE"
-            cp -R /tmp/hestiacp-src/FreeBSD* "$VM_BRIDGE/"
-            cp ../../home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html "$VM_BRIDGE/" 2>/dev/null || cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html "$VM_BRIDGE/" || true
-            cp ../../home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html "$VM_BRIDGE/" 2>/dev/null || cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html "$VM_BRIDGE/" || true
-            mkdir -p artifacts-bridge
-            cp -R "$VM_BRIDGE"/* artifacts-bridge/ || true
+            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
             
-            echo "[ ✓ ] Complete tree structured securely inside VM /tmp/hestiacp-src!"
+            BRIDGE_ROOT="artifacts-bridge"
+            mkdir -p "${BRIDGE_ROOT}/${VERSION_PATH}"
+            cp -R /tmp/hestiacp-src/pkg/* "${BRIDGE_ROOT}/${VERSION_PATH}/"
+            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${BRIDGE_ROOT}/${VERSION_PATH}/hestia.pub"
+            cp src/pkg/index.html "${BRIDGE_ROOT}/" || true
+            cp src/pkg/404.html "${BRIDGE_ROOT}/" || true
+
+            echo "=== Perfect Tree Structure in artifacts-bridge ==="
+            ls -R "${BRIDGE_ROOT}"
+            echo "[ ✓ ] Complete tree structured successfully using clean relative path!"
             
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          FOUND_DIR=$(find /tmp/hestiacp-src/pkg/ -type d -name "final-r2-tree" | head -n 1)
-          ls -la /tmp/hestiacp-src/pkg/
-          if [ -z "$FOUND_DIR" ]; then
-            echo "[ * ] final-r2-tree hidden, searching via compiled package pool..."
-            REAL_PKG_POOL=""
-            for dir in $(find /tmp/hestiacp-src/pkg/-type d -name "pkg" | grep -v "src/pkg"); do
-              if ls "$dir"/*.pkg >/dev/null 2>&1; then
-                REAL_PKG_POOL="$dir"
-                break
-              fi
-            done
-            
-            if [ -n "$REAL_PKG_POOL" ]; then
-              echo "[ ✓ ] Target package pool pinned at: $REAL_PKG_POOL"
-              VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-              mkdir -p "artifacts/$VERSION_PATH"
-              cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
-              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
-              cp src/pkg/index.html artifacts/
-              cp src/pkg/404.html artifacts/
-            else
-              echo "Fatal Error: No compiled packages (*.pkg) found anywhere in host space!"
-              echo "=== Dumping all available directories for diagnosis ==="
-              find /tmp/hestiacp-src/pkg/ -type d -maxdepth 4
-              exit 1
-            fi
-          else
-            echo "[ ✓ ] Found synchronized asset tree at: $FOUND_DIR"
+          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
+          
+          if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
+            echo "[ ✓ ] Target asset pool successfully pinned at: $FOUND_DIR"
             cp -R "$FOUND_DIR"/* artifacts/
+          else
+            echo "Fatal Error: Compilation assets not found in host space!" && exit 1
           fi
           
-          echo "=== Verified Aligned Tree Architecture on Host ==="
+          echo "=== Verified Aligned Production Tree Architecture on Host ==="
           ls -R artifacts/
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
