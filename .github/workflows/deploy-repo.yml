@@ -106,14 +106,15 @@ jobs:
             fi
 
             echo "[ ✓ ] Repository signed successfully!"
-
+            echo "=== Current directory: $(pwd) ==="
+            cd /tmp/hestiacp-src/pkg/
+            ls -la /tmp/hestiacp-src/pkg/
+            cp -R /tmp/hestiacp-src/pkg/* final-packages/
             # 准备产物 - 包含公钥供客户端下载
             mkdir -p final-packages
 
             # 复制签名后的包文件到 final-packages
-            echo "=== Current directory: $(pwd) ==="
-            ls -la /tmp/hestiacp-src/pkg/
-            cp -R /tmp/hestiacp-src/pkg/* final-packages/
+            cp -R ./* final-packages/
 
             # 复制公钥到产物目录（客户端需要）
             printf "%s" "$PKG_SIGNING_KEY_PUB" > final-packages/hestiacp.pub

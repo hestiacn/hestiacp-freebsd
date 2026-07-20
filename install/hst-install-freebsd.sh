@@ -473,7 +473,7 @@ echo "Please wait, the installer is now checking for missing dependencies..."
 echo
 
 # Update pkg repository
-pkg upgrade -y pkg
+IGNORE_OSVERSION=yes pkg update -f
 
 # Creating backup directory
 mkdir -p "$hst_backups"
