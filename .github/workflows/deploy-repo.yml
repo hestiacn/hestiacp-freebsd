@@ -19,6 +19,9 @@ jobs:
   build-and-deploy:
     name: Build pkg repository and deploy to Cloudflare
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: [14]
     steps:
       # 1. 检出最新源码
       - name: Checkout Repository
@@ -27,7 +30,7 @@ jobs:
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "15.0"
+          release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
