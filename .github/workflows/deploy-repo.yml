@@ -46,6 +46,7 @@ jobs:
             # 编译并保存日志
             bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
+            cp build.log /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
 
             echo "=== Exit code: $EXIT_CODE ==="
 
@@ -62,8 +63,8 @@ jobs:
             cd /tmp/hestiacp-src
             mkdir -p keys
 
-            # 导入私钥用于签名
-            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            # 导入私钥用于签名 - 使用 printf 避免特殊字符问题
+            printf "%s" "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
             echo "[ ✓ ] Private key imported for signing"
@@ -77,26 +78,29 @@ jobs:
             ls -la
 
             # 更新 pkg 并重试
-            pkg update -f
+            pkg update -f -y
             pkg upgrade -y pkg
 
             # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
-            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              echo "=== Debug information ==="
-              echo "Key file exists:"
-              ls -la /tmp/hestiacp-src/keys/
-              echo "=== meta.conf content ==="
-              cat meta.conf || echo "meta.conf not found"
-              echo "=== Directory contents ==="
-              ls -la
-              exit 1
+            if [ -s /tmp/hestiacp-src/keys/hestiacp.key ]; then
+              pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+              if [ $? -ne 0 ]; then
+                echo "[ ✗ ] Failed to sign repository!"
+                echo "=== Debug information ==="
+                echo "Key file exists:"
+                ls -la /tmp/hestiacp-src/keys/
+                echo "=== meta.conf content ==="
+                cat meta.conf || echo "meta.conf not found"
+                echo "=== Directory contents ==="
+                ls -la
+                exit 1
+              fi
+              echo "[ ✓ ] Repository signed successfully!"
+            else
+              echo "[ ⚠️ ] No signing key found or key is empty, creating repository without signature"
+              pkg repo .
             fi
-
-            echo "[ ✓ ] Repository signed successfully!"
 
             # 准备产物 - 包含公钥供客户端下载
             mkdir -p final-packages
@@ -105,7 +109,12 @@ jobs:
             cp -R ./* final-packages/
 
             # 复制公钥到产物目录（客户端需要）
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
+            if [ -n "${{ secrets.PKG_SIGNING_KEY_PUB }}" ]; then
+              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
+              echo "[ ✓ ] Public key added"
+            else
+              echo "[ ⚠️ ] No public key available"
+            fi
 
             # 验证签名文件
             echo "=== Verifying signature ==="
@@ -133,7 +142,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-log-cat
+          name: build-log-FreeBSD-${{ matrix.freebsd_version }}
           path: build.log
           retention-days: 7
       - name: Extract and format build log
