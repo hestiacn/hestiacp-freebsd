@@ -240,24 +240,27 @@ jobs:
       # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
-          # 检查产物是否存在
-          if [ ! -d "artifacts" ]; then
-            echo "Error: artifacts directory not found!"
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+          ARTIFACT_PATH="artifacts/$VERSION_PATH"
+          
+          if [ ! -d "$ARTIFACT_PATH" ]; then
+            echo "Error: artifacts directory not found at $ARTIFACT_PATH!"
+            echo "Available artifacts:"
+            find artifacts -type d 2>/dev/null || echo "No artifacts found"
             exit 1
           fi
 
-          echo "=== Artifacts to upload ==="
-          ls -la artifacts/
+          echo "=== Artifacts to upload for FreeBSD ${{ matrix.freebsd_version }} ==="
+          ls -la "$ARTIFACT_PATH"
 
-          # 构建完整的 endpoint URL
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Syncing to endpoint: $ENDPOINT"
-
-          aws s3 sync artifacts/ s3://fbsd-repo \
+          echo "Syncing $ARTIFACT_PATH to s3://fbsd-repo/$VERSION_PATH/"
+          
+          aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
             --delete \
@@ -274,8 +277,9 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Verifying uploaded files..."
-          aws s3 ls s3://fbsd-repo/ --endpoint-url "$ENDPOINT" --recursive --human-readable
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+          echo "Verifying uploaded files for $VERSION_PATH..."
+          aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -286,6 +290,20 @@ jobs:
           mkdir -p /tmp/worker-deploy
           cd /tmp/worker-deploy
           cat > worker.js << 'WORKER_EOF'
+          const sslRedirectScript = `
+            <script>
+              if (window.location.protocol === 'http:') {
+                window.location.href = window.location.href.replace(/^http:/i, 'https:');
+              }
+            </script>
+          `;
+
+          class HeadInjector {
+            element(element) {
+              element.prepend(sslRedirectScript, { html: true });
+            }
+          }
+
           var worker_default = {
             async fetch(request, env) {
               const url = new URL(request.url);
@@ -303,38 +321,39 @@ jobs:
                   }
                 });
               }
-
-              let path = url.pathname;
-              if (path === "/" || path === "") {
-                path = "index.html";
-              } else {
-                path = path.startsWith("/") ? path.slice(1) : path;
-              }
-              const object = await env.FBSD_REPO.get(path);
+              let path = url.pathname.slice(1) || "index.html";
+              let object = await env.FBSD_REPO.get(path);
+              let isNotFound = false;
               
               if (!object) {
-                const notFound = await env.FBSD_REPO.get("404.html");
-                if (notFound) {
-                  return new Response(notFound.body, {
-                    status: 404,
-                    headers: { "Content-Type": "text/html; charset=utf-8" }
-                  });
+                isNotFound = true;
+                object = await env.FBSD_REPO.get("404.html");
+                if (!object) {
+                  return new Response("404 - Not Found", { status: 404 });
                 }
-                return new Response("404 - Not Found", { status: 404 });
               }
-              
               const headers = new Headers();
               object.writeHttpMetadata(headers);
               headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
-              if (path.endsWith(".html")) {
+              if (path.endsWith(".html") || isNotFound) {
                 headers.set("content-type", "text/html; charset=utf-8");
-              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
+              } else if (path.endsWith(".sh") || path.endsWith(".pub") || path.endsWith(".sig")) {
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
               }
+              const response = new Response(object.body, { 
+                status: isNotFound ? 404 : 200, 
+                headers 
+              });
+              const contentType = headers.get("content-type") || "";
+              if (contentType.includes("text/html")) {
+                return new HTMLRewriter()
+                  .on("head", new HeadInjector())
+                  .transform(response);
+              }
               
-              return new Response(object.body, { headers });
+              return response;
             }
           };
 
