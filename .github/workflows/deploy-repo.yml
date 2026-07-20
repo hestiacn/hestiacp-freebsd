@@ -87,7 +87,6 @@ jobs:
             ls -la
 
             # 更新 pkg 并重试
-            pkg update -f -y
             pkg upgrade -y pkg
 
             # 使用绝对路径签名仓库
@@ -134,10 +133,10 @@ jobs:
             ls -la final-packages/
 
             # 将产物复制到 GitHub runner 的工作目录（通过 copyback）
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest
-            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/
+            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
+            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
 
-            echo "[ ✓ ] Build and sign completed successfully for FreeBSD ${{ matrix.freebsd_version }}!"
+            echo "[ ✓ ] Build and sign completed successfully!"
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
