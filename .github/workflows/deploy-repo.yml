@@ -35,7 +35,10 @@ jobs:
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-
+            if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
+                ln -sf /usr/local/bin/bash /bin/bash
+                echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
+            fi
             export HESTIA_DEBUG=true
             chmod +x src/hst_autocompile.sh
 
