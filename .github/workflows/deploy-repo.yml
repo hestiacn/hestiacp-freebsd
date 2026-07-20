@@ -122,30 +122,27 @@ jobs:
 
       - name: Verify and prepare artifacts on host
         run: |
+          mkdir -p artifacts
           echo "=== Current workspace contents ==="
           ls -la
           echo "=== artifacts directory ==="
           ls -la artifacts/ || echo "artifacts directory not found!"
+          
           FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
           SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
           REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-          
-          if [ -d "artifacts/$SAFE_NAME" ]; then
+          if [ -d "artifacts/$SAFE_NAME" ] && [ -f "artifacts/index.html" ]; then
             echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
             mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
             mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
           fi
           if [ ! -d "artifacts/$REAL_NAME" ]; then
-            echo "[ ⚠️ ] Matrix path displaced, running dual-defense file scanner..."
-            REAL_PKG_POOL=""
-            for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages" | grep -v "src/pkg"); do
-              if find "$dir" -maxdepth 1 -type f -name "hestia*.pkg" >/dev/null 2>&1; then
-                REAL_PKG_POOL="$dir"
-                break
-              fi
-            done
-            if [ -n "$REAL_PKG_POOL" ]; then
-              echo "[ ✓ ] Package found and forced established from host: $REAL_PKG_POOL"
+            echo "[ ⚠️ ] Matrix path displaced, running precision dynamic version file scanning..."
+            TARGET_FILE_PATH=$(find /home/runner/work/ -type f -name "hestia-[0-9]*.pkg" -size +1M | head -n 1)
+            if [ -n "$TARGET_FILE_PATH" ]; then
+              REAL_PKG_POOL=$(dirname "$TARGET_FILE_PATH")
+              echo "[ ✓ ] Genuine dynamic HestiaCP package found at: $TARGET_FILE_PATH"
+              echo "[ ✓ ] True package pool successfully pinned at: $REAL_PKG_POOL"
               mkdir -p "artifacts/$REAL_NAME"
               cp -R "$REAL_PKG_POOL"/* "artifacts/$REAL_NAME/"
               printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
@@ -159,7 +156,7 @@ jobs:
             echo "=== Full artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
           else
-            echo "❌ Error: Target architecture could not be verified on host!"
+            echo "❌ Error: Target architecture (hestia-[0-9]*.pkg) could not be verified on host!"
             exit 1
           fi
 
