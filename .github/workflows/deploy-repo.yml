@@ -57,9 +57,11 @@ jobs:
               tail -200 build.log
               exit 1
             fi
-            mkdir -p /tmp/hestiacp-src/pkg
+            
             cd /tmp/hestiacp-src/pkg || {
               echo "[ ✗ ] Failed to cd to /tmp/hestiacp-src/pkg"
+              echo "=== Contents of /tmp/hestiacp-src ==="
+              ls -la /tmp/hestiacp-src/
               exit 1
             }
 
@@ -91,6 +93,7 @@ jobs:
             # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
             if [ -s /tmp/hestiacp-src/keys/hestiacp.key ]; then
+              echo "[ * ] Signing repository with private key..."
               pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
               if [ $? -ne 0 ]; then
                 echo "[ ✗ ] Failed to sign repository!"
