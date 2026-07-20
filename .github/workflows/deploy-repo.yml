@@ -82,26 +82,21 @@ jobs:
 
             # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
-            if [ -s /tmp/hestiacp-src/keys/hestiacp.key ]; then
-              echo "[ * ] Signing repository with private key..."
-              pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-              if [ $? -ne 0 ]; then
-                echo "[ ✗ ] Failed to sign repository!"
-                echo "=== Debug information ==="
-                echo "Key file exists:"
-                ls -la /tmp/hestiacp-src/keys/
-                echo "=== meta.conf content ==="
-                cat meta.conf || echo "meta.conf not found"
-                echo "=== Directory contents ==="
-                echo "=== Current directory: $(pwd) ==="
-                ls -la
-                exit 1
-              fi
-              echo "[ ✓ ] Repository signed successfully!"
-            else
-              echo "[ ⚠️ ] No signing key found or key is empty, creating repository without signature"
-              pkg repo .
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              echo "=== Debug information ==="
+              echo "Key file exists:"
+              ls -la /tmp/hestiacp-src/keys/
+              echo "=== meta.conf content ==="
+              cat meta.conf || echo "meta.conf not found"
+              echo "=== Directory contents ==="
+              ls -la
+              exit 1
             fi
+
+            echo "[ ✓ ] Repository signed successfully!"
 
             # 准备产物 - 包含公钥供客户端下载
             mkdir -p final-packages
@@ -110,12 +105,7 @@ jobs:
             cp -R ./* final-packages/
 
             # 复制公钥到产物目录（客户端需要）
-            if [ -n "${{ secrets.PKG_SIGNING_KEY_PUB }}" ]; then
-              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
-              echo "[ ✓ ] Public key added"
-            else
-              echo "[ ⚠️ ] No public key available"
-            fi
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
 
             # 验证签名文件
             echo "=== Verifying signature ==="
@@ -139,13 +129,6 @@ jobs:
 
             echo "[ ✓ ] Build and sign completed successfully for FreeBSD ${{ matrix.freebsd_version }}!"
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-log-FreeBSD-${{ matrix.freebsd_version }}
-          path: build.log
-          retention-days: 7
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
         run: |
