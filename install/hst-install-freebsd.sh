@@ -41,7 +41,7 @@ multiphp_v=("56" "70" "71" "72" "73" "74" "80" "81" "82" "83" "84" "85")
 # Roundcube / phpmyadmin 需要的 PHP 版本
 multiphp_required=("73" "74" "80" "81" "82" "83")
 # 默认 PHP 版本
-fpm_v="83"
+fpm_v="84"
 # MariaDB 版本
 mariadb_v="1011"
 # Node.js 版本
@@ -473,7 +473,7 @@ echo "Please wait, the installer is now checking for missing dependencies..."
 echo
 
 # Update pkg repository
-pkg update -f
+pkg upgrade -y pkg
 
 # Creating backup directory
 mkdir -p "$hst_backups"

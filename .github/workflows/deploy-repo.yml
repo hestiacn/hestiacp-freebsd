@@ -111,7 +111,9 @@ jobs:
             mkdir -p final-packages
 
             # 复制签名后的包文件到 final-packages
-            cp -R ./* final-packages/
+            echo "=== Current directory: $(pwd) ==="
+            ls -la /tmp/hestiacp-src/pkg/
+            cp -R /tmp/hestiacp-src/pkg/* final-packages/
 
             # 复制公钥到产物目录（客户端需要）
             printf "%s" "$PKG_SIGNING_KEY_PUB" > final-packages/hestiacp.pub
