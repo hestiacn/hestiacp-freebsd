@@ -27,7 +27,7 @@ jobs:
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "15.0"
+          release: "14.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
@@ -139,7 +139,7 @@ jobs:
             exit 1
           fi
 
-          FREEBSD_MAJOR="15"
+          FREEBSD_MAJOR="14"
           VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
 
@@ -175,7 +175,7 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          FREEBSD_MAJOR="15"
+          FREEBSD_MAJOR="14"
           VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           echo "=== Verifying uploaded files for $VERSION_PATH on Cloudflare R2 ==="
           aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
