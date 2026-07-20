@@ -1,5 +1,6 @@
 name: Build and Deploy FreeBSD pkg Repository
 
+# 触发时机：当发布新 Release、往 main/release 分支推送代码，或者手动点击运行
 on:
   release:
     types: [published]
@@ -22,6 +23,7 @@ jobs:
       matrix:
         freebsd_version: [14, 15]
     steps:
+      # 1. 检出最新源码
       - name: Checkout Repository
         uses: actions/checkout@v6
 
@@ -31,7 +33,7 @@ jobs:
           release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
-          copyback: true
+          copyback: true # 将产物复制回 runner
           run: |
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
@@ -41,6 +43,7 @@ jobs:
 
             chmod +x src/hst_autocompile.sh
 
+            # 编译并保存日志
             bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
@@ -55,18 +58,17 @@ jobs:
               exit 1
             fi
 
+            # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
 
-            # 如果有签名密钥则导入
-            if [ -n "${{ secrets.PKG_SIGNING_KEY }}" ]; then
-              echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
-              chmod 600 keys/hestiacp.key
-              echo "[ ✓ ] Private key imported for signing"
-              ls -la keys/
-            else
-              echo "[ ⚠️ ] No signing key found"
-            fi
+            # 导入私钥用于签名
+            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
+
+            echo "[ ✓ ] Private key imported for signing"
+            echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
+            ls -la keys/
 
             cd pkg
 
@@ -74,90 +76,64 @@ jobs:
             echo "=== Package files ==="
             ls -la
 
-            # 如果有密钥则签名，否则创建未签名仓库
-            if [ -f /tmp/hestiacp-src/keys/hestiacp.key ]; then
-              echo "[ * ] Signing repository with private key..."
-              pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-              if [ $? -ne 0 ]; then
-                echo "[ ✗ ] Failed to sign repository!"
-                exit 1
-              fi
-              echo "[ ✓ ] Repository signed successfully!"
-            else
-              echo "[ * ] Creating repository without signature..."
-              pkg repo .
-            fi
+            # 更新 pkg 并重试
+            pkg update -f
+            pkg upgrade -y pkg
 
-            # 确保在正确的位置
-            echo "=== Current location: $(pwd) ==="
-            echo "=== Files before creating final-packages ==="
-            ls -la
+            # 使用绝对路径签名仓库
+            echo "[ * ] Signing repository with private key..."
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
 
-            # 创建 final-packages 目录（确保成功）
-            mkdir -pv final-packages || {
-              echo "[ ✗ ] Failed to create final-packages directory!"
-              exit 1
-            }
-
-            # 验证目录创建成功
-            if [ ! -d "final-packages" ]; then
-              echo "[ ✗ ] final-packages directory still does not exist!"
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              echo "=== Debug information ==="
+              echo "Key file exists:"
+              ls -la /tmp/hestiacp-src/keys/
+              echo "=== meta.conf content ==="
+              cat meta.conf || echo "meta.conf not found"
+              echo "=== Directory contents ==="
+              ls -la
               exit 1
             fi
 
-            echo "[ ✓ ] final-packages directory created successfully"
-            
-            # 复制所有文件到 final-packages
-            cp -Rv ./* final-packages/ || {
-              echo "[ ✗ ] Failed to copy files to final-packages!"
-              exit 1
-            }
+            echo "[ ✓ ] Repository signed successfully!"
 
-            # 如果有公钥则复制
-            if [ -n "${{ secrets.PKG_SIGNING_KEY_PUB }}" ]; then
-              echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
-              echo "[ ✓ ] Public key added"
-            fi
+            # 准备产物 - 包含公钥供客户端下载
+            mkdir -p final-packages
+
+            # 复制签名后的包文件到 final-packages
+            cp -R ./* final-packages/
+
+            # 复制公钥到产物目录（客户端需要）
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
 
             # 验证签名文件
             echo "=== Verifying signature ==="
-            ls -la final-packages/ | grep -E "(digests|meta|packagesite|.sig)" || echo "No signature files found"
+            ls -la final-packages/ | grep -E "(digests|meta|packagesite)"
 
-            # 复制 web 文件（如果存在）
-            if [ -f /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html ]; then
-              cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/ 2>/dev/null || echo "index.html not found"
-            fi
-            
-            if [ -f /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html ]; then
-              cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/ 2>/dev/null || echo "404.html not found"
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html final-packages/
+            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html final-packages/
+
+            if [ -f "final-packages/digests.sig" ] || [ -f "final-packages/packagesite.sig" ]; then
+              echo "[ ✓ ] Repository signed successfully! Signature files found."
+            else
+              echo "[ ⚠️ ] Warning: No .sig files found, but continuing..."
             fi
 
             echo "=== Build artifacts ==="
             ls -la final-packages/
 
-            # 创建版本特定的目录结构
+            # 将产物复制到 GitHub runner 的工作目录（通过 copyback）
             FREEBSD_VERSION="${{ matrix.freebsd_version }}"
-            ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest"
-            mkdir -pv "$ARTIFACT_DIR" || {
-              echo "[ ✗ ] Failed to create artifact directory!"
-              exit 1
-            }
-            
-            # 复制产物到版本特定目录
-            cp -Rv final-packages/* "$ARTIFACT_DIR/" || {
-              echo "[ ✗ ] Failed to copy artifacts!"
-              exit 1
-            }
-
-            echo "[ ✓ ] Build artifacts ready at: $ARTIFACT_DIR"
-            echo "=== Artifacts contents ==="
-            ls -la "$ARTIFACT_DIR"
+            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest
+            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${FREEBSD_VERSION}:amd64/latest/
 
             echo "[ ✓ ] Build and sign completed successfully for FreeBSD ${{ matrix.freebsd_version }}!"
-
+      # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
-        if: always()
+        if: always() # 即使编译失败也运行
         run: |
+          # 检查 build.log 是否存在
           if [ ! -f "build.log" ]; then
             echo "❌ build.log not found!"
             echo "Current directory contents:"
@@ -180,11 +156,13 @@ jobs:
 
           EOF
 
+          # 提取版本信息
           echo "## Version Information" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息"
+          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 提取编译状态
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Build Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           if grep -q "Compilation completed successfully" build.log 2>/dev/null; then
@@ -193,18 +171,21 @@ jobs:
             echo "❌ **编译失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           fi
 
+          # 提取错误和警告
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Errors and Warnings" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "无错误或警告"
+          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "无错误或警告" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 提取包文件大小
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Package Sizes" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到包文件信息"
+          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到包文件信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 提取签名状态
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Signing Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           if grep -q "Repository signed successfully" build.log 2>/dev/null; then
@@ -213,28 +194,32 @@ jobs:
             echo "❌ **仓库签名失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           fi
 
+          # 提取关键配置检查
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Key Checks" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到配置检查信息"
+          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到配置检查信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 提取依赖安装状态
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Dependencies" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到依赖安装信息"
+          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到依赖安装信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 提取最终产物
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Build Artifacts" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息"
+          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+          # 添加退出码
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo "## Exit Code" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码"
+          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
           echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
           echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
@@ -244,6 +229,7 @@ jobs:
           echo "✅ Build report generated: build-report-FreeBSD${{ matrix.freebsd_version }}.md"
           cat build-report-FreeBSD${{ matrix.freebsd_version }}.md
 
+      # 上传报告作为 artifact
       - name: Upload build report
         if: always()
         uses: actions/upload-artifact@v7
@@ -252,6 +238,7 @@ jobs:
           path: build-report-FreeBSD${{ matrix.freebsd_version }}.md
           retention-days: 7
 
+      # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
           VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
@@ -283,6 +270,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
+      # 3.5 验证上传（可选）
       - name: Verify upload
         run: |
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
@@ -297,6 +285,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
+      # 4. 云端部署边缘计算 Worker 脚本
       - name: Deploy Cloudflare Worker
         run: |
           mkdir -p /tmp/worker-deploy
@@ -348,8 +337,6 @@ jobs:
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
-              } else if (path.endsWith(".sig")) {
-                headers.set("content-type", "text/plain; charset=utf-8");
               }
               
               return new Response(object.body, { headers });
