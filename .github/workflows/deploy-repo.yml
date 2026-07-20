@@ -29,15 +29,18 @@ jobs:
 
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
+        env:
+          PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
         with:
           release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
-          env:
-            PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
-            PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
           run: |
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
+            
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
