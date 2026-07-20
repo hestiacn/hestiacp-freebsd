@@ -127,26 +127,35 @@ jobs:
           mkdir -p artifacts
           
           echo "[ * ] Scanning synchronized copyback files in host memory..."
-          REAL_PKG_POOL=""
-          for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
-            if ls "$dir"/*.pkg >/dev/null 2>&1; then
-              REAL_PKG_POOL="$dir"
-              break
-            fi
-          done
+          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
           
-          if [ -n "$REAL_PKG_POOL" ]; then
-            echo "[ ✓ ] Target package pool successfully pinned at: $REAL_PKG_POOL"
-            VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-            mkdir -p "artifacts/$VERSION_PATH"
-            cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
-            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
-            cp src/pkg/index.html artifacts/
-            cp src/pkg/404.html artifacts/
+          if [ -z "$FOUND_DIR" ] || [ ! -f "$FOUND_DIR/index.html" ]; then
+            echo "[ * ] artifacts-bridge displaced, running dual-defense scanning via compiled package pool..."
+            REAL_PKG_POOL=""
+            for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
+              if find "$dir" -maxdepth 1 -type f -name "hestia*.pkg" -size +1M >/dev/null 2>&1; then
+                REAL_PKG_POOL="$dir"
+                break
+              fi
+            done
+            
+            if [ -n "$REAL_PKG_POOL" ]; then
+              echo "[ ✓ ] True HestiaCP package pool successfully pinned at: $REAL_PKG_POOL"
+              VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+              mkdir -p "artifacts/$VERSION_PATH"
+              cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
+              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+              cp src/pkg/index.html artifacts/
+              cp src/pkg/404.html artifacts/
+            else
+              echo "Fatal Error: No genuine compiled packages (hestia*.pkg > 1M) found anywhere in host space!"
+              echo "=== Dumping all directory architecture for emergency diagnosis ==="
+              find /home/runner/work/ -type d -maxdepth 4
+              exit 1
+            fi
           else
-            echo "Fatal Error: No compiled packages (*.pkg) found anywhere in host space!"
-            find /home/runner/work/ -type d -maxdepth 4
-            exit 1
+            echo "[ ✓ ] Found synchronized asset bridge at: $FOUND_DIR"
+            cp -R "$FOUND_DIR"/* artifacts/
           fi
           
           echo "=== Verified Restructured Production Tree Architecture on Host ==="
