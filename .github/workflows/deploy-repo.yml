@@ -59,7 +59,7 @@ jobs:
 
             echo "=== Exit code: $EXIT_CODE ==="
 
-            if [ $EXIT_CODE -eq 0 ]; then
+            if [ $EXIT_CODE -ne 0 ]; then
               echo "[ ✓ ] Compilation completed successfully!"
             else
               echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
@@ -106,10 +106,7 @@ jobs:
             fi
 
             echo "[ ✓ ] Repository signed successfully!"
-            echo "=== Current directory: $(pwd) ==="
-            cd /tmp/hestiacp-src/pkg/
-            ls -la /tmp/hestiacp-src/pkg/
-            if [ $? -ne 0 ]; then exit 1; fi
+            if [ $? -ne 0 ]; then echo "[ ✗ ] Failed to sign repository!"; exit 1; fi
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
             EXPORT_PATH="/tmp/hestiacp-src/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
             mkdir -p "$EXPORT_PATH"
@@ -117,36 +114,15 @@ jobs:
             # 全量捞取资产
             cp -R /tmp/hestiacp-src/pkg/* "$EXPORT_PATH/"
             printf "%s" "$PKG_SIGNING_KEY_PUB" > "$EXPORT_PATH/hestia.pub"
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html "$EXPORT_PATH/"
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html "$EXPORT_PATH/"
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts-bridge
-            cp -R /tmp/hestiacp-src/pkg/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts-bridge/
-            echo "[ ✓ ] Assets successfully safely cross-linked to host bridge!"
-
-      # 3. 利用官方 Artifact 将这个桥接目录安全暂存（彻底洗净虚拟机路径污染）
-      - name: Stash Packages to GitHub Artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: artifacts-bridge/
-          retention-days: 1
-
-      # 4. 下载暂存资产，直接落地到宿主机标准的 artifacts/ 目录下
-      - name: Download and Re-align Assets on Host
-        uses: actions/download-artifact@v8
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: artifacts-bridge/
-
-      - name: Re-align to version path
-        run: |
-          mkdir -p artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest
-          if [ -d "artifacts-bridge" ]; then
-            cp -R artifacts-bridge/* artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/
-            echo "=== Files in artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/ ==="
-            ls -la artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/
-          fi
-
+            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
+            
+            BRIDGE_ROOT="artifacts-bridge"
+            mkdir -p "$BRIDGE_ROOT"
+            cp -R /tmp/hestiacp-src/FreeBSD* "$BRIDGE_ROOT/"
+            cp src/pkg/index.html "$BRIDGE_ROOT/"
+            cp src/pkg/404.html "$BRIDGE_ROOT/"
+            
+            echo "[ ✓ ] Assets successfully safely cross-linked to host bridge with bulletproof relative path!"
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
@@ -161,8 +137,8 @@ jobs:
 
           echo "✅ build.log found, size: $(wc -l < build.log) lines"
 
-          cat > build-report-FreeBSD${{ matrix.freebsd_version }}.md << 'EOF'
-          # HestiaCP FreeBSD Build Report - FreeBSD ${{ matrix.freebsd_version }}
+          cat > build-report.md << 'EOF'
+          # HestiaCP FreeBSD Build Report
 
           ## Build Information
           | 项目 | 值 |
@@ -170,125 +146,146 @@ jobs:
           | 构建时间 | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |
           | 分支 | ${{ github.ref_name }} |
           | 提交 | ${{ github.sha }} |
-          | FreeBSD版本 | ${{ matrix.freebsd_version }} |
 
           EOF
 
           # 提取版本信息
-          echo "## Version Information" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "## Version Information" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report.md || echo "未找到版本信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取编译状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Build Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Build Status" >> build-report.md
           if grep -q "Compilation completed successfully" build.log 2>/dev/null; then
-            echo "✅ **编译成功**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "✅ **编译成功**" >> build-report.md
           else
-            echo "❌ **编译失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "❌ **编译失败**" >> build-report.md
           fi
 
           # 提取错误和警告
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Errors and Warnings" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "无错误或警告" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Errors and Warnings" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report.md || echo "无错误或警告" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取包文件大小
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Package Sizes" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到包文件信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Package Sizes" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report.md || echo "未找到包文件信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取签名状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Signing Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Signing Status" >> build-report.md
           if grep -q "Repository signed successfully" build.log 2>/dev/null; then
-            echo "✅ **仓库签名成功**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "✅ **仓库签名成功**" >> build-report.md
           else
-            echo "❌ **仓库签名失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "❌ **仓库签名失败**" >> build-report.md
           fi
 
           # 提取关键配置检查
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Key Checks" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到配置检查信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Key Checks" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report.md || echo "未找到配置检查信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取依赖安装状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Dependencies" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到依赖安装信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Dependencies" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report.md || echo "未找到依赖安装信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取最终产物
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Build Artifacts" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Build Artifacts" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report.md || echo "未找到产物信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 添加退出码
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Exit Code" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Exit Code" >> build-report.md
+          echo '```' >> build-report.md
+          grep "Exit code:" build.log | tail -1 >> build-report.md || echo "未找到退出码" >> build-report.md
+          echo '```' >> build-report.md
 
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "---" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "*报告由 GitHub Actions 自动生成*" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "---" >> build-report.md
+          echo "*报告由 GitHub Actions 自动生成*" >> build-report.md
 
-          echo "✅ Build report generated: build-report-FreeBSD${{ matrix.freebsd_version }}.md"
-          cat build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "✅ Build report generated: build-report.md"
+          cat build-report.md
 
       # 上传报告作为 artifact
       - name: Upload build report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-report-FreeBSD${{ matrix.freebsd_version }}
-          path: build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          name: build-report
+          path: build-report.md
           retention-days: 7
+      # 3. 利用官方 Artifact 将这个桥接目录安全暂存（彻底洗净虚拟机路径污染）
+      - name: Stash Packages to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
+          path: artifacts-bridge/
+          retention-days: 1
 
-      # 3. 上传到 Cloudflare R2
+      # 4. 下载暂存资产，直接落地到宿主机标准的 artifacts/ 目录下
+      - name: Download and Re-align Assets on Host
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
+          path: artifacts/
+
+      # 5. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
-          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-          ARTIFACT_PATH="artifacts/$VERSION_PATH"
-          
-          if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: artifacts directory not found at $ARTIFACT_PATH!"
-            echo "Available artifacts:"
-            find artifacts -type d 2>/dev/null || echo "No artifacts found"
+          # 1. 严格检查宿主机上刚刚落地的整体 artifacts 拓扑是否存在
+          if [ ! -d "artifacts" ]; then
+            echo "Error: Base artifacts directory not found!"
             exit 1
           fi
 
-          echo "=== Artifacts to upload for FreeBSD ${{ matrix.freebsd_version }} ==="
-          ls -la "$ARTIFACT_PATH"
+          # 2. 动态拼出当前矩阵正在处理的版本号路径，确保分支存在包资产
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+          ARTIFACT_PATH="artifacts/$VERSION_PATH"
+          if [ ! -d "$ARTIFACT_PATH" ]; then
+            echo "Error: Matrix sub-path $ARTIFACT_PATH not found!"
+            exit 1
+          fi
+
+          echo "=== Global files ready in artifacts/ ==="
+          ls -la artifacts/
+          echo "=== Internal binary packages for FreeBSD ${{ matrix.freebsd_version }} ==="
+          ls -la "$ARTIFACT_PATH/"
 
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Syncing $ARTIFACT_PATH to s3://fbsd-repo/$VERSION_PATH/"
-          
+          echo "Syncing specific matrix binaries to s3://fbsd-repo/$VERSION_PATH/"
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
-            --delete \
             --region auto
+
+          echo "Deploying edge node html headers to bucket root..."
+          aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto
+          aws s3 cp artifacts/404.html "s3://fbsd-repo/404.html" --endpoint-url "$ENDPOINT" --region auto
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
-      # 3.5 验证上传（可选）
+      # 6 验证上传
       - name: Verify upload
         run: |
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
@@ -297,8 +294,10 @@ jobs:
           fi
 
           VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-          echo "Verifying uploaded files for $VERSION_PATH..."
+          echo "=== Verifying uploaded files for $VERSION_PATH on Cloudflare R2 ==="
           aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
+          echo "=== Verifying Global HTML on Cloudflare R2 ==="
+          aws s3 ls "s3://fbsd-repo/" --endpoint-url "$ENDPOINT" --human-readable | grep -E "(index|404)"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
