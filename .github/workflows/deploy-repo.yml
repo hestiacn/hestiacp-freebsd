@@ -19,18 +19,15 @@ jobs:
   build-and-deploy:
     name: Build pkg repository and deploy to Cloudflare
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        freebsd_version: [14, 15]
     steps:
       # 1. 检出最新源码
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      - name: Build HestiaCP packages for FreeBSD ${{ matrix.freebsd_version }}
+      - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "${{ matrix.freebsd_version }}.0"
+          release: "14.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
@@ -57,7 +54,7 @@ jobs:
               tail -200 build.log
               exit 1
             fi
-            
+
             # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
@@ -70,14 +67,14 @@ jobs:
             echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
             ls -la keys/
 
-            cd /tmp/hestiacp-src/pkg
+            cd pkg
 
             echo "=== Current directory: $(pwd) ==="
             echo "=== Package files ==="
             ls -la
 
             # 更新 pkg 并重试
-            pkg update -f -y
+            pkg update -f
             pkg upgrade -y pkg
 
             # 使用绝对路径签名仓库
@@ -120,14 +117,14 @@ jobs:
               echo "[ ⚠️ ] Warning: No .sig files found, but continuing..."
             fi
 
-            echo "=== final-packages contents ==="
+            echo "=== Build artifacts ==="
             ls -la final-packages/
 
             # 将产物复制到 GitHub runner 的工作目录（通过 copyback）
-            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest
-            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/FreeBSD:${{ matrix.freebsd_version }}:amd64/latest/
+            mkdir -p /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts
+            cp -R final-packages/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
 
-            echo "[ ✓ ] Build and sign completed successfully for FreeBSD ${{ matrix.freebsd_version }}!"
+            echo "[ ✓ ] Build and sign completed successfully!"
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
@@ -142,8 +139,8 @@ jobs:
 
           echo "✅ build.log found, size: $(wc -l < build.log) lines"
 
-          cat > build-report-FreeBSD${{ matrix.freebsd_version }}.md << 'EOF'
-          # HestiaCP FreeBSD Build Report - FreeBSD ${{ matrix.freebsd_version }}
+          cat > build-report.md << 'EOF'
+          # HestiaCP FreeBSD Build Report
 
           ## Build Information
           | 项目 | 值 |
@@ -151,116 +148,112 @@ jobs:
           | 构建时间 | $(date -u +"%Y-%m-%d %H:%M:%S UTC") |
           | 分支 | ${{ github.ref_name }} |
           | 提交 | ${{ github.sha }} |
-          | FreeBSD版本 | ${{ matrix.freebsd_version }} |
 
           EOF
 
           # 提取版本信息
-          echo "## Version Information" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到版本信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "## Version Information" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "Build version|Nginx version|PHP version|Web Terminal version" build.log | head -10 >> build-report.md || echo "未找到版本信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取编译状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Build Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Build Status" >> build-report.md
           if grep -q "Compilation completed successfully" build.log 2>/dev/null; then
-            echo "✅ **编译成功**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "✅ **编译成功**" >> build-report.md
           else
-            echo "❌ **编译失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "❌ **编译失败**" >> build-report.md
           fi
 
           # 提取错误和警告
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Errors and Warnings" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "无错误或警告" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Errors and Warnings" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "error|Error|ERROR|warning|Warning|WARNING|failed|Failed|not found" build.log | head -30 >> build-report.md || echo "无错误或警告" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取包文件大小
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Package Sizes" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到包文件信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Package Sizes" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "\.pkg" build.log | grep -E "rw-r|size" >> build-report.md || echo "未找到包文件信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取签名状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Signing Status" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Signing Status" >> build-report.md
           if grep -q "Repository signed successfully" build.log 2>/dev/null; then
-            echo "✅ **仓库签名成功**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "✅ **仓库签名成功**" >> build-report.md
           else
-            echo "❌ **仓库签名失败**" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+            echo "❌ **仓库签名失败**" >> build-report.md
           fi
 
           # 提取关键配置检查
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Key Checks" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到配置检查信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Key Checks" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "checking for|detected|found|using" build.log | head -20 >> build-report.md || echo "未找到配置检查信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取依赖安装状态
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Dependencies" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到依赖安装信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Dependencies" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "Installing|pkg install|oniguruma" build.log | head -15 >> build-report.md || echo "未找到依赖安装信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 提取最终产物
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Build Artifacts" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到产物信息" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Build Artifacts" >> build-report.md
+          echo '```' >> build-report.md
+          grep -E "final-packages|artifacts|Build artifacts" build.log | head -10 >> build-report.md || echo "未找到产物信息" >> build-report.md
+          echo '```' >> build-report.md
 
           # 添加退出码
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "## Exit Code" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          grep "Exit code:" build.log | tail -1 >> build-report-FreeBSD${{ matrix.freebsd_version }}.md || echo "未找到退出码" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo '```' >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "## Exit Code" >> build-report.md
+          echo '```' >> build-report.md
+          grep "Exit code:" build.log | tail -1 >> build-report.md || echo "未找到退出码" >> build-report.md
+          echo '```' >> build-report.md
 
-          echo "" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "---" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
-          echo "*报告由 GitHub Actions 自动生成*" >> build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "" >> build-report.md
+          echo "---" >> build-report.md
+          echo "*报告由 GitHub Actions 自动生成*" >> build-report.md
 
-          echo "✅ Build report generated: build-report-FreeBSD${{ matrix.freebsd_version }}.md"
-          cat build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          echo "✅ Build report generated: build-report.md"
+          cat build-report.md
 
       # 上传报告作为 artifact
       - name: Upload build report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-report-FreeBSD${{ matrix.freebsd_version }}
-          path: build-report-FreeBSD${{ matrix.freebsd_version }}.md
+          name: build-report
+          path: build-report.md
           retention-days: 7
 
       # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
-          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-          ARTIFACT_PATH="artifacts/$VERSION_PATH"
-          
-          if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: artifacts directory not found at $ARTIFACT_PATH!"
-            echo "Available artifacts:"
-            find artifacts -type d 2>/dev/null || echo "No artifacts found"
+          # 检查产物是否存在
+          if [ ! -d "artifacts" ]; then
+            echo "Error: artifacts directory not found!"
             exit 1
           fi
 
-          echo "=== Artifacts to upload for FreeBSD ${{ matrix.freebsd_version }} ==="
-          ls -la "$ARTIFACT_PATH"
+          echo "=== Artifacts to upload ==="
+          ls -la artifacts/
 
+          # 构建完整的 endpoint URL
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Syncing $ARTIFACT_PATH to s3://fbsd-repo/$VERSION_PATH/"
-          
-          aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
+          echo "Syncing to endpoint: $ENDPOINT"
+
+          aws s3 sync artifacts/ s3://fbsd-repo \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
             --delete \
@@ -277,9 +270,8 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
-          echo "Verifying uploaded files for $VERSION_PATH..."
-          aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
+          echo "Verifying uploaded files..."
+          aws s3 ls s3://fbsd-repo/ --endpoint-url "$ENDPOINT" --recursive --human-readable
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -290,20 +282,6 @@ jobs:
           mkdir -p /tmp/worker-deploy
           cd /tmp/worker-deploy
           cat > worker.js << 'WORKER_EOF'
-          const sslRedirectScript = `
-            <script>
-              if (window.location.protocol === 'http:') {
-                window.location.href = window.location.href.replace(/^http:/i, 'https:');
-              }
-            </script>
-          `;
-
-          class HeadInjector {
-            element(element) {
-              element.prepend(sslRedirectScript, { html: true });
-            }
-          }
-
           var worker_default = {
             async fetch(request, env) {
               const url = new URL(request.url);
@@ -321,39 +299,38 @@ jobs:
                   }
                 });
               }
-              let path = url.pathname.slice(1) || "index.html";
-              let object = await env.FBSD_REPO.get(path);
-              let isNotFound = false;
+
+              let path = url.pathname;
+              if (path === "/" || path === "") {
+                path = "index.html";
+              } else {
+                path = path.startsWith("/") ? path.slice(1) : path;
+              }
+              const object = await env.FBSD_REPO.get(path);
               
               if (!object) {
-                isNotFound = true;
-                object = await env.FBSD_REPO.get("404.html");
-                if (!object) {
-                  return new Response("404 - Not Found", { status: 404 });
+                const notFound = await env.FBSD_REPO.get("404.html");
+                if (notFound) {
+                  return new Response(notFound.body, {
+                    status: 404,
+                    headers: { "Content-Type": "text/html; charset=utf-8" }
+                  });
                 }
+                return new Response("404 - Not Found", { status: 404 });
               }
+              
               const headers = new Headers();
               object.writeHttpMetadata(headers);
               headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
-              if (path.endsWith(".html") || isNotFound) {
+              if (path.endsWith(".html")) {
                 headers.set("content-type", "text/html; charset=utf-8");
-              } else if (path.endsWith(".sh") || path.endsWith(".pub") || path.endsWith(".sig")) {
+              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
               }
-              const response = new Response(object.body, { 
-                status: isNotFound ? 404 : 200, 
-                headers 
-              });
-              const contentType = headers.get("content-type") || "";
-              if (contentType.includes("text/html")) {
-                return new HTMLRewriter()
-                  .on("head", new HeadInjector())
-                  .transform(response);
-              }
               
-              return response;
+              return new Response(object.body, { headers });
             }
           };
 
