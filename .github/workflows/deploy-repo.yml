@@ -21,9 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14, 15] # 满血开启多系统矩阵支持
+        freebsd_version: [14, 15]
     steps:
-      # 1. 检出最新源码
       - name: Checkout Repository
         uses: actions/checkout@v7
 
@@ -107,35 +106,39 @@ jobs:
             fi
 
             echo "[ ✓ ] Repository signed successfully!"
+            WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            HOST_MOUNT_ROOT="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
-            HOST_TARGET_DIR="${HOST_MOUNT_ROOT}/artifacts-bridge/${VERSION_PATH}"
-            mkdir -p "$HOST_TARGET_DIR"
-            cp -R /tmp/hestiacp-src/pkg/* "${HOST_TARGET_DIR}/"
-            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${HOST_TARGET_DIR}/hestia.pub"
-            cp "${HOST_MOUNT_ROOT}/src/pkg/index.html" "${HOST_MOUNT_ROOT}/artifacts-bridge/" || true
-            cp "${HOST_MOUNT_ROOT}/src/pkg/404.html" "${HOST_MOUNT_ROOT}/artifacts-bridge/" || true
+            SAFE_VERSION_PATH="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
+            mkdir -p "${WORKSPACE}/artifacts/${SAFE_VERSION_PATH}"
+            cp -R /tmp/hestiacp-src/pkg/* "${WORKSPACE}/artifacts/${SAFE_VERSION_PATH}/"
+            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${WORKSPACE}/artifacts/${SAFE_VERSION_PATH}/hestia.pub"
+            cp "${WORKSPACE}/src/pkg/index.html" "${WORKSPACE}/artifacts/" || true
+            cp "${WORKSPACE}/src/pkg/404.html" "${WORKSPACE}/artifacts/" || true
 
-            echo "=== Perfect Tree Structure forced written to Host Space ==="
-            ls -R "${HOST_MOUNT_ROOT}/artifacts-bridge"
-            echo "[ ✓ ] Complete tree forced cross-linked into host memory successfully!"
+            echo "=== Files written to VM workspace ==="
+            ls -la "${WORKSPACE}/artifacts/"
+            echo "=== Version subdirectory ==="
+            ls -la "${WORKSPACE}/artifacts/${SAFE_VERSION_PATH}/"
 
-      # 3. 【宿主机一击必杀接引】由于在上一瞬间已经被强行写入，在这里一瞬寻回，高亮打印绝对路径
-      - name: Relocate and Realign Assets on Host
+      # 3. 修复：宿主机直接读取 artifacts 目录
+      - name: Verify and prepare artifacts on host
         run: |
-          mkdir -p artifacts
-          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
+          echo "=== Current workspace contents ==="
+          ls -la
+          echo "=== artifacts directory ==="
+          ls -la artifacts/ || echo "artifacts directory not found!"
           
-          if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
-            echo "[ ✓ ] Target asset pool forced pinned and matched at: $FOUND_DIR"
-            cp -R "$FOUND_DIR"/* artifacts/
+          # 检查是否有任何文件
+          if [ -d "artifacts" ] && [ "$(find artifacts -type f | head -1)" ]; then
+            echo "[ ✓ ] Artifacts successfully synced from VM"
+            echo "=== Full artifacts tree ==="
+            find artifacts -type f -exec ls -lh {} \;
           else
-            echo "Fatal Error: Cross-link forced assets not found in host filesystem!" && exit 1
+            echo "❌ Error: No artifacts found in workspace!"
+            echo "Trying to find artifacts elsewhere..."
+            find /home/runner/work/ -name "*.pkg" -type f | head -10
+            exit 1
           fi
-          
-          echo "=== Verified Restructured Production Tree Architecture on Host ==="
-          ls -R artifacts/
 
       # 4. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
