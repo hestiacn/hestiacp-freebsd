@@ -120,23 +120,46 @@ jobs:
             echo "=== Version subdirectory ==="
             ls -la "${WORKSPACE}/artifacts/${SAFE_VERSION_PATH}/"
 
-      # 3. 修复：宿主机直接读取 artifacts 目录
       - name: Verify and prepare artifacts on host
         run: |
           echo "=== Current workspace contents ==="
           ls -la
           echo "=== artifacts directory ==="
           ls -la artifacts/ || echo "artifacts directory not found!"
+          FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+          SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
+          REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           
-          # 检查是否有任何文件
-          if [ -d "artifacts" ] && [ "$(find artifacts -type f | head -1)" ]; then
-            echo "[ ✓ ] Artifacts successfully synced from VM"
+          if [ -d "artifacts/$SAFE_NAME" ]; then
+            echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
+            mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
+            mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
+          fi
+          if [ ! -d "artifacts/$REAL_NAME" ]; then
+            echo "[ ⚠️ ] Matrix path displaced, running dual-defense file scanner..."
+            REAL_PKG_POOL=""
+            for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages" | grep -v "src/pkg"); do
+              if find "$dir" -maxdepth 1 -type f -name "hestia*.pkg" >/dev/null 2>&1; then
+                REAL_PKG_POOL="$dir"
+                break
+              fi
+            done
+            if [ -n "$REAL_PKG_POOL" ]; then
+              echo "[ ✓ ] Package found and forced established from host: $REAL_PKG_POOL"
+              mkdir -p "artifacts/$REAL_NAME"
+              cp -R "$REAL_PKG_POOL"/* "artifacts/$REAL_NAME/"
+              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
+              cp src/pkg/index.html artifacts/
+              cp src/pkg/404.html artifacts/
+            fi
+          fi
+
+          if [ -d "artifacts/$REAL_NAME" ] && [ -f "artifacts/index.html" ]; then
+            echo "[ ✓ ] Artifacts successfully verified and aligned on host"
             echo "=== Full artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
           else
-            echo "❌ Error: No artifacts found in workspace!"
-            echo "Trying to find artifacts elsewhere..."
-            find /home/runner/work/ -name "*.pkg" -type f | head -10
+            echo "❌ Error: Target architecture could not be verified on host!"
             exit 1
           fi
 
