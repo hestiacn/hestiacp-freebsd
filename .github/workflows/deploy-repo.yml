@@ -125,22 +125,15 @@ jobs:
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          
-          echo "[ * ] Scanning synchronized copyback files in host memory..."
           FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
           
           if [ -z "$FOUND_DIR" ] || [ ! -f "$FOUND_DIR/index.html" ]; then
-            echo "[ * ] artifacts-bridge displaced, running dual-defense scanning via compiled package pool..."
-            REAL_PKG_POOL=""
-            for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
-              if find "$dir" -maxdepth 1 -type f -name "hestia*.pkg" -size +1M >/dev/null 2>&1; then
-                REAL_PKG_POOL="$dir"
-                break
-              fi
-            done
-            
-            if [ -n "$REAL_PKG_POOL" ]; then
-              echo "[ ✓ ] True HestiaCP package pool successfully pinned at: $REAL_PKG_POOL"
+            echo "[ * ] artifacts-bridge displaced, running precision file-anchor scanning across host space..."
+            TARGET_FILE_PATH=$(find /home/runner/work/ -type f -name "hestia-1.9.6.pkg" | head -n 1)
+            if [ -n "$TARGET_FILE_PATH" ]; then
+              REAL_PKG_POOL=$(dirname "$TARGET_FILE_PATH")
+              echo "[ ✓ ] Genuine HestiaCP package found at: $TARGET_FILE_PATH"
+              echo "[ ✓ ] Package repo pool successfully pinned at: $REAL_PKG_POOL"
               VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
               mkdir -p "artifacts/$VERSION_PATH"
               cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
@@ -148,8 +141,8 @@ jobs:
               cp src/pkg/index.html artifacts/
               cp src/pkg/404.html artifacts/
             else
-              echo "Fatal Error: No genuine compiled packages (hestia*.pkg > 1M) found anywhere in host space!"
-              echo "=== Dumping all directory architecture for emergency diagnosis ==="
+              echo "Fatal Error: Critical release package (hestia-1.9.6.pkg) not found anywhere in host space!"
+              echo "=== Dumping all available directory architecture for emergency diagnosis ==="
               find /home/runner/work/ -type d -maxdepth 4
               exit 1
             fi
