@@ -108,48 +108,38 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VM_BRIDGE_DIR="/tmp/vm-bridge-out/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            mkdir -p "$VM_BRIDGE_DIR"
-            
-            # 绝对路径精准装填资产，100% 拒绝源码混入
-            cp -R /tmp/hestiacp-src/pkg/* "$VM_BRIDGE_DIR/"
-            printf "%s" "$PKG_SIGNING_KEY_PUB" > "$VM_BRIDGE_DIR/hestia.pub"
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html /tmp/vm-bridge-out/ || true
-            cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html /tmp/vm-bridge-out/ || true
-            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
-            mkdir -p artifacts-bridge
-            cp -R /tmp/vm-bridge-out/* artifacts-bridge/ || true
-            
-            echo "=== Perfect Tree Built inside VM /tmp ==="
-            ls -R /tmp/vm-bridge-out
+            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            HOST_MOUNT_ROOT="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+            HOST_TARGET_DIR="${HOST_MOUNT_ROOT}/artifacts-bridge/${VERSION_PATH}"
+            mkdir -p "$HOST_TARGET_DIR"
+            cp -R /tmp/hestiacp-src/pkg/* "${HOST_TARGET_DIR}/"
+            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${HOST_TARGET_DIR}/hestia.pub"
+            cp "${HOST_MOUNT_ROOT}/src/pkg/index.html" "${HOST_MOUNT_ROOT}/artifacts-bridge/" || true
+            cp "${HOST_MOUNT_ROOT}/src/pkg/404.html" "${HOST_MOUNT_ROOT}/artifacts-bridge/" || true
 
-      # 3. 同步
-      - name: Stash Secure Tree via GitHub Artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: /tmp/vm-bridge-out/
-          if-no-files-found: warn
-          retention-days: 1
+            echo "=== Perfect Tree Structure forced written to Host Space ==="
+            ls -R "${HOST_MOUNT_ROOT}/artifacts-bridge"
+            echo "[ ✓ ] Complete tree forced cross-linked into host memory successfully!"
 
-      # 4. 下载到宿主机标准的 artifacts/ 目录下，直接落地生出完美的冒号多级卡槽与根线网页！
-      - name: Download and Establish Tree on Host
-        uses: actions/download-artifact@v8
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: temp-artifacts/
+      # 3. 【宿主机一击必杀接引】由于在上一瞬间已经被强行写入，在这里一瞬寻回，高亮打印绝对路径
+      - name: Relocate and Realign Assets on Host
+        run: |
+          mkdir -p artifacts
+          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
+          
+          if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
+            echo "[ ✓ ] Target asset pool forced pinned and matched at: $FOUND_DIR"
+            cp -R "$FOUND_DIR"/* artifacts/
+          else
+            echo "Fatal Error: Cross-link forced assets not found in host filesystem!" && exit 1
+          fi
+          
+          echo "=== Verified Restructured Production Tree Architecture on Host ==="
+          ls -R artifacts/
 
       # 4. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
-          mkdir -p artifacts
-          if [ -d "temp-artifacts" ]; then
-            echo "[ * ] Processing and reshaping downloaded artifacts layout..."
-            find temp-artifacts/ -type d -name "FreeBSD*" -exec cp -R {} artifacts/ \;
-            find temp-artifacts/ -type f -name "*.html" -exec cp {} artifacts/ \;
-            rm -rf temp-artifacts
-          fi
-
           if [ ! -d "artifacts" ]; then
             echo "Error: Base artifacts directory not found!"
             exit 1
@@ -159,7 +149,7 @@ jobs:
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
 
           if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: Transformed sub-path $ARTIFACT_PATH not found!"
+            echo "Error: Sub-path $ARTIFACT_PATH not found!"
             echo "Actual files inside artifacts:"
             ls -R artifacts/
             exit 1
