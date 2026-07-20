@@ -109,7 +109,7 @@ jobs:
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
             VM_TREE="/tmp/hestiacp-src/final-r2-tree/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
             mkdir -p "$VM_TREE"
-            cp -R ./* "$VM_TREE/"
+            cp -R /tmp/hestiacp-src/pkg/* "$VM_TREE/"
             echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "$VM_TREE/hestia.pub"
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
             mkdir -p artifacts-bridge
@@ -119,7 +119,7 @@ jobs:
             
             echo "[ ✓ ] Complete tree structured securely inside VM with bulletproof path!"
 
-      # 3. 宿主机全盘搜索接引（100% 成功率，彻底解决多系统找不到文件的梦魇）
+      # 3. 宿主机全盘搜索接引
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
@@ -258,13 +258,10 @@ jobs:
       # 5. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
         run: |
-          # 1. 严格检查宿主机上刚刚落地的整体 artifacts 拓扑是否存在
           if [ ! -d "artifacts" ]; then
             echo "Error: Base artifacts directory not found!"
             exit 1
           fi
-
-          # 2. 动态拼出当前矩阵正在处理的版本号路径，确保分支存在包资产
           VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
           if [ ! -d "$ARTIFACT_PATH" ]; then
