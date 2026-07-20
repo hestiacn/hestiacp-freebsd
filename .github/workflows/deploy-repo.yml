@@ -124,12 +124,12 @@ jobs:
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          FOUND_DIR=$(find /tmp/hestiacp-src/ -type d -name "final-r2-tree" | head -n 1)
-          
+          FOUND_DIR=$(find /tmp/hestiacp-src/pkg/ -type d -name "final-r2-tree" | head -n 1)
+          ls -la /tmp/hestiacp-src/pkg/
           if [ -z "$FOUND_DIR" ]; then
             echo "[ * ] final-r2-tree hidden, searching via compiled package pool..."
             REAL_PKG_POOL=""
-            for dir in $(find /tmp/hestiacp-src/ -type d -name "pkg" | grep -v "src/pkg"); do
+            for dir in $(find /tmp/hestiacp-src/pkg/-type d -name "pkg" | grep -v "src/pkg"); do
               if ls "$dir"/*.pkg >/dev/null 2>&1; then
                 REAL_PKG_POOL="$dir"
                 break
@@ -147,7 +147,7 @@ jobs:
             else
               echo "Fatal Error: No compiled packages (*.pkg) found anywhere in host space!"
               echo "=== Dumping all available directories for diagnosis ==="
-              find /tmp/hestiacp-src/ -type d -maxdepth 4
+              find /tmp/hestiacp-src/pkg/ -type d -maxdepth 4
               exit 1
             fi
           else

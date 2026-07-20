@@ -1490,8 +1490,6 @@ fi
 # =================================================================================
 # Install Packages (Automated CI/CD Sanity Verification)
 # =================================================================================
-
-# 💡 优化纠偏：单等号规范对齐
 if [ "$install" = 'yes' ] || [ "$install" = 'y' ] || [ "$install" = 'true' ]; then
 	echo "Installing packages for local sanity validation..."
 	if [ "$OSTYPE" = 'rhel' ]; then
