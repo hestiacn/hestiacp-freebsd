@@ -57,7 +57,15 @@ jobs:
               tail -200 build.log
               exit 1
             fi
+            mkdir -p /tmp/hestiacp-src/pkg
+            cd /tmp/hestiacp-src/pkg || {
+              echo "[ ✗ ] Failed to cd to /tmp/hestiacp-src/pkg"
+              exit 1
+            }
 
+            echo "=== Current directory: $(pwd) ==="
+            echo "=== Package files ==="
+            ls -la
             # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
@@ -92,6 +100,7 @@ jobs:
                 echo "=== meta.conf content ==="
                 cat meta.conf || echo "meta.conf not found"
                 echo "=== Directory contents ==="
+                echo "=== Current directory: $(pwd) ==="
                 ls -la
                 exit 1
               fi
@@ -128,7 +137,7 @@ jobs:
               echo "[ ⚠️ ] Warning: No .sig files found, but continuing..."
             fi
 
-            echo "=== Build artifacts ==="
+            echo "=== final-packages contents ==="
             ls -la final-packages/
 
             # 将产物复制到 GitHub runner 的工作目录（通过 copyback）
@@ -305,6 +314,20 @@ jobs:
           mkdir -p /tmp/worker-deploy
           cd /tmp/worker-deploy
           cat > worker.js << 'WORKER_EOF'
+          const sslRedirectScript = `
+            <script>
+              if (window.location.protocol === 'http:') {
+                window.location.href = window.location.href.replace(/^http:/i, 'https:');
+              }
+            </script>
+          `;
+
+          class HeadInjector {
+            element(element) {
+              element.prepend(sslRedirectScript, { html: true });
+            }
+          }
+
           var worker_default = {
             async fetch(request, env) {
               const url = new URL(request.url);
@@ -322,38 +345,39 @@ jobs:
                   }
                 });
               }
-
-              let path = url.pathname;
-              if (path === "/" || path === "") {
-                path = "index.html";
-              } else {
-                path = path.startsWith("/") ? path.slice(1) : path;
-              }
-              const object = await env.FBSD_REPO.get(path);
+              let path = url.pathname.slice(1) || "index.html";
+              let object = await env.FBSD_REPO.get(path);
+              let isNotFound = false;
               
               if (!object) {
-                const notFound = await env.FBSD_REPO.get("404.html");
-                if (notFound) {
-                  return new Response(notFound.body, {
-                    status: 404,
-                    headers: { "Content-Type": "text/html; charset=utf-8" }
-                  });
+                isNotFound = true;
+                object = await env.FBSD_REPO.get("404.html");
+                if (!object) {
+                  return new Response("404 - Not Found", { status: 404 });
                 }
-                return new Response("404 - Not Found", { status: 404 });
               }
-              
               const headers = new Headers();
               object.writeHttpMetadata(headers);
               headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
-              if (path.endsWith(".html")) {
+              if (path.endsWith(".html") || isNotFound) {
                 headers.set("content-type", "text/html; charset=utf-8");
-              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
+              } else if (path.endsWith(".sh") || path.endsWith(".pub") || path.endsWith(".sig")) {
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
               }
+              const response = new Response(object.body, { 
+                status: isNotFound ? 404 : 200, 
+                headers 
+              });
+              const contentType = headers.get("content-type") || "";
+              if (contentType.includes("text/html")) {
+                return new HTMLRewriter()
+                  .on("head", new HeadInjector())
+                  .transform(response);
+              }
               
-              return new Response(object.body, { headers });
+              return response;
             }
           };
 
