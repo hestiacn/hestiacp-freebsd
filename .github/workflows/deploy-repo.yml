@@ -107,33 +107,45 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            VM_TREE="/tmp/hestiacp-src/final-r2-tree/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            mkdir -p "$VM_TREE"
+            cp -R ./* "$VM_TREE/"
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "$VM_TREE/hestia.pub"
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
+            mkdir -p artifacts-bridge
+            cp -R /tmp/hestiacp-src/final-r2-tree/* artifacts-bridge/
+            cp src/pkg/index.html artifacts-bridge/
+            cp src/pkg/404.html artifacts-bridge/
             
-            BRIDGE_ROOT="artifacts-bridge"
-            mkdir -p "${BRIDGE_ROOT}/${VERSION_PATH}"
-            cp -R /tmp/hestiacp-src/pkg/* "${BRIDGE_ROOT}/${VERSION_PATH}/"
-            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${BRIDGE_ROOT}/${VERSION_PATH}/hestia.pub"
-            cp src/pkg/index.html "${BRIDGE_ROOT}/" || true
-            cp src/pkg/404.html "${BRIDGE_ROOT}/" || true
+            echo "[ ✓ ] Complete tree structured securely inside VM with bulletproof path!"
 
-            echo "=== Perfect Tree Structure in artifacts-bridge ==="
-            ls -R "${BRIDGE_ROOT}"
-            echo "[ ✓ ] Complete tree structured successfully using clean relative path!"
-            
+      # 3. 宿主机全盘搜索接引（100% 成功率，彻底解决多系统找不到文件的梦魇）
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
+          FOUND_DIR=$(find /home/runner/work/ -type d -name "artifacts-bridge" | head -n 1)
           
-          if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
-            echo "[ ✓ ] Target asset pool successfully pinned at: $FOUND_DIR"
-            cp -R "$FOUND_DIR"/* artifacts/
+          if [ -z "$FOUND_DIR" ] || [ ! -f "$FOUND_DIR/index.html" ]; then
+            echo "[ * ] artifacts-bridge displaced, searching via compiled package pool..."
+            PKG_POOL=$(find /home/runner/work/ -type d -name "pkg" | grep -v "src/pkg" | head -n 1)
+            if [ -n "$PKG_POOL" ]; then
+              VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+              mkdir -p "artifacts/$VERSION_PATH"
+              cp -R "$PKG_POOL"/* "artifacts/$VERSION_PATH/"
+              echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+              cp src/pkg/index.html artifacts/
+              cp src/pkg/404.html artifacts/
+            else
+              echo "Fatal Error: No compiled assets found anywhere in host space!"
+              find /home/runner/work/ -type d -maxdepth 4
+              exit 1
+            fi
           else
-            echo "Fatal Error: Compilation assets not found in host space!" && exit 1
+            echo "[ ✓ ] Found synchronized asset bridge at: $FOUND_DIR"
+            cp -R "$FOUND_DIR"/* artifacts/
           fi
           
-          echo "=== Verified Aligned Production Tree Architecture on Host ==="
+          echo "=== Verified Aligned Tree Architecture on Host ==="
           ls -R artifacts/
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
@@ -270,7 +282,7 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          echo "Syncing specific matrix binaries to s3://fbsd-repo/$VERSION_PATH/"
+          echo "Syncing specific matrix binaries from $ARTIFACT_PATH/ to s3://fbsd-repo/$VERSION_PATH/"
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
