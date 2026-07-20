@@ -123,16 +123,27 @@ jobs:
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          FOUND_DIR=$(find /home/runner/work/ -type d -name "artifacts-bridge" | head -n 1)
+          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
           
           if [ -z "$FOUND_DIR" ] || [ ! -f "$FOUND_DIR/index.html" ]; then
             echo "[ * ] artifacts-bridge displaced, searching via compiled package pool..."
-            PKG_POOL=$(find /home/runner/work/ -type d -name "pkg" | grep -v "src/pkg" | head -n 1)
-            if [ -n "$PKG_POOL" ]; then
+            REAL_PKG_POOL=""
+            for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
+              if ls "$dir"/*.pkg >/dev/null 2>&1; then
+                REAL_PKG_POOL="$dir"
+                break
+              fi
+            done
+            
+            if [ -n "$REAL_PKG_POOL" ]; then
+              echo "[ ✓ ] Target package pool successfully pinned at: $REAL_PKG_POOL"
               VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
               mkdir -p "artifacts/$VERSION_PATH"
-              cp -R "$PKG_POOL"/* "artifacts/$VERSION_PATH/"
-              echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+              
+              cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
+              
+              # 重新在对应位置固化公钥
+              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
               cp src/pkg/index.html artifacts/
               cp src/pkg/404.html artifacts/
             else
