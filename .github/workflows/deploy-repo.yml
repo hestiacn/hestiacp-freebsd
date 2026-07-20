@@ -59,7 +59,7 @@ jobs:
 
             echo "=== Exit code: $EXIT_CODE ==="
 
-            if [ $EXIT_CODE -ne 0 ]; then
+            if [ $EXIT_CODE -eq 0 ]; then
               echo "[ ✓ ] Compilation completed successfully!"
             else
               echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
@@ -106,7 +106,6 @@ jobs:
             fi
 
             echo "[ ✓ ] Repository signed successfully!"
-            if [ $? -ne 0 ]; then echo "[ ✗ ] Failed to sign repository!"; exit 1; fi
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
             EXPORT_PATH="/tmp/hestiacp-src/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
             mkdir -p "$EXPORT_PATH"
