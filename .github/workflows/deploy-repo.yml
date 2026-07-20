@@ -19,6 +19,9 @@ jobs:
   build-and-deploy:
     name: Build pkg repository and deploy to Cloudflare
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: [14]
     steps:
       # 1. 检出最新源码
       - name: Checkout Repository
@@ -26,20 +29,29 @@ jobs:
 
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
+        env:
+          PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
         with:
-          release: "14.0"
+          release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
           run: |
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
+            
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
+            
             export HESTIA_DEBUG=true
+
             chmod +x src/hst_autocompile.sh
 
             # 编译并保存日志
@@ -62,7 +74,7 @@ jobs:
             mkdir -p keys
 
             # 导入私钥用于签名
-            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
             echo "[ ✓ ] Private key imported for signing"
@@ -70,6 +82,7 @@ jobs:
             ls -la keys/
 
             cd pkg
+
             echo "=== Current directory: $(pwd) ==="
             echo "=== Package files ==="
             ls -la
@@ -81,7 +94,7 @@ jobs:
             # 使用绝对路径签名仓库
             echo "[ * ] Signing repository with private key..."
             pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-            
+
             if [ $? -ne 0 ]; then
               echo "[ ✗ ] Failed to sign repository!"
               echo "=== Debug information ==="
@@ -109,15 +122,6 @@ jobs:
             ls -R "${BRIDGE_ROOT}"
             echo "[ ✓ ] Build and sign completed successfully! All assets aligned."
 
-      # 上传报告作为 artifact
-      - name: Upload build report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-report
-          path: build-report.md
-          retention-days: 7
-
       # 3. 宿主机特征寻回
       - name: Relocate and Realign Assets on Host
         run: |
@@ -142,16 +146,18 @@ jobs:
             exit 1
           fi
 
-          FREEBSD_MAJOR="14"
-          VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
-
           if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: Sub-path $ARTIFACT_PATH not found!"
+            echo "Error: Matrix sub-path $ARTIFACT_PATH not found!"
             exit 1
           fi
 
-          # 构建完整的 endpoint URL
+          echo "=== Global files ready in artifacts/ ==="
+          ls -la artifacts/
+          echo "=== Internal binary packages for FreeBSD ${{ matrix.freebsd_version }} ==="
+          ls -la "$ARTIFACT_PATH/"
+
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
@@ -170,7 +176,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
-      # 5. 验证上传
+      # 3.5 验证上传（可选）
       - name: Verify upload
         run: |
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
@@ -178,8 +184,7 @@ jobs:
             ENDPOINT="https://$ENDPOINT"
           fi
 
-          FREEBSD_MAJOR="14"
-          VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
           echo "=== Verifying uploaded files for $VERSION_PATH on Cloudflare R2 ==="
           aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
           echo "=== Verifying Global HTML on Cloudflare R2 ==="
