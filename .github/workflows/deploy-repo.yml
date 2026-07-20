@@ -34,6 +34,9 @@ jobs:
           usesh: true
           sync: rsync
           copyback: true # 将产物复制回 runner
+          env:
+            PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+            PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
           run: |
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
@@ -67,7 +70,7 @@ jobs:
             mkdir -p keys
 
             # 导入私钥用于签名
-            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
             echo "[ ✓ ] Private key imported for signing"
@@ -109,7 +112,7 @@ jobs:
             cp -R ./* final-packages/
 
             # 复制公钥到产物目录（客户端需要）
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > final-packages/hestiacp.pub
+            printf "%s" "$PKG_SIGNING_KEY_PUB" > final-packages/hestiacp.pub
 
             # 验证签名文件
             echo "=== Verifying signature ==="
