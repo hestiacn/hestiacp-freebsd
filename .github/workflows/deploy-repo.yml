@@ -27,6 +27,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      # 2. 虚拟机内部编译、数字签名与下划线安全隔离固化
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         env:
@@ -44,12 +45,11 @@ jobs:
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-
+            # 创建 bash 软链接
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
-            
             export HESTIA_DEBUG=true
 
             chmod +x src/hst_autocompile.sh
@@ -64,12 +64,11 @@ jobs:
               echo "[ ✓ ] Compilation completed successfully!"
             else
               echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
-              echo "=== Last 200 lines of build.log ==="
               tail -200 build.log
               exit 1
             fi
 
-            # 准备签名密钥目录（在正确的位置）
+            # 准备签名密钥目录
             cd /tmp/hestiacp-src
             mkdir -p keys
 
@@ -109,33 +108,42 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            SAFE_VERSION_PATH="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
             BRIDGE_ROOT="artifacts-bridge"
-            mkdir -p "${BRIDGE_ROOT}/${VERSION_PATH}"
-            cp -R /tmp/hestiacp-src/pkg/* "${BRIDGE_ROOT}/${VERSION_PATH}/"
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "${BRIDGE_ROOT}/${VERSION_PATH}/hestia.pub"
+            mkdir -p "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}"
+            cp -R /tmp/hestiacp-src/pkg/* "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}/"
+            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}/hestia.pub"
             cp src/pkg/index.html "${BRIDGE_ROOT}/" || true
             cp src/pkg/404.html "${BRIDGE_ROOT}/" || true
 
-            echo "=== Perfect Tree Structure inside VM ==="
+            echo "=== Secure Downlined Tree Structure inside VM ==="
             ls -R "${BRIDGE_ROOT}"
-            echo "[ ✓ ] Build and sign completed successfully! All assets aligned."
+            echo "[ ✓ ] Complete safe tree structured successfully!"
 
-      # 3. 宿主机特征寻回
+      # 3. 宿主机寻回与符号硬核整形
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
           FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
           
           if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
-            echo "[ ✓ ] Target asset pool successfully pinned at: $FOUND_DIR"
+            echo "[ ✓ ] Synchronized asset pool safely pinned at: $FOUND_DIR"
             cp -R "$FOUND_DIR"/* artifacts/
+            FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+            SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
+            REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            
+            if [ -d "artifacts/$SAFE_NAME" ]; then
+              mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
+              mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
+              echo "[ ✓ ] Dynamic structural reshaping passed: $SAFE_NAME -> $REAL_NAME"
+            fi
           else
-            echo "Fatal Error: Compilation assets not found in host space!" && exit 1
+            echo "Fatal Error: Secure compilation assets not found in host space!" && exit 1
           fi
           
-          echo "=== Verified Aligned Tree Architecture on Host ==="
+          echo "=== Verified Restructured Production Tree Architecture on Host ==="
           ls -R artifacts/
 
       # 4. 上传到 Cloudflare R2
@@ -149,7 +157,7 @@ jobs:
           VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
           if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: Matrix sub-path $ARTIFACT_PATH not found!"
+            echo "Error: Transformed sub-path $ARTIFACT_PATH not found!"
             exit 1
           fi
 
@@ -176,7 +184,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
-      # 3.5 验证上传（可选）
+      # 5. 验证上传状态
       - name: Verify upload
         run: |
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
