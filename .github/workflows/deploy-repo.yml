@@ -27,7 +27,6 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
-      # 2. 虚拟机内部编译、数字签名与下划线安全隔离固化
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         env:
@@ -37,7 +36,7 @@ jobs:
           release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
-          copyback: true # 将产物复制回 runner
+          copyback: true
           run: |
             export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
             export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
@@ -45,7 +44,7 @@ jobs:
             cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
 
             pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-            # 创建 bash 软链接
+
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
@@ -58,17 +57,12 @@ jobs:
             bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
-            echo "=== Exit code: $EXIT_CODE ==="
-
-            if [ $EXIT_CODE -eq 0 ]; then
-              echo "[ ✓ ] Compilation completed successfully!"
-            else
-              echo "[ ✗ ] Error: Compilation failed with exit code $EXIT_CODE"
+            if [ $EXIT_CODE -ne 0 ]; then
               tail -200 build.log
               exit 1
             fi
 
-            # 准备签名密钥目录
+            # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
 
@@ -76,18 +70,7 @@ jobs:
             printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
-            echo "[ ✓ ] Private key imported for signing"
-            echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
-            ls -la keys/
-
             cd pkg
-
-            echo "=== Current directory: $(pwd) ==="
-            echo "=== Package files ==="
-            ls -la
-
-            # 更新 pkg 并重试
-            pkg update -f
             pkg upgrade -y pkg
 
             # 使用绝对路径签名仓库
@@ -96,57 +79,45 @@ jobs:
 
             if [ $? -ne 0 ]; then
               echo "[ ✗ ] Failed to sign repository!"
-              echo "=== Debug information ==="
-              echo "Key file exists:"
-              ls -la /tmp/hestiacp-src/keys/
-              echo "=== meta.conf content ==="
-              cat meta.conf || echo "meta.conf not found"
-              echo "=== Directory contents ==="
-              ls -la
               exit 1
             fi
 
-            echo "[ ✓ ] Repository signed successfully!"
-            FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            SAFE_VERSION_PATH="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
-            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
-            BRIDGE_ROOT="artifacts-bridge"
-            mkdir -p "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}"
-            cp -R /tmp/hestiacp-src/pkg/* "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}/"
-            echo "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "${BRIDGE_ROOT}/${SAFE_VERSION_PATH}/hestia.pub"
-            cp src/pkg/index.html "${BRIDGE_ROOT}/" || true
-            cp src/pkg/404.html "${BRIDGE_ROOT}/" || true
+            echo "[ ✓ ] Repository signed successfully inside VM!"
+            echo "=== Finished Build Routine ==="
 
-            echo "=== Secure Downlined Tree Structure inside VM ==="
-            ls -R "${BRIDGE_ROOT}"
-            echo "[ ✓ ] Complete safe tree structured successfully!"
-
-      # 3. 宿主机寻回与符号硬核整形
+      # 3. 查找文件
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
-          FOUND_DIR=$(find /home/runner/work/ -maxdepth 4 -type d -name "artifacts-bridge" | head -n 1)
           
-          if [ -n "$FOUND_DIR" ] && [ -f "$FOUND_DIR/index.html" ]; then
-            echo "[ ✓ ] Synchronized asset pool safely pinned at: $FOUND_DIR"
-            cp -R "$FOUND_DIR"/* artifacts/
-            FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
-            SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
-            REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            
-            if [ -d "artifacts/$SAFE_NAME" ]; then
-              mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
-              mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
-              echo "[ ✓ ] Dynamic structural reshaping passed: $SAFE_NAME -> $REAL_NAME"
+          echo "[ * ] Running deep asset feature scanning across host space..."
+          REAL_PKG_POOL=""
+          for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
+            if ls "$dir"/*.pkg >/dev/null 2>&1; then
+              REAL_PKG_POOL="$dir"
+              break
             fi
+          done
+          
+          if [ -n "$REAL_PKG_POOL" ]; then
+            echo "[ ✓ ] Target package pool successfully pinned at: $REAL_PKG_POOL"
+            VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+            mkdir -p "artifacts/$VERSION_PATH"
+            cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
+            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+            cp src/pkg/index.html artifacts/
+            cp src/pkg/404.html artifacts/
           else
-            echo "Fatal Error: Secure compilation assets not found in host space!" && exit 1
+            echo "Fatal Error: No compiled packages (*.pkg) found anywhere in host memory!"
+            echo "=== Dumping all directory architecture for emergency diagnosis ==="
+            find /home/runner/work/ -type d -maxdepth 4
+            exit 1
           fi
           
-          echo "=== Verified Restructured Production Tree Architecture on Host ==="
+          echo "=== Verified Aligned Production Tree Architecture on Host ==="
           ls -R artifacts/
 
-      # 4. 上传到 Cloudflare R2
+      # 4. 上传到 Cloudflare R2（矩阵隔离靶向精准同步，完美防踩踏）
       - name: Sync Packages to Cloudflare R2
         run: |
           if [ ! -d "artifacts" ]; then
@@ -157,26 +128,24 @@ jobs:
           VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
           ARTIFACT_PATH="artifacts/$VERSION_PATH"
           if [ ! -d "$ARTIFACT_PATH" ]; then
-            echo "Error: Transformed sub-path $ARTIFACT_PATH not found!"
+            echo "Error: Matrix sub-path $ARTIFACT_PATH not found!"
             exit 1
           fi
-
-          echo "=== Global files ready in artifacts/ ==="
-          ls -la artifacts/
-          echo "=== Internal binary packages for FreeBSD ${{ matrix.freebsd_version }} ==="
-          ls -la "$ARTIFACT_PATH/"
 
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
           fi
 
+          # 精准靶向同步二进制隔离子目录。带上 --delete 完美自清洗旧废包，且由于路径深度锁死，并行跑绝对互不伤害！
           echo "Syncing specific matrix binaries from $ARTIFACT_PATH/ to s3://fbsd-repo/$VERSION_PATH/"
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
             --delete \
             --region auto
+
+          # 边缘节点全局共享 HTML 响应头精准覆盖上传，保障最顶层根路径稳定访问
           echo "Deploying edge node html headers to bucket root..."
           aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto
           aws s3 cp artifacts/404.html "s3://fbsd-repo/404.html" --endpoint-url "$ENDPOINT" --region auto
