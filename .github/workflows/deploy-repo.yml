@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14, 15] # 满血多版本矩阵并行
+        freebsd_version: [14, 15] # 满血开启多系统矩阵支持
     steps:
       # 1. 检出最新源码
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      # 2. 虚拟机内部编译与官方自动签名（极简、克制，绝不在外部做任何画蛇添足的二次签名或目录乱切）
+      # 2. 虚拟机内部编译与官方自动签名（极致精简、克制，绝不在内部使用突兀的 exit 0 破坏 if 闭环）
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         env:
@@ -60,14 +60,15 @@ jobs:
 
             echo "=== Autocompile Exit code: $EXIT_CODE ==="
 
-            if [ $EXIT_CODE -eq 0 ]; then
-              echo "[ ✓ ] HestiaCP Official Build and Signature Routine Completed Successfully!"
-              exit 0 # 完美成功，立刻安全交还控制权，决不在后面多写任何一行 cp 或 pkg repo！
-            else
+            if [ $EXIT_CODE -ne 0 ]; then
               echo "[ ✗ ] Error: Compilation failed"
               tail -200 build.log
               exit 1
             fi
+
+            echo "[ ✓ ] HestiaCP Official Build and Signature Routine Completed Successfully!"
+            echo "=== VM Control Flow Gracefully Terminated ==="
+
             # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
@@ -120,14 +121,12 @@ jobs:
             echo "=== Perfect Tree Structure inside VM ==="
             ls -R "${BRIDGE_ROOT}"
             echo "[ ✓ ] Build and sign completed successfully! All assets aligned."
-
-      # 3.宿主机特征寻回
+      # 3. 🛡️ 【宿主机主动重组总成】虚拟机关闭后，宿主机拿着特征指纹摸排 100% 精准在本地建树
       - name: Relocate and Realign Assets on Host
         run: |
           mkdir -p artifacts
           
           echo "[ * ] Scanning synchronized copyback files in host memory..."
-    
           REAL_PKG_POOL=""
           for dir in $(find /home/runner/work/ -type d -name "pkg" -o -name "packages"); do
             if ls "$dir"/*.pkg >/dev/null 2>&1; then
@@ -138,14 +137,10 @@ jobs:
           
           if [ -n "$REAL_PKG_POOL" ]; then
             echo "[ ✓ ] Target package pool successfully pinned at: $REAL_PKG_POOL"
-            
             VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
             mkdir -p "artifacts/$VERSION_PATH"
-            
             cp -R "$REAL_PKG_POOL"/* "artifacts/$VERSION_PATH/"
-            
             printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
-            
             cp src/pkg/index.html artifacts/
             cp src/pkg/404.html artifacts/
           else
@@ -172,11 +167,15 @@ jobs:
             exit 1
           fi
 
+          echo "=== Global files ready in artifacts/ ==="
+          ls -la artifacts/
+          echo "=== Internal binary packages for FreeBSD ${{ matrix.freebsd_version }} ==="
+          ls -la "$ARTIFACT_PATH/"
+
           ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
           if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
             ENDPOINT="https://$ENDPOINT"
           fi
-
           echo "Syncing specific matrix binaries from $ARTIFACT_PATH/ to s3://fbsd-repo/$VERSION_PATH/"
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
