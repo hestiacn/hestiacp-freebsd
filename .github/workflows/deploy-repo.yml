@@ -46,7 +46,6 @@ jobs:
             # 编译并保存日志
             bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
-            cp build.log /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
 
             echo "=== Exit code: $EXIT_CODE ==="
 
