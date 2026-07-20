@@ -58,16 +58,6 @@ jobs:
               exit 1
             fi
             
-            cd /tmp/hestiacp-src/pkg || {
-              echo "[ ✗ ] Failed to cd to /tmp/hestiacp-src/pkg"
-              echo "=== Contents of /tmp/hestiacp-src ==="
-              ls -la /tmp/hestiacp-src/
-              exit 1
-            }
-
-            echo "=== Current directory: $(pwd) ==="
-            echo "=== Package files ==="
-            ls -la
             # 准备签名密钥目录（在正确的位置）
             cd /tmp/hestiacp-src
             mkdir -p keys
