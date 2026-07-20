@@ -70,7 +70,7 @@ jobs:
             echo "Key location: /tmp/hestiacp-src/keys/hestiacp.key"
             ls -la keys/
 
-            cd pkg
+            cd /tmp/hestiacp-src/pkg
 
             echo "=== Current directory: $(pwd) ==="
             echo "=== Package files ==="
@@ -129,6 +129,13 @@ jobs:
 
             echo "[ ✓ ] Build and sign completed successfully for FreeBSD ${{ matrix.freebsd_version }}!"
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-cat
+          path: build.log
+          retention-days: 7
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
         run: |
