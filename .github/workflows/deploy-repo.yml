@@ -109,19 +109,45 @@ jobs:
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
             EXPORT_PATH="/tmp/hestiacp-src/FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
             mkdir -p "$EXPORT_PATH"
-
-            # 全量捞取资产
             cp -R /tmp/hestiacp-src/pkg/* "$EXPORT_PATH/"
             printf "%s" "$PKG_SIGNING_KEY_PUB" > "$EXPORT_PATH/hestia.pub"
-            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd || exit 1
+            VM_BRIDGE="/tmp/hestiacp-src/final-r2-tree"
+            mkdir -p "$VM_BRIDGE"
+            cp -R /tmp/hestiacp-src/FreeBSD* "$VM_BRIDGE/"
+            cp ../../home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html "$VM_BRIDGE/" 2>/dev/null || cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/index.html "$VM_BRIDGE/" || true
+            cp ../../home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html "$VM_BRIDGE/" 2>/dev/null || cp /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/src/pkg/404.html "$VM_BRIDGE/" || true
+            mkdir -p artifacts-bridge
+            cp -R "$VM_BRIDGE"/* artifacts-bridge/ || true
             
-            BRIDGE_ROOT="artifacts-bridge"
-            mkdir -p "$BRIDGE_ROOT"
-            cp -R /tmp/hestiacp-src/FreeBSD* "$BRIDGE_ROOT/"
-            cp src/pkg/index.html "$BRIDGE_ROOT/"
-            cp src/pkg/404.html "$BRIDGE_ROOT/"
+            echo "[ ✓ ] Complete tree structured securely inside VM /tmp/hestiacp-src!"
             
-            echo "[ ✓ ] Assets successfully safely cross-linked to host bridge with bulletproof relative path!"
+      - name: Relocate and Realign Assets on Host
+        run: |
+          mkdir -p artifacts
+          FOUND_DIR=$(find /home/runner/work/ -type d -name "final-r2-tree" | head -n 1)
+          
+          if [ -z "$FOUND_DIR" ]; then
+            echo "[ * ] final-r2-tree hidden, searching via compiled package pool..."
+            PKG_POOL=$(find /home/runner/work/ -type d -name "pkg" | grep -v "src/pkg" | head -n 1)
+            if [ -n "$PKG_POOL" ]; then
+              VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+              mkdir -p "artifacts/$VERSION_PATH"
+              cp -R "$PKG_POOL"/* "artifacts/$VERSION_PATH/"
+              printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+              cp src/pkg/index.html artifacts/
+              cp src/pkg/404.html artifacts/
+            else
+              echo "Fatal Error: No compiled assets found anywhere in host space!"
+              find /home/runner/work/ -type d -maxdepth 4
+              exit 1
+            fi
+          else
+            echo "[ ✓ ] Found synchronized asset tree at: $FOUND_DIR"
+            cp -R "$FOUND_DIR"/* artifacts/
+          fi
+          
+          echo "=== Verified Aligned Tree Architecture on Host ==="
+          ls -R artifacts/
       # 在 Build HestiaCP packages 步骤之后，添加这个新步骤
       - name: Extract and format build log
         if: always() # 即使编译失败也运行
@@ -229,20 +255,6 @@ jobs:
           name: build-report
           path: build-report.md
           retention-days: 7
-      # 3. 利用官方 Artifact 将这个桥接目录安全暂存（彻底洗净虚拟机路径污染）
-      - name: Stash Packages to GitHub Artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: artifacts-bridge/
-          retention-days: 1
-
-      # 4. 下载暂存资产，直接落地到宿主机标准的 artifacts/ 目录下
-      - name: Download and Re-align Assets on Host
-        uses: actions/download-artifact@v8
-        with:
-          name: repo-assets-FreeBSD${{ matrix.freebsd_version }}
-          path: artifacts/
 
       # 5. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
