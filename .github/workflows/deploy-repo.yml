@@ -62,8 +62,8 @@ jobs:
             cd /tmp/hestiacp-src
             mkdir -p keys
 
-            # 导入私钥用于签名 - 使用 printf 避免特殊字符问题
-            printf "%s" "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
+            # 导入私钥用于签名
+            echo "${{ secrets.PKG_SIGNING_KEY }}" > keys/hestiacp.key
             chmod 600 keys/hestiacp.key
 
             echo "[ ✓ ] Private key imported for signing"
