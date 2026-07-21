@@ -6,7 +6,7 @@
 # https://www.hestiacp.com/
 #
 # Currently Supported Versions:
-# FreeBSD 13, 14, 15
+# FreeBSD 14, 15
 #
 # ======================================================== #
 
@@ -18,6 +18,8 @@ export PATH=$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 # 仓库地址
 RHOST='pkg.hestiamb.org'
 VERSION='freebsd'
+ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
+export ABI
 HESTIA='/usr/local/hestia'
 LOG="/root/hst_install_backups/hst_install-$(date +%d%m%Y%H%M).log"
 memory=$(($(sysctl -n hw.physmem) / 1024))
@@ -48,18 +50,17 @@ mariadb_v="1011"
 node_v="24"
 psql_v="18"
 bind_v="920"
-
+mysql_v="97"
 # FreeBSD 软件包列表
-software="acl apache24 apache24-suexec bc bind$bind_v bsdutils
-  clamav curl bind-tools dovecot e2fsprogs exim expect fail2ban py311-b2
-  flex ftp git hestia=${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
-  idn2 ImageMagick7 ipset jq libidn2 lsb_release lsof mariadb$mariadb_v-client
-  mariadb$mariadb_v-server mc net-tools nginx node openssh-portable
-  postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql-client mysql-common mysql-server
-  spamassassin sysstat unrar unzip util-linux vim vsftpd-ssl xxd whois zip zstd php$fpm_v-pecl-mcrypt
-  bubblewrap restic ap24-mod_php$fpm_v ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM
+software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs exim expect
+  git hestia=${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
+  ImageMagick7 ipset jq libidn2 lsof mariadb$mariadb_v-client
+  mariadb$mariadb_v-server mc nginx node openssh-portable 
+  postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql$mysql_v-client mysql$mysql_v-server
+  spamassassin unrar unzip vim vsftpd-ssl xxd whois zip zstd php$fpm_v-pecl-mcrypt
+  restic ap24-mod_php$fpm_v ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM
   php$fpm_v php$fpm_v-bz2 php$fpm_v-curl php$fpm_v-gd php$fpm_v-intl php$fpm_v-ldap php$fpm_v-mbstring
-  php$fpm_v php$fpm_v-mysqli php$fpm_v-pgsql php$fpm_v-readline php$fpm_v-xml php$fpm_v-zip
+  php$fpm_v-mysqli php$fpm_v-pgsql php$fpm_v-readline php$fpm_v-xml php$fpm_v-zip
   php$fpm_v-pecl-APCu php$fpm_v-pecl-imagick php$fpm_v-pecl-imap php$fpm_v-pecl-pspell"
 
 installer_dependencies="ca_root_nss curl gnupg openssl wget sudo"
@@ -894,8 +895,7 @@ fi
 # Installing HestiaCP repo
 echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
-ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
-export ABI
+
 # 下载公钥
 fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\${ABI}/latest/hestia.pub
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
