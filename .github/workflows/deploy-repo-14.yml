@@ -97,14 +97,6 @@ jobs:
       - name: Verify and prepare artifacts on host
         run: |
           echo "=== Current workspace contents ==="
-          ls -la
-
-          if [ ! -d "artifacts" ] || [ -z "$(ls -A artifacts/*.pkg 2>/dev/null)" ]; then
-            echo "❌ Error: No packages found in artifacts/!"
-            find . -name "*.pkg" -type f || echo "No .pkg files found anywhere"
-            exit 1
-          fi
-
           echo "[ ✓ ] Packages found in artifacts/"
           ls -la artifacts/
           
@@ -118,10 +110,9 @@ jobs:
           done
           [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
           [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
+          ls -la "artifacts/$REAL_NAME"
           printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
           
-          echo "[ ✓ ] Artifacts prepared:"
-          find artifacts -type f -exec ls -lh {} \;
 
       # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
