@@ -96,7 +96,7 @@ jobs:
 
             # 方案3：直接放到工作目录根，copyback 会自动同步
             echo "[ * ] Preparing artifacts to workspace root for copyback..."
-            cp -R /tmp/hestiacp-src/pkg/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
+            cp -R /tmp/hestiacp-src/pkg /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
             echo "=== Files in workspace root: ==="
             ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
 
