@@ -94,39 +94,49 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 使用 copyback 机制 - 将产物复制到 /tmp/copyback/
-            echo "[ * ] Preparing artifacts for copyback..."
-            mkdir -p /tmp/copyback/
-
-            # 复制所有包文件和签名文件
-            cp -R /tmp/hestiacp-src/pkg/* /tmp/copyback/
-            cp -R /tmp/hestiacp-src/keys/* /tmp/copyback/
-            echo "=== Files in copyback/==="
-            ls -la /tmp/copyback/
-            echo "[ ✓ ] Artifacts ready for copyback!"
+            # 方案3：直接放到工作目录根，copyback 会自动同步
+            echo "[ * ] Preparing artifacts to workspace root for copyback..."
+            cp -R /tmp/hestiacp-src/pkg/* "$WORKSPACE/"
+            echo "=== Files in workspace root: ==="
+            ls -la "$WORKSPACE/"
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
         run: |
           echo "=== Current workspace contents ==="
           ls -la
+          
+          # 检查包文件是否存在（可能在根目录或 artifacts 目录）
           if [ -f "hestia-1.9.6.pkg" ]; then
-            echo "[ ✓ ] Packages found in current directory"
-            ls -la *.pkg *.pub meta packagesite.pkg || true
+            echo "[ ✓ ] Packages found in workspace root"
+            ls -la *.pkg *.pub meta packagesite.pkg data.pkg meta.conf || true
+            
             FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
             REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
             mkdir -p "artifacts/$REAL_NAME"
+            
+            # 移动所有包文件到版本目录
             mv *.pkg *.pub meta packagesite.pkg data.pkg meta.conf "artifacts/$REAL_NAME/" || true
-            cp src/pkg/index.html artifacts/ || true
-            cp src/pkg/404.html artifacts/ || true
+            
+            # 复制 HTML 文件
+            mkdir -p artifacts
+            [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
+            [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
+            
+            # 覆盖公钥
             printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
             
             echo "[ ✓ ] Artifacts successfully prepared"
             find artifacts -type f -exec ls -lh {} \;
+          elif [ -d "artifacts" ] && [ -n "$(ls -A artifacts/*.pkg 2>/dev/null)" ]; then
+            echo "[ ✓ ] Packages found in artifacts/ directory"
+            ls -la artifacts/
           else
-            echo "❌ Error: No packages found in current directory!"
+            echo "❌ Error: No packages found!"
             echo "Current directory contents:"
             ls -la
+            echo "Searching for .pkg files..."
+            find . -name "*.pkg" -type f || echo "No .pkg files found"
             exit 1
           fi
 
