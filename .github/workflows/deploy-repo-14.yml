@@ -105,9 +105,7 @@ jobs:
           mkdir -p "artifacts/$REAL_NAME"
           
           # 移动文件到版本子目录，排除自身
-          for f in artifacts/*; do
-            [ "$f" != "artifacts/$REAL_NAME" ] && mv "$f" "artifacts/$REAL_NAME/" 2>/dev/null
-          done
+          mv artifacts/* "artifacts/$REAL_NAME/" || true
           [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
           [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
           ls -la "artifacts/$REAL_NAME"
