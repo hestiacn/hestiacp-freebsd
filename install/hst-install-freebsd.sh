@@ -18,8 +18,6 @@ export PATH=$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 # 仓库地址
 RHOST='pkg.hestiamb.org'
 VERSION='freebsd'
-ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
-export ABI
 HESTIA='/usr/local/hestia'
 LOG="/root/hst_install_backups/hst_install-$(date +%d%m%Y%H%M).log"
 memory=$(($(sysctl -n hw.physmem) / 1024))
@@ -54,7 +52,7 @@ mysql_v="97"
 # FreeBSD 软件包列表
 software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs exim expect
   git hestia-${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
-  ImageMagick7 ipset jq libidn2 lsof mariadb$mariadb_v-client
+  ImageMagick7 jq libidn2 lsof mariadb$mariadb_v-client
   mariadb$mariadb_v-server mc nginx node openssh-portable 
   postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql$mysql_v-client mysql$mysql_v-server
   spamassassin unrar unzip vim vsftpd-ssl xxd whois zip zstd php$fpm_v-pecl-mcrypt
@@ -896,8 +894,9 @@ fi
 echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
 
-# 下载公钥
-fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\$ABI/latest/hestia.pub
+ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
+export ABI
+fetch -o /usr/local/etc/pkg/keys/hestia.pub "https://$RHOST/$ABI/latest/hestia.pub"
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
 hestia: {
   url: "pkg+https://$RHOST/\${ABI}/latest",
