@@ -58,10 +58,10 @@ software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs ex
   mariadb$mariadb_v-server mc nginx node openssh-portable 
   postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql$mysql_v-client mysql$mysql_v-server
   spamassassin unrar unzip vim vsftpd-ssl xxd whois zip zstd php$fpm_v-pecl-mcrypt
-  restic ap24-mod_php$fpm_v ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM
+  restic mod_php$fpm_v ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM
   php$fpm_v php$fpm_v-bz2 php$fpm_v-curl php$fpm_v-gd php$fpm_v-intl php$fpm_v-ldap php$fpm_v-mbstring
   php$fpm_v-mysqli php$fpm_v-pgsql php$fpm_v-readline php$fpm_v-xml php$fpm_v-zip
-  php$fpm_v-pecl-APCu php$fpm_v-pecl-imagick php$fpm_v-pecl-imap php$fpm_v-pecl-pspell"
+  php$fpm_v-pecl-APCu php$fpm_v-pecl-imagick php$fpm_v-pecl-imap php$fpm_v-pspell"
 
 installer_dependencies="ca_root_nss curl gnupg openssl wget sudo"
 
@@ -897,7 +897,7 @@ echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
 
 # 下载公钥
-fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\${ABI}/latest/hestia.pub
+fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\$ABI/latest/hestia.pub
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
 hestia: {
   url: "pkg+https://$RHOST/\${ABI}/latest",
