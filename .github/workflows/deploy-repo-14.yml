@@ -81,7 +81,7 @@ jobs:
             echo "=== Package files ==="
             ls -la
 
-            pkg update -f
+            IGNORE_OSVERSION=yes pkg update -f
             pkg upgrade -y pkg
 
             echo "[ * ] Signing repository with private key..."
