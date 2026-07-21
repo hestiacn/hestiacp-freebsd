@@ -53,7 +53,7 @@ bind_v="920"
 mysql_v="97"
 # FreeBSD 软件包列表
 software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs exim expect
-  git hestia=${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
+  git hestia-${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
   ImageMagick7 ipset jq libidn2 lsof mariadb$mariadb_v-client
   mariadb$mariadb_v-server mc nginx node openssh-portable 
   postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql$mysql_v-client mysql$mysql_v-server
