@@ -96,11 +96,12 @@ jobs:
 
             # 使用 rsync 直接推送到宿主机
             echo "[ * ] Pushing artifacts to host via rsync..."
-            HOST_DEST="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/"
-            mkdir -p "$HOST_DEST"
-            rsync -av /tmp/hestiacp-src/pkg/ "$HOST_DEST"
-            rsync -av /tmp/hestiacp-src/keys/ "$HOST_DEST/keys/"
-            
+            HOST_DEST="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+            mkdir -p "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+            rsync -av --progress /tmp/hestiacp-src/pkg/ "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/"
+            mkdir -p "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/keys"
+            rsync -av /tmp/hestiacp-src/keys/ "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/keys/"
+          
             echo "[ ✓ ] rsync push completed!"
             echo "=== Files pushed to host: ==="
             ls -la "$HOST_DEST"
