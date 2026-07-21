@@ -140,20 +140,14 @@ jobs:
           
           FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
           REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-
           mkdir -p "artifacts/$REAL_NAME"
           
-          # 移动所有包和元数据到版本子目录
-          mv artifacts/*.pkg artifacts/*.pub artifacts/meta artifacts/meta.conf \
-             artifacts/data.pkg artifacts/packagesite.pkg \
-             "artifacts/$REAL_NAME/" || true
-          mv artifacts/*.txz artifacts/*.tzst "artifacts/$REAL_NAME/" || true
-          
-          # HTML 放 artifacts 根目录
+          # 移动文件到版本子目录，排除自身
+          for f in artifacts/*; do
+            [ "$f" != "artifacts/$REAL_NAME" ] && mv "$f" "artifacts/$REAL_NAME/" 2>/dev/null
+          done
           [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
           [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
-          
-          # 覆盖公钥
           printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
           
           echo "[ ✓ ] Artifacts prepared:"
