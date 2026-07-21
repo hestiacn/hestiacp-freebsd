@@ -44,7 +44,7 @@ jobs:
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
 
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma xz zstd
             # pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
@@ -86,7 +86,7 @@ jobs:
 
             echo "[ * ] Signing repository with private key..."
             pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-            ls -la /tmp/hestiacp-src/keys/
+            
             if [ $? -ne 0 ]; then
               echo "[ ✗ ] Failed to sign repository!"
               exit 1
@@ -94,16 +94,29 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            echo "[ * ] Verifying artifacts in workspace root..."
+            echo "[ * ] Generating compressed metadata..."
+            [ -f "meta" ] && xz -c meta > meta.txz && echo "   ✓ meta.txz"
+            [ -f "data.pkg" ] && xz -c data.pkg > data.txz && echo "   ✓ data.txz"
+            [ -f "packagesite.pkg" ] && xz -c packagesite.pkg > packagesite.txz && echo "   ✓ packagesite.txz"
+            [ -f "data.pkg" ] && zstd -c data.pkg > data.tzst && echo "   ✓ data.tzst"
+            [ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst && echo "   ✓ packagesite.tzst"
+            echo "[ * ] Verifying compressed metadata files..."
+            ls -la *.txz *.tzst || echo "[ ! ] Warning: No compressed metadata found (may be generated in script)"
+            
+            ls -la /tmp/hestiacp-src/keys/
+
+            echo "[ * ] Verifying artifacts in workspace..."
             echo "=== Files in workspace root: ==="
             ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
+            echo "=== Files in artifacts/ ==="
+            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/ || echo "(artifacts dir not found)"
             
-            # 检查包文件是否存在
-            if [ -f "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/hestia-1.9.6.pkg" ]; then
-              echo "✅ Package found in workspace root!"
+            # 检查 artifacts 目录是否有包文件
+            if [ -d "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts" ] && \
+               [ -n "$(ls -A /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/*.pkg 2>/dev/null)" ]; then
+              echo "✅ Packages found in artifacts/!"
             else
-              echo "❌ Package not found in workspace root!"
-              echo "hst_autocompile.sh may have failed to copy artifacts"
+              echo "❌ Packages not found in artifacts/!"
               exit 1
             fi
 
@@ -112,40 +125,36 @@ jobs:
         run: |
           echo "=== Current workspace contents ==="
           ls -la
-          
-          # 检查包文件是否存在（可能在根目录或 artifacts 目录）
-          if [ -f "hestia-1.9.6.pkg" ]; then
-            echo "[ ✓ ] Packages found in workspace root"
-            ls -la *.pkg *.pub meta packagesite.pkg data.pkg meta.conf || true
-            
-            FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
-            REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            mkdir -p "artifacts/$REAL_NAME"
-            
-            # 移动所有包文件到版本目录
-            mv *.pkg *.pub meta packagesite.pkg data.pkg meta.conf "artifacts/$REAL_NAME/" || true
-            
-            # 复制 HTML 文件
-            mkdir -p artifacts
-            [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
-            [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
-            
-            # 覆盖公钥
-            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
-            
-            echo "[ ✓ ] Artifacts successfully prepared"
-            find artifacts -type f -exec ls -lh {} \;
-          elif [ -d "artifacts" ] && [ -n "$(ls -A artifacts/*.pkg 2>/dev/null)" ]; then
-            echo "[ ✓ ] Packages found in artifacts/ directory"
-            ls -la artifacts/
-          else
-            echo "❌ Error: No packages found!"
-            echo "Current directory contents:"
-            ls -la
-            echo "Searching for .pkg files..."
-            find . -name "*.pkg" -type f || echo "No .pkg files found"
+
+          if [ ! -d "artifacts" ] || [ -z "$(ls -A artifacts/*.pkg 2>/dev/null)" ]; then
+            echo "❌ Error: No packages found in artifacts/!"
+            find . -name "*.pkg" -type f || echo "No .pkg files found anywhere"
             exit 1
           fi
+
+          echo "[ ✓ ] Packages found in artifacts/"
+          ls -la artifacts/
+          
+          FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+          REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+
+          mkdir -p "artifacts/$REAL_NAME"
+          
+          # 移动所有包和元数据到版本子目录
+          mv artifacts/*.pkg artifacts/*.pub artifacts/meta artifacts/meta.conf \
+             artifacts/data.pkg artifacts/packagesite.pkg \
+             "artifacts/$REAL_NAME/" || true
+          mv artifacts/*.txz artifacts/*.tzst "artifacts/$REAL_NAME/" || true
+          
+          # HTML 放 artifacts 根目录
+          [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
+          [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
+          
+          # 覆盖公钥
+          printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
+          
+          echo "[ ✓ ] Artifacts prepared:"
+          find artifacts -type f -exec ls -lh {} \;
 
       # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
@@ -267,6 +276,8 @@ jobs:
                 headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
               } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
                 headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+              } else if (path.endsWith(".txz") || path.endsWith(".tzst")) {
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
               } else {
                 headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
               }
@@ -283,6 +294,12 @@ jobs:
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              } else if (path.endsWith(".txz")) {
+                headers.set("content-type", "application/x-xz");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              } else if (path.endsWith(".tzst")) {
+                headers.set("content-type", "application/zstd");
                 headers.set("Cache-Control", "public, max-age=86400, immutable");
               }
               

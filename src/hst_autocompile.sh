@@ -185,6 +185,36 @@ sign_repository() {
 		if [ $? -eq 0 ]; then
 			echo "[ ✓ ] Repository signed successfully"
 
+			# ============================================
+			# 新增：生成压缩格式的元数据文件
+			# ============================================
+			echo "[ * ] Generating compressed repository metadata for pkg compatibility..."
+			
+			# 生成 meta.txz
+			if [ -f "meta" ]; then
+				cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null
+				echo "   ✓ meta.txz generated"
+			fi
+			
+			# 生成 data.txz  
+			if [ -f "data.pkg" ]; then
+				xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null
+				echo "   ✓ data.txz generated"
+			fi
+			
+			# 生成 packagesite.txz
+			if [ -f "packagesite.pkg" ]; then
+				xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null
+				echo "   ✓ packagesite.txz generated"
+			fi
+			
+			# 可选：同时生成 .tzst 格式（FreeBSD 14 推荐）
+			if command -v zstd > /dev/null 2>&1; then
+				[ -f "data.pkg" ] && zstd -c data.pkg > data.tzst 2>/dev/null && echo "   ✓ data.tzst generated"
+				[ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst 2>/dev/null && echo "   ✓ packagesite.tzst generated"
+			fi
+			# ============================================
+
 			if [ -n "$SIGNING_PUB_PATH" ] && [ -f "$SIGNING_PUB_PATH" ]; then
 				cp "$SIGNING_PUB_PATH" "$pkg_dir/hestia.pub"
 				echo "[ ✓ ] Public key copied to: $pkg_dir/hestia.pub"
@@ -198,12 +228,36 @@ sign_repository() {
 	elif [ -f "/home/runner/work/$REPO/keys/hestiacp.key" ]; then
 		echo "[ * ] Signing repository with CI-provided key..."
 		pkg repo . /home/runner/work/$REPO/keys/hestiacp.key > /dev/null 2>&1
+		
+		# ============================================
+		# 同样需要生成压缩格式
+		# ============================================
+		echo "[ * ] Generating compressed repository metadata for pkg compatibility..."
+		[ -f "meta" ] && { cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null; }
+		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null; }
+		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null; }
+		if command -v zstd > /dev/null 2>&1; then
+			[ -f "data.pkg" ] && zstd -c data.pkg > data.tzst 2>/dev/null
+			[ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst 2>/dev/null
+		fi
+		# ============================================
+		
 		cp "/home/runner/work/$REPO/keys/hestiacp.key.pub" "$pkg_dir/hestia.pub" 2> /dev/null || true
 		echo "[ ✓ ] Repository signed with CI key"
 		return 0
 	else
 		echo "[ ! ] No signing key found, creating repository without signature"
 		pkg repo . 2> /dev/null || true
+		
+		# ============================================
+		# 无签名仓库也需要生成压缩格式
+		# ============================================
+		echo "[ * ] Generating compressed repository metadata..."
+		[ -f "meta" ] && { cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null; }
+		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null; }
+		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null; }
+		# ============================================
+		
 		return 0
 	fi
 }
@@ -1535,7 +1589,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "========================================================================"
     
     # 宿主机工作目录路径
-    HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+    HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
     mkdir -p "$HOST_WORKSPACE"
 
     # 使用 cp 复制
