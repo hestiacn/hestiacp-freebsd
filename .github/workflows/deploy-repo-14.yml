@@ -96,12 +96,13 @@ jobs:
 
             # 使用 copyback 机制 - 将产物复制到 /tmp/copyback/
             echo "[ * ] Preparing artifacts for copyback..."
-            mkdir -p /tmp/copyback/artifacts
+            mkdir -p /tmp/copyback/
 
             # 复制所有包文件和签名文件
-            cp -R /tmp/hestiacp-src/pkg/* /tmp/copyback/artifacts/
-            echo "=== Files in copyback/artifacts ==="
-            ls -la /tmp/copyback/artifacts/
+            cp -R /tmp/hestiacp-src/pkg/* /tmp/copyback/
+            cp -R /tmp/hestiacp-src/keys/* /tmp/copyback/
+            echo "=== Files in copyback/==="
+            ls -la /tmp/copyback/
             echo "[ ✓ ] Artifacts ready for copyback!"
 
       # 验证 artifacts
@@ -109,56 +110,23 @@ jobs:
         run: |
           echo "=== Current workspace contents ==="
           ls -la
-          echo "=== artifacts directory (after copyback) ==="
-          ls -la artifacts/ || echo "artifacts directory not found!"
-          
-          # 如果 artifacts 目录不存在，通过查找 hestia-*.pkg 来定位
-          if [ ! -d "artifacts" ]; then
-            echo "[ * ] artifacts directory not found in current location, searching for packages..."
-            
-            # 查找 hestia-*.pkg 文件所在目录
-            PKG_DIR=$(find /home/runner/work -name "hestia-*.pkg" -type f | head -1 | xargs dirname 2>/dev/null)
-            
-            if [ -n "$PKG_DIR" ] && [ -d "$PKG_DIR" ]; then
-              echo "[ ✓ ] Found packages in: $PKG_DIR"
-              echo "Package files:"
-              ls -la "$PKG_DIR" | grep -E "\.pkg$|\.pub$|\.sig$|meta|packagesite"
-              
-              # 复制整个目录到 ./artifacts
-              mkdir -p ./artifacts
-              cp -R "$PKG_DIR"/* ./artifacts/
-              echo "[ ✓ ] Copied packages from $PKG_DIR to ./artifacts/"
-            else
-              echo "❌ Error: No packages (hestia-*.pkg) found anywhere!"
-              echo "Searching in /home/runner/work:"
-              find /home/runner/work -name "hestia-*.pkg" || echo "No packages found"
-              exit 1
-            fi
-          fi
-          
-          FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
-          SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
-          REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-          
-          # 如果存在安全名称目录（下划线格式），重命名为冒号格式
-          if [ -d "artifacts/$SAFE_NAME" ]; then
-            echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
-            mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
-            mv "artifacts/$SAFE_NAME"/* "artifacts/$REAL_NAME/"
-            rm -rf "artifacts/$SAFE_NAME"
-          fi
-          cp src/pkg/index.html artifacts/ || true
-          cp src/pkg/404.html artifacts/ || true
-          if [ -d "artifacts/$REAL_NAME" ]; then
+          if [ -f "hestia-1.9.6.pkg" ]; then
+            echo "[ ✓ ] Packages found in current directory"
+            ls -la *.pkg *.pub meta packagesite.pkg || true
+            FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+            REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+            mkdir -p "artifacts/$REAL_NAME"
+            mv *.pkg *.pub meta packagesite.pkg data.pkg meta.conf "artifacts/$REAL_NAME/" || true
+            cp src/pkg/index.html artifacts/ || true
+            cp src/pkg/404.html artifacts/ || true
             printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
             
-            echo "[ ✓ ] Artifacts successfully verified and aligned on host!"
-            echo "=== Full aligned artifacts tree ==="
+            echo "[ ✓ ] Artifacts successfully prepared"
             find artifacts -type f -exec ls -lh {} \;
           else
-            echo "❌ Error: Target directory artifacts/$REAL_NAME not found!"
-            echo "Available directories:"
-            ls -la artifacts/ || echo "No artifacts directory"
+            echo "❌ Error: No packages found in current directory!"
+            echo "Current directory contents:"
+            ls -la
             exit 1
           fi
 
@@ -217,30 +185,41 @@ jobs:
           mkdir -p /tmp/worker-deploy
           cd /tmp/worker-deploy
           cat > worker.js << 'WORKER_EOF'
-          var worker_default = {
+          export default {
             async fetch(request, env) {
               const url = new URL(request.url);
-              if (url.hostname !== "pkg.hestiamb.org") {
-                const secureUrl = new URL(request.url);
-                secureUrl.protocol = "https:";
-                secureUrl.hostname = "pkg.hestiamb.org";
-                
+              
+              // 统一处理：强制 HTTPS + 规范域名
+              let needsRedirect = false;
+              const targetUrl = new URL(url.toString());
+              
+              if (url.protocol === "http:" || url.hostname !== "pkg.hestiamb.org") {
+                needsRedirect = true;
+                targetUrl.protocol = "https:";
+                targetUrl.hostname = "pkg.hestiamb.org";
+              }
+              
+              if (needsRedirect) {
                 return new Response(null, {
                   status: 301,
                   headers: {
-                    "Location": secureUrl.toString(),
+                    "Location": targetUrl.toString(),
                     "Cache-Control": "public, max-age=31536000",
-                    "Alt-Svc": 'h3=":443"; ma=31536000; persist=1'
+                    "Alt-Svc": 'h3=":443"; ma=86400; persist=1',
+                    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload"
                   }
                 });
               }
 
+              // 处理路径
               let path = url.pathname;
               if (path === "/" || path === "") {
                 path = "index.html";
               } else {
                 path = path.startsWith("/") ? path.slice(1) : path;
               }
+              
+              // 从 R2 获取对象
               const object = await env.FBSD_REPO.get(path);
               
               if (!object) {
@@ -248,31 +227,53 @@ jobs:
                 if (notFound) {
                   return new Response(notFound.body, {
                     status: 404,
-                    headers: { "Content-Type": "text/html; charset=utf-8" }
+                    headers: { 
+                      "Content-Type": "text/html; charset=utf-8",
+                      "Alt-Svc": 'h3=":443"; ma=86400; persist=1'
+                    }
                   });
                 }
-                return new Response("404 - Not Found", { status: 404 });
+                return new Response("404 - Not Found", { 
+                  status: 404,
+                  headers: {
+                    "Alt-Svc": 'h3=":443"; ma=86400; persist=1'
+                  }
+                });
               }
-              
               const headers = new Headers();
               object.writeHttpMetadata(headers);
-              headers.set("Alt-Svc", 'h3=":443"; ma=31536000; persist=1');
+              headers.set("Alt-Svc", 'h3=":443"; ma=86400; persist=1');
+              headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+              if (path.endsWith(".pkg")) {
+                headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+              } else if (path.endsWith(".html")) {
+                headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
+                headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+              } else {
+                headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+              }
+              headers.set("X-Content-Type-Options", "nosniff");
+              headers.set("X-Frame-Options", "DENY");
+              headers.set("X-XSS-Protection", "1; mode=block");
+              headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+              headers.set("Accept-Ranges", "bytes");
+              
+              // 设置正确的 Content-Type
               if (path.endsWith(".html")) {
                 headers.set("content-type", "text/html; charset=utf-8");
               } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
                 headers.set("content-type", "text/plain; charset=utf-8");
               } else if (path.endsWith(".pkg")) {
                 headers.set("content-type", "application/octet-stream");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
               }
               
               return new Response(object.body, { headers });
             }
           };
-
-          export {
-            worker_default as default
-          };
           WORKER_EOF
+
           cat > wrangler.toml << 'TOML_EOF'
           name = "hestiacp-repo"
           main = "worker.js"
