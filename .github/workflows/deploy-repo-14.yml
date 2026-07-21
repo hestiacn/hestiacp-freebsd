@@ -94,14 +94,17 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            echo "[ * ] Generating compressed metadata..."
-            [ -f "meta" ] && xz -c meta > meta.txz && echo "   ✓ meta.txz"
-            [ -f "data.pkg" ] && xz -c data.pkg > data.txz && echo "   ✓ data.txz"
-            [ -f "packagesite.pkg" ] && xz -c packagesite.pkg > packagesite.txz && echo "   ✓ packagesite.txz"
-            [ -f "data.pkg" ] && zstd -c data.pkg > data.tzst && echo "   ✓ data.tzst"
-            [ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst && echo "   ✓ packagesite.tzst"
+            echo "[ * ] Signing repository with private key..."
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              exit 1
+            fi
+
+            echo "[ ✓ ] Repository signed successfully!"
             echo "[ * ] Verifying compressed metadata files..."
-            ls -la *.txz *.tzst || echo "[ ! ] Warning: No compressed metadata found (may be generated in script)"
+            ls -la *.txz *.tzst || echo "[ ! ] Warning: No compressed metadata found"
             
             ls -la /tmp/hestiacp-src/keys/
 
@@ -180,6 +183,7 @@ jobs:
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
+            --delete \
             --region auto
           echo "Deploying edge node html headers to bucket root..."
           aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto

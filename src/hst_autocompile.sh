@@ -192,26 +192,26 @@ sign_repository() {
 			
 			# 生成 meta.txz
 			if [ -f "meta" ]; then
-				cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null
+				cp meta meta.txz || xz -c meta > meta.txz 2>/dev/null
 				echo "   ✓ meta.txz generated"
 			fi
 			
 			# 生成 data.txz  
 			if [ -f "data.pkg" ]; then
-				xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null
+				xz -c data.pkg > data.txz || cp data.pkg data.txz 2>/dev/null
 				echo "   ✓ data.txz generated"
 			fi
 			
 			# 生成 packagesite.txz
 			if [ -f "packagesite.pkg" ]; then
-				xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null
+				xz -c packagesite.pkg > packagesite.txz || cp packagesite.pkg packagesite.txz 2>/dev/null
 				echo "   ✓ packagesite.txz generated"
 			fi
 			
 			# 可选：同时生成 .tzst 格式（FreeBSD 14 推荐）
 			if command -v zstd > /dev/null 2>&1; then
-				[ -f "data.pkg" ] && zstd -c data.pkg > data.tzst 2>/dev/null && echo "   ✓ data.tzst generated"
-				[ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst 2>/dev/null && echo "   ✓ packagesite.tzst generated"
+				[ -f "data.pkg" ] && zstd -c data.pkg > data.tzst && echo "   ✓ data.tzst generated"
+				[ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst && echo "   ✓ packagesite.tzst generated"
 			fi
 			# ============================================
 
@@ -233,9 +233,9 @@ sign_repository() {
 		# 同样需要生成压缩格式
 		# ============================================
 		echo "[ * ] Generating compressed repository metadata for pkg compatibility..."
-		[ -f "meta" ] && { cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null; }
-		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null; }
-		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null; }
+		[ -f "meta" ] && { cp meta meta.txz || xz -c meta > meta.txz 2>/dev/null; }
+		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz || cp data.pkg data.txz 2>/dev/null; }
+		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz || cp packagesite.pkg packagesite.txz 2>/dev/null; }
 		if command -v zstd > /dev/null 2>&1; then
 			[ -f "data.pkg" ] && zstd -c data.pkg > data.tzst 2>/dev/null
 			[ -f "packagesite.pkg" ] && zstd -c packagesite.pkg > packagesite.tzst 2>/dev/null
@@ -253,9 +253,9 @@ sign_repository() {
 		# 无签名仓库也需要生成压缩格式
 		# ============================================
 		echo "[ * ] Generating compressed repository metadata..."
-		[ -f "meta" ] && { cp meta meta.txz 2>/dev/null || xz -c meta > meta.txz 2>/dev/null; }
-		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz 2>/dev/null || cp data.pkg data.txz 2>/dev/null; }
-		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz 2>/dev/null || cp packagesite.pkg packagesite.txz 2>/dev/null; }
+		[ -f "meta" ] && { cp meta meta.txz || xz -c meta > meta.txz 2>/dev/null; }
+		[ -f "data.pkg" ] && { xz -c data.pkg > data.txz || cp data.pkg data.txz 2>/dev/null; }
+		[ -f "packagesite.pkg" ] && { xz -c packagesite.pkg > packagesite.txz || cp packagesite.pkg packagesite.txz 2>/dev/null; }
 		# ============================================
 		
 		return 0
@@ -1597,7 +1597,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $HOST_WORKSPACE"
     
-    cp -R "$PKG_DIR/." "$HOST_WORKSPACE/" 2>/dev/null || cp -R "$PKG_DIR" "$ARTIFACTS_DIR/"
+    cp -R "$PKG_DIR/." "$ARTIFACTS_DIR/"
     EXIT_CODE=$?
     
     if [ $EXIT_CODE -eq 0 ]; then
