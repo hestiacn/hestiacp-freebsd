@@ -44,8 +44,8 @@ jobs:
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
 
-            pkg install -y bash gmake perl5 git curl pkgconf openssl pcre2 autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-            
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
@@ -103,10 +103,6 @@ jobs:
             
             # 复制所有包文件和签名文件
             cp -R /tmp/hestiacp-src/pkg/* "${WORKSPACE}/artifacts/${VERSION_PATH}/"
-            
-            # 复制公钥
-            printf "%s" "$PKG_SIGNING_KEY_PUB" > "${WORKSPACE}/artifacts/${VERSION_PATH}/hestia.pub"
-
             echo "=== Files written to ${WORKSPACE}/artifacts/ ==="
             ls -la "${WORKSPACE}/artifacts/"
             echo "=== Version subdirectory ==="
@@ -131,8 +127,9 @@ jobs:
           fi
 
           if [ ! -d "artifacts/$REAL_NAME" ]; then
-          cp src/pkg/index.html artifacts/  || true
-          cp src/pkg/404.html artifacts/ || true
+            cp src/pkg/index.html artifacts/  || true
+            cp src/pkg/404.html artifacts/ || true
+            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
             echo "[ ✓ ] Artifacts successfully verified and aligned on host!"
             echo "=== Full aligned artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
