@@ -5055,3 +5055,10 @@ msgstr "暴力破解防护"
 msgid "web terminal backend"
 msgstr "Web 终端后端"
 
+#: ../../web/list/notifications/index.php:9
+msgid "notification_time_short"
+msgstr "Y年m月d日 H时i分"
+
+#: ../../web/list/notifications/index.php:11
+msgid "notification_time_full"
+msgstr "Y年m月d日 H时i分s秒"

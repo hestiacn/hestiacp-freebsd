@@ -93,21 +93,20 @@ jobs:
 
             # 定义版本路径
             FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VERSION_PATH="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            SAFE_VERSION_PATH=$(echo "$VERSION_PATH" | sed 's/:/_/g')
+            VERSION_PATH="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
 
             # 准备产物到 copyback 目录
             mkdir -p "${WORKSPACE}/artifacts/${VERSION_PATH}"
             
             # 复制所有包文件和签名文件
-            cp -R ./* "${WORKSPACE}/artifacts/${VERSION_PATH}/"
+            cp -R /tmp/hestiacp-src/pkg/* "${WORKSPACE}/artifacts/${VERSION_PATH}/"
             
             # 复制公钥
             printf "%s" "$PKG_SIGNING_KEY_PUB" > "${WORKSPACE}/artifacts/${VERSION_PATH}/hestia.pub"
 
             # 复制 HTML 文件
-            cp "${WORKSPACE}/src/pkg/index.html" "${WORKSPACE}/artifacts/" 2>/dev/null || echo "index.html not found"
-            cp "${WORKSPACE}/src/pkg/404.html" "${WORKSPACE}/artifacts/" 2>/dev/null || echo "404.html not found"
+            cp "${WORKSPACE}/src/pkg/index.html" "${WORKSPACE}/artifacts/" || true
+            cp "${WORKSPACE}/src/pkg/404.html" "${WORKSPACE}/artifacts/" || true
 
             echo "=== Files written to ${WORKSPACE}/artifacts/ ==="
             ls -la "${WORKSPACE}/artifacts/"
@@ -122,12 +121,21 @@ jobs:
           echo "=== artifacts directory ==="
           ls -la artifacts/ || echo "artifacts directory not found!"
           
-          if [ -d "artifacts" ] && [ "$(find artifacts -type f | head -1)" ]; then
-            echo "[ ✓ ] Artifacts successfully synced from VM"
-            echo "=== Full artifacts tree ==="
+          SAFE_NAME="FreeBSD_14_amd64_latest"
+          REAL_NAME="FreeBSD:14:amd64/latest"
+          
+          if [ -d "artifacts/$SAFE_NAME" ] && [ -f "artifacts/index.html" ]; then
+            echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
+            mkdir -p "artifacts/FreeBSD:14:amd64"
+            mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
+          fi
+
+          if [ -d "artifacts/$REAL_NAME" ] && [ -f "artifacts/index.html" ]; then
+            echo "[ ✓ ] Artifacts successfully verified and aligned on host!"
+            echo "=== Full aligned artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
           else
-            echo "❌ Error: No artifacts found in workspace!"
+            echo "❌ Error: Reshaped target architecture could not be verified on host!"
             exit 1
           fi
 
@@ -172,12 +180,12 @@ jobs:
           fi
 
           echo "Verifying uploaded files..."
-          aws s3 ls s3://fbsd-repo/ --endpoint-url "$ENDPOINT" --recursive --human-readable | head -30
+          aws s3 ls s3://fbsd-repo/ --endpoint-url "$ENDPOINT" --recursive --human-readable
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
-      # Deploy Cloudflare Worker
+      # 4. 云端部署边缘计算 Worker 脚本
       - name: Deploy Cloudflare Worker
         run: |
           mkdir -p /tmp/worker-deploy
