@@ -71,7 +71,7 @@ jobs:
             export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
             mkdir -p "$ARTIFACT_DIR"
 
-            chmod +x src/build-php82-openssl4.sh
+            chmod +x src/build-php84-openssl4.sh
 
             echo "[ * ] Starting PHP 8.4.23 build with OpenSSL 4.x..."
             echo "OPENSSL_OPT: $OPENSSL_OPT"

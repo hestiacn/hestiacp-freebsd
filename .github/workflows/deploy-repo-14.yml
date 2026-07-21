@@ -45,7 +45,7 @@ jobs:
             cd "$WORKSPACE"
 
             pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-
+            # pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
@@ -94,47 +94,71 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 定义版本路径
-            FREEBSD_MAJOR=$(uname -r | cut -d. -f1)
-            VERSION_PATH="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
+            # 使用 copyback 机制 - 将产物复制到 /tmp/copyback/
+            echo "[ * ] Preparing artifacts for copyback..."
+            mkdir -p /tmp/copyback/artifacts
 
-            # 准备产物到 copyback 目录
-            mkdir -p "${WORKSPACE}/artifacts/${VERSION_PATH}"
-            
             # 复制所有包文件和签名文件
-            cp -R /tmp/hestiacp-src/pkg/* "${WORKSPACE}/artifacts/${VERSION_PATH}/"
-            echo "=== Files written to ${WORKSPACE}/artifacts/ ==="
-            ls -la "${WORKSPACE}/artifacts/"
-            echo "=== Version subdirectory ==="
-            ls -la "${WORKSPACE}/artifacts/${VERSION_PATH}/"
+            cp -R /tmp/hestiacp-src/pkg/* /tmp/copyback/artifacts/
+            echo "=== Files in copyback/artifacts ==="
+            ls -la /tmp/copyback/artifacts/
+            echo "[ ✓ ] Artifacts ready for copyback!"
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
         run: |
           echo "=== Current workspace contents ==="
           ls -la
-          echo "=== artifacts directory ==="
+          echo "=== artifacts directory (after copyback) ==="
           ls -la artifacts/ || echo "artifacts directory not found!"
+          
+          # 如果 artifacts 目录不存在，通过查找 hestia-*.pkg 来定位
+          if [ ! -d "artifacts" ]; then
+            echo "[ * ] artifacts directory not found in current location, searching for packages..."
+            
+            # 查找 hestia-*.pkg 文件所在目录
+            PKG_DIR=$(find /home/runner/work -name "hestia-*.pkg" -type f | head -1 | xargs dirname 2>/dev/null)
+            
+            if [ -n "$PKG_DIR" ] && [ -d "$PKG_DIR" ]; then
+              echo "[ ✓ ] Found packages in: $PKG_DIR"
+              echo "Package files:"
+              ls -la "$PKG_DIR" | grep -E "\.pkg$|\.pub$|\.sig$|meta|packagesite"
+              
+              # 复制整个目录到 ./artifacts
+              mkdir -p ./artifacts
+              cp -R "$PKG_DIR"/* ./artifacts/
+              echo "[ ✓ ] Copied packages from $PKG_DIR to ./artifacts/"
+            else
+              echo "❌ Error: No packages (hestia-*.pkg) found anywhere!"
+              echo "Searching in /home/runner/work:"
+              find /home/runner/work -name "hestia-*.pkg" || echo "No packages found"
+              exit 1
+            fi
+          fi
           
           FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
           SAFE_NAME="FreeBSD_${FREEBSD_MAJOR}_amd64_latest"
           REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           
+          # 如果存在安全名称目录（下划线格式），重命名为冒号格式
           if [ -d "artifacts/$SAFE_NAME" ]; then
             echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
-            mkdir -p "artifacts/FreeBSD:14:amd64"
-            mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
+            mkdir -p "artifacts/FreeBSD:${FREEBSD_MAJOR}:amd64"
+            mv "artifacts/$SAFE_NAME"/* "artifacts/$REAL_NAME/"
+            rm -rf "artifacts/$SAFE_NAME"
           fi
-
-          if [ ! -d "artifacts/$REAL_NAME" ]; then
-            cp src/pkg/index.html artifacts/  || true
-            cp src/pkg/404.html artifacts/ || true
-            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$VERSION_PATH/hestia.pub"
+          cp src/pkg/index.html artifacts/ || true
+          cp src/pkg/404.html artifacts/ || true
+          if [ -d "artifacts/$REAL_NAME" ]; then
+            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
+            
             echo "[ ✓ ] Artifacts successfully verified and aligned on host!"
             echo "=== Full aligned artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
           else
-            echo "❌ Error: Reshaped target architecture could not be verified on host!"
+            echo "❌ Error: Target directory artifacts/$REAL_NAME not found!"
+            echo "Available directories:"
+            ls -la artifacts/ || echo "No artifacts directory"
             exit 1
           fi
 
