@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14]
+        freebsd_version: [14, 15]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -103,8 +103,6 @@ jobs:
           FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
           REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           mkdir -p "artifacts/$REAL_NAME"
-          
-          # 移动文件到版本子目录，排除自身
           mv artifacts/* "artifacts/$REAL_NAME/" || true
           [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
           [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
@@ -170,8 +168,6 @@ jobs:
           export default {
             async fetch(request, env) {
               const url = new URL(request.url);
-              
-              // 统一处理：强制 HTTPS + 规范域名
               let needsRedirect = false;
               const targetUrl = new URL(url.toString());
               
@@ -193,7 +189,6 @@ jobs:
                 });
               }
 
-              // 处理路径
               let path = url.pathname;
               if (path === "/" || path === "") {
                 path = "index.html";
@@ -201,7 +196,6 @@ jobs:
                 path = path.startsWith("/") ? path.slice(1) : path;
               }
               
-              // 从 R2 获取对象
               const object = await env.FBSD_REPO.get(path);
               
               if (!object) {
@@ -243,7 +237,6 @@ jobs:
               headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
               headers.set("Accept-Ranges", "bytes");
               
-              // 设置正确的 Content-Type
               if (path.endsWith(".html")) {
                 headers.set("content-type", "text/html; charset=utf-8");
               } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
