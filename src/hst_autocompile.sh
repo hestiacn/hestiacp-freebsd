@@ -1595,7 +1595,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
 
     # 使用 cp 复制
     echo "[ * ] Copying from: $PKG_DIR"
-    echo "[ * ] Copying to:   $HOST_WORKSPACE"
+    echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
     cp -R "$PKG_DIR/." "$ARTIFACTS_DIR/"
     EXIT_CODE=$?
@@ -1603,8 +1603,8 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     if [ $EXIT_CODE -eq 0 ]; then
         echo "✅ Artifacts copied successfully!"
         echo ""
-        echo "=== Files in host workspace ($HOST_WORKSPACE) ==="
-        ls -la "$HOST_WORKSPACE/"
+        echo "=== Files in host workspace ($ARTIFACTS_DIR) ==="
+        ls -la "$ARTIFACTS_DIR/"
         echo ""
         echo "✅ Repository has been signed with private key"
         echo "✅ Public key is available at: $PKG_DIR/hestia.pub"

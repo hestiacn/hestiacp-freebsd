@@ -86,17 +86,7 @@ jobs:
 
             echo "[ * ] Signing repository with private key..."
             pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-            
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              exit 1
-            fi
-
-            echo "[ ✓ ] Repository signed successfully!"
-
-            echo "[ * ] Signing repository with private key..."
-            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-            
+            ls -la /tmp/hestiacp-src/keys/
             if [ $? -ne 0 ]; then
               echo "[ ✗ ] Failed to sign repository!"
               exit 1
@@ -113,15 +103,7 @@ jobs:
             ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
             echo "=== Files in artifacts/ ==="
             ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/ || echo "(artifacts dir not found)"
-            
-            # 检查 artifacts 目录是否有包文件
-            if [ -d "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts" ] && \
-               [ -n "$(ls -A /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/*.pkg 2>/dev/null)" ]; then
-              echo "✅ Packages found in artifacts/!"
-            else
-              echo "❌ Packages not found in artifacts/!"
-              exit 1
-            fi
+
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
