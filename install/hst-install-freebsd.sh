@@ -894,7 +894,8 @@ fi
 # Installing HestiaCP repo
 echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
-
+ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
+export ABI
 # 下载公钥
 fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\${ABI}/latest/hestia.pub
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
@@ -935,11 +936,10 @@ if [ -n "$withpkgs" ] && [ -d "$withpkgs" ]; then
 fi
 
 # 安装软件包
-echo "[ * ] Installing packages: $final_software"
+echo "[ * ] Installing packages: $software"
 echo "NOTE: This process may take 10 to 15 minutes to complete..."
 
-# 请确保您的 pkg_install 函数内部调用的是标准的 `pkg install -y`
-pkg_install $final_software & # 修正：既然您后面要捕获 $!，这里必须保留 & 异步符号
+pkg install -y $software &
 
 BACK_PID=$!
 
