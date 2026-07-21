@@ -1589,14 +1589,15 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "========================================================================"
     
     # 宿主机工作目录路径
-    HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
+    HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+    ARTIFACTS_DIR="${HOST_WORKSPACE}/artifacts"
     mkdir -p "$HOST_WORKSPACE"
 
     # 使用 cp 复制
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $HOST_WORKSPACE"
     
-    cp -R "$PKG_DIR/." "$HOST_WORKSPACE/" 2>/dev/null || cp -R "$PKG_DIR" "$HOST_WORKSPACE/"
+    cp -R "$PKG_DIR/." "$HOST_WORKSPACE/" 2>/dev/null || cp -R "$PKG_DIR" "$ARTIFACTS_DIR/"
     EXIT_CODE=$?
     
     if [ $EXIT_CODE -eq 0 ]; then

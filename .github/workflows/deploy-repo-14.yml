@@ -180,7 +180,6 @@ jobs:
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
-            --delete \
             --region auto
           echo "Deploying edge node html headers to bucket root..."
           aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto
