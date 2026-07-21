@@ -1526,39 +1526,59 @@ fi
 echo ""
 echo "========================================================================"
 echo "HestiaCP Package Build Routine Completed Successfully!"
-if [ "$BUILD_PKG" = "true" ]; then
-	echo "FreeBSD .pkg production assets are securely bundled in: $PKG_DIR"
-	echo ""
+echo "========================================================================"
 
-	if [ -f "$PKG_DIR/hestia.pub" ]; then
-		echo "✅ Repository has been signed with private key"
-		echo "✅ Public key is available at: $PKG_DIR/hestia.pub"
-		echo ""
-		echo "Clients can install with repository configuration:"
-		echo "  cat > /usr/local/etc/pkg/repos/hestia.conf << EOF"
-		echo "hestia: {"
-		echo "  url: \"https://your-repo-url.com/pkg\","
-		echo "  signature_type: \"pubkey\","
-		echo "  pubkey: \"https://your-repo-url.com/pkg/hestia.pub\","
-		echo "  enabled: yes"
-		echo "}"
-		echo "EOF"
-		echo ""
-		echo "  pkg update -f"
-		echo "  pkg install hestia"
-	else
-		echo "⚠️  Repository created WITHOUT signature (no key found)"
-		echo ""
-		echo "To sign the repository manually:"
-		echo "  cd $PKG_DIR"
-		echo "  pkg repo . /path/to/your/private_rsa.key"
-	fi
+if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
+    echo ""
+    echo "========================================================================"
+    echo "Copying artifacts to host workspace for copyback..."
+    echo "========================================================================"
+    
+    # 宿主机工作目录路径
+    HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+    mkdir -p "$HOST_WORKSPACE"
 
-	echo ""
-	echo "Or install packages directly:"
-	echo "  pkg install $PKG_DIR/hestia-${BUILD_VER}.pkg"
-	echo "  pkg install $PKG_DIR/hestia-nginx-${NGINX_V}.pkg"
-	echo "  pkg install $PKG_DIR/hestia-php-${PHP_V}.pkg"
-	echo "  pkg install $PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg"
+    # 使用 cp 复制
+    echo "[ * ] Copying from: $PKG_DIR"
+    echo "[ * ] Copying to:   $HOST_WORKSPACE"
+    
+    cp -R "$PKG_DIR/." "$HOST_WORKSPACE/" 2>/dev/null || cp -R "$PKG_DIR" "$HOST_WORKSPACE/"
+    EXIT_CODE=$?
+    
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "✅ Artifacts copied successfully!"
+        echo ""
+        echo "=== Files in host workspace ($HOST_WORKSPACE) ==="
+        ls -la "$HOST_WORKSPACE/"
+        echo ""
+        echo "✅ Repository has been signed with private key"
+        echo "✅ Public key is available at: $PKG_DIR/hestia.pub"
+        echo ""
+        echo "Clients can install with repository configuration:"
+        echo "  cat > /usr/local/etc/pkg/repos/hestia.conf << EOF"
+        echo "hestia: {"
+        echo "  url: \"https://your-repo-url.com/pkg\","
+        echo "  signature_type: \"pubkey\","
+        echo "  pubkey: \"https://your-repo-url.com/pkg/hestia.pub\","
+        echo "  enabled: yes"
+        echo "}"
+        echo "EOF"
+        echo ""
+        echo "  pkg update -f"
+        echo "  pkg install hestia"
+        echo ""
+        echo "Or install packages directly:"
+        echo "  pkg install $PKG_DIR/hestia-${BUILD_VER}.pkg"
+        echo "  pkg install $PKG_DIR/hestia-nginx-${NGINX_V}.pkg"
+        echo "  pkg install $PKG_DIR/hestia-php-${PHP_V}.pkg"
+        echo "  pkg install $PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg"
+    else
+        echo "❌ Failed to copy artifacts to host workspace!"
+        echo "Source: $PKG_DIR"
+        echo "Destination: $HOST_WORKSPACE"
+        exit 1
+    fi
+    
+    echo "========================================================================"
 fi
 echo "========================================================================"

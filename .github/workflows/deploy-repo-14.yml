@@ -94,37 +94,18 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            echo "[ * ] Preparing artifacts to workspace root for copyback..."
+            echo "[ * ] Verifying artifacts in workspace root..."
+            echo "=== Files in workspace root: ==="
+            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
             
-            # 先查找包在哪里
-            echo "[ * ] Searching for hestia-1.9.6.pkg before copy..."
-            echo "=== Search in /tmp/hestiacp-src/pkg ==="
-            ls -la /tmp/hestiacp-src/pkg/hestia-1.9.6.pkg || echo "Not found in /tmp/hestiacp-src/pkg/"
-            
-            echo "=== Search in /tmp ==="
-            find /tmp -name "hestia-1.9.6.pkg" -type f | head -5
-            
-            echo "=== Full system search ==="
-            find / -name "hestia-1.9.6.pkg" -type f | head -5
-            
-            # 记录找到的路径
-            PKG_PATH=$(find / -name "hestia-1.9.6.pkg" -type f | head -1)
-            if [ -n "$PKG_PATH" ]; then
-              echo "✅ Package found at: $PKG_PATH"
-              echo "Package directory: $(dirname $PKG_PATH)"
-              echo "Package size: $(ls -lh $PKG_PATH | awk '{print $5}')"
-              
-              # 现在复制到工作目录
-              echo "[ * ] Copying package directory to workspace..."
-              cp -R $(dirname $PKG_PATH)/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/ || \
-              cp -R $(dirname $PKG_PATH) /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
+            # 检查包文件是否存在
+            if [ -f "/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/hestia-1.9.6.pkg" ]; then
+              echo "✅ Package found in workspace root!"
             else
-              echo "❌ Package not found anywhere!"
+              echo "❌ Package not found in workspace root!"
+              echo "hst_autocompile.sh may have failed to copy artifacts"
               exit 1
             fi
-            
-            echo "=== Files in workspace root after copy: ==="
-            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
