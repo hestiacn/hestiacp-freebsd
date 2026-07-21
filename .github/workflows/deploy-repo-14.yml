@@ -94,10 +94,36 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 方案3：直接放到工作目录根，copyback 会自动同步
             echo "[ * ] Preparing artifacts to workspace root for copyback..."
-            cp -R /tmp/hestiacp-src/pkg /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
-            echo "=== Files in workspace root: ==="
+            
+            # 先查找包在哪里
+            echo "[ * ] Searching for hestia-1.9.6.pkg before copy..."
+            echo "=== Search in /tmp/hestiacp-src/pkg ==="
+            ls -la /tmp/hestiacp-src/pkg/hestia-1.9.6.pkg 2>/dev/null || echo "Not found in /tmp/hestiacp-src/pkg/"
+            
+            echo "=== Search in /tmp ==="
+            find /tmp -name "hestia-1.9.6.pkg" -type f 2>/dev/null | head -5
+            
+            echo "=== Full system search ==="
+            find / -name "hestia-1.9.6.pkg" -type f 2>/dev/null | head -5
+            
+            # 记录找到的路径
+            PKG_PATH=$(find / -name "hestia-1.9.6.pkg" -type f 2>/dev/null | head -1)
+            if [ -n "$PKG_PATH" ]; then
+              echo "✅ Package found at: $PKG_PATH"
+              echo "Package directory: $(dirname $PKG_PATH)"
+              echo "Package size: $(ls -lh $PKG_PATH | awk '{print $5}')"
+              
+              # 现在复制到工作目录
+              echo "[ * ] Copying package directory to workspace..."
+              cp -R $(dirname $PKG_PATH)/* /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/ 2>/dev/null || \
+              cp -R $(dirname $PKG_PATH) /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
+            else
+              echo "❌ Package not found anywhere!"
+              exit 1
+            fi
+            
+            echo "=== Files in workspace root after copy: ==="
             ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
 
       # 验证 artifacts
