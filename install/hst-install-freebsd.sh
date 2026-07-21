@@ -896,7 +896,7 @@ echo "[ * ] Hestia $HESTIA_INSTALL_VER"
 mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
 
 # 下载公钥
-fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/${ABI}/latest/hestia.pub
+fetch -o /usr/local/etc/pkg/keys/hestia.pub https://$RHOST/\${ABI}/latest/hestia.pub
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
 hestia: {
   url: "pkg+https://$RHOST/\${ABI}/latest",
