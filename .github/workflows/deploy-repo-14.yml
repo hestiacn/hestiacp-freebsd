@@ -104,10 +104,6 @@ jobs:
             # 复制公钥
             printf "%s" "$PKG_SIGNING_KEY_PUB" > "${WORKSPACE}/artifacts/${VERSION_PATH}/hestia.pub"
 
-            # 复制 HTML 文件
-            cp "${WORKSPACE}/src/pkg/index.html" "${WORKSPACE}/artifacts/" || true
-            cp "${WORKSPACE}/src/pkg/404.html" "${WORKSPACE}/artifacts/" || true
-
             echo "=== Files written to ${WORKSPACE}/artifacts/ ==="
             ls -la "${WORKSPACE}/artifacts/"
             echo "=== Version subdirectory ==="
@@ -124,13 +120,15 @@ jobs:
           SAFE_NAME="FreeBSD_14_amd64_latest"
           REAL_NAME="FreeBSD:14:amd64/latest"
           
-          if [ -d "artifacts/$SAFE_NAME" ] && [ -f "artifacts/index.html" ]; then
+          if [ -d "artifacts/$SAFE_NAME" ]; then
             echo "[ ✓ ] Safe下划线目录物理降落成功，开始强行整形为冒号R2卡槽..."
             mkdir -p "artifacts/FreeBSD:14:amd64"
             mv "artifacts/$SAFE_NAME" "artifacts/$REAL_NAME"
           fi
 
-          if [ -d "artifacts/$REAL_NAME" ] && [ -f "artifacts/index.html" ]; then
+          if [ ! -d "artifacts/$REAL_NAME" ]; then
+          cp src/pkg/index.html artifacts/  || true
+          cp src/pkg/404.html artifacts/ || true
             echo "[ ✓ ] Artifacts successfully verified and aligned on host!"
             echo "=== Full aligned artifacts tree ==="
             find artifacts -type f -exec ls -lh {} \;
