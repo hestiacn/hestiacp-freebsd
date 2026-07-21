@@ -35,7 +35,7 @@ jobs:
           release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
-          copyback: true
+          copyback: false
           run: |
             export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
             export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
@@ -44,7 +44,7 @@ jobs:
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
 
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma rsync
             # pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
@@ -94,41 +94,54 @@ jobs:
 
             echo "[ ✓ ] Repository signed successfully!"
 
-            # 使用 copyback 机制 - 将产物复制到 /tmp/copyback/
-            echo "[ * ] Preparing artifacts for copyback..."
-            mkdir -p /tmp/copyback/
-
-            # 复制所有包文件和签名文件
-            cp -R /tmp/hestiacp-src/pkg/* /tmp/copyback/
-            cp -R /tmp/hestiacp-src/keys/* /tmp/copyback/
-            echo "=== Files in copyback/==="
-            ls -la /tmp/copyback/
-            echo "[ ✓ ] Artifacts ready for copyback!"
+            # 使用 rsync 直接推送到宿主机
+            echo "[ * ] Pushing artifacts to host via rsync..."
+            HOST_DEST="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/"
+            mkdir -p "$HOST_DEST"
+            rsync -av /tmp/hestiacp-src/pkg/ "$HOST_DEST"
+            rsync -av /tmp/hestiacp-src/keys/ "$HOST_DEST/keys/"
+            
+            echo "[ ✓ ] rsync push completed!"
+            echo "=== Files pushed to host: ==="
+            ls -la "$HOST_DEST"
+            if [ -d "$HOST_DEST/keys" ]; then
+              echo "=== Keys: ==="
+              ls -la "$HOST_DEST/keys"
+            fi
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
         run: |
           echo "=== Current workspace contents ==="
           ls -la
-          if [ -f "hestia-1.9.6.pkg" ]; then
-            echo "[ ✓ ] Packages found in current directory"
-            ls -la *.pkg *.pub meta packagesite.pkg || true
-            FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
-            REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
-            mkdir -p "artifacts/$REAL_NAME"
-            mv *.pkg *.pub meta packagesite.pkg data.pkg meta.conf "artifacts/$REAL_NAME/" || true
-            cp src/pkg/index.html artifacts/ || true
-            cp src/pkg/404.html artifacts/ || true
-            printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
-            
-            echo "[ ✓ ] Artifacts successfully prepared"
-            find artifacts -type f -exec ls -lh {} \;
-          else
-            echo "❌ Error: No packages found in current directory!"
-            echo "Current directory contents:"
-            ls -la
+          
+          if [ ! -d "artifacts" ] || [ -z "$(ls artifacts/*.pkg)" ]; then
+            echo "❌ Error: No .pkg files found in artifacts/"
+            ls -la artifacts/ || true
             exit 1
           fi
+          
+          echo "[ ✓ ] Packages found"
+          
+          FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+          REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+          mkdir -p "artifacts/$REAL_NAME"
+          
+          # 移动所有文件到版本目录
+          mv artifacts/*.pkg artifacts/meta artifacts/meta.conf artifacts/packagesite.pkg artifacts/data.pkg artifacts/hestia.pub "artifacts/$REAL_NAME/" || true
+          
+          # 复制密钥
+          [ -d "artifacts/keys" ] && cp artifacts/keys/hestiacp.key "artifacts/$REAL_NAME/"
+          
+          # 覆盖公钥
+          [ -n "${{ secrets.PKG_SIGNING_KEY_PUB }}" ] && printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
+          
+          # 复制 HTML
+          [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
+          [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
+          
+          echo "[ ✓ ] Artifacts ready"
+          find artifacts -type f -exec ls -lh {} \;
 
       # 3. 上传到 Cloudflare R2
       - name: Sync Packages to Cloudflare R2
