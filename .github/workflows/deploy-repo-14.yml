@@ -91,19 +91,7 @@ jobs:
               echo "[ ✗ ] Failed to sign repository!"
               exit 1
             fi
-
             echo "[ ✓ ] Repository signed successfully!"
-            echo "[ * ] Verifying compressed metadata files..."
-            ls -la *.txz *.tzst || echo "[ ! ] Warning: No compressed metadata found"
-            
-            ls -la /tmp/hestiacp-src/keys/
-
-            echo "[ * ] Verifying artifacts in workspace..."
-            echo "=== Files in workspace root: ==="
-            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/
-            echo "=== Files in artifacts/ ==="
-            ls -la /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/ || echo "(artifacts dir not found)"
-
 
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
