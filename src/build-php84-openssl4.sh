@@ -2,6 +2,7 @@
 # src/build-php84-openssl4.sh
 # Build PHP 8.4.23 with OpenSSL 4.x and create package
 # UPDATED: Install IMAP via PECL (since ext/imap removed in PHP 8.4)
+# UPDATED: Install APCu extension
 
 set -e
 
@@ -77,6 +78,30 @@ download_imagick() {
 }
 
 # ============================================================
+# 下载 APCu 扩展源码
+# ============================================================
+download_apcu() {
+    local apcu_dir="$1/ext/apcu"
+    
+    [ -d "$apcu_dir" ] && { echo "[ ✓ ] APCu already exists"; return 0; }
+    
+    echo "[ * ] Downloading APCu 5.1.24..."
+    fetch -o "/tmp/apcu.tar.gz" "https://github.com/krakjoe/apcu/archive/refs/tags/v5.1.28.tar.gz" || return 1
+    
+    echo "[ * ] Extracting..."
+    tar -xf "/tmp/apcu.tar.gz" -C "$1/ext"
+    
+    local extracted=$(find "$1/ext" -maxdepth 1 -type d -name "apcu-*" | head -1)
+    [ -z "$extracted" ] && { echo "❌ Extract failed"; return 1; }
+    
+    mv "$extracted" "$apcu_dir"
+    rm -f "/tmp/apcu.tar.gz"
+    
+    echo "[ ✓ ] APCu extension ready"
+    return 0
+}
+
+# ============================================================
 # 通用解压函数
 # ============================================================
 extract_archive() {
@@ -130,6 +155,7 @@ get_config_args() {
         "--includedir=/usr/local/include/php${ver_suffix}"
         "--libdir=/usr/local/lib/php${ver_suffix}"
         "--program-suffix=${ver_suffix}"
+        "--enable-apcu"
         "--enable-embed"
         "--enable-fpm"
         "--enable-cli"
@@ -505,6 +531,123 @@ build_imagick() {
 }
 
 # ============================================================
+# 编译 APCu 扩展
+# ============================================================
+build_apcu() {
+    local build_dir="$1"
+    local install_dir="$2"
+    
+    if [ ! -d "$build_dir/ext/apcu" ]; then
+        echo "⚠️  APCu extension not found, skipping"
+        return 0
+    fi
+    
+    echo "[ * ] Building APCu extension..."
+    
+    local php_prefix="$install_dir/usr/local"
+    local php_config="$php_prefix/bin/php-config"
+    local phpize="$php_prefix/bin/phpize"
+    
+    if [ ! -f "$phpize" ] || [ ! -f "$php_config" ]; then
+        echo "⚠️  phpize or php-config not found, skipping APCu"
+        return 0
+    fi
+    
+    cd "$build_dir/ext/apcu" || return 1
+
+    echo "[ * ] Creating symlinks to build files..."
+    if [ -d "$build_dir/build" ]; then
+        mkdir -p /usr/local/lib/php/build
+        rm -rf /usr/local/lib/php/build || true
+        ln -sf "$build_dir/build" /usr/local/lib/php/build
+        echo "  ✅ Symlink: /usr/local/lib/php/build -> $build_dir/build"
+        
+        for file in mkdep.awk scan_makefile_in.awk shtool libtool.m4 ax_check_compile_flag.m4; do
+            if [ -f "$build_dir/build/$file" ] && [ ! -f "$file" ]; then
+                ln -sf "$build_dir/build/$file" ./
+                echo "  ✅ $file -> build/$file"
+            fi
+        done
+    fi
+    
+    echo "  [ * ] Creating symlinks for root build files..."
+    for file in acinclude.m4 Makefile.global config.sub config.guess ltmain.sh run-tests.php; do
+        if [ -f "$build_dir/$file" ]; then
+            ln -sf "$build_dir/$file" /usr/local/lib/php/build/
+            echo "  ✅ $file -> root/$file"
+        fi
+    done
+    
+    if [ -f "$build_dir/scripts/phpize.m4" ]; then
+        ln -sf "$build_dir/scripts/phpize.m4" "$build_dir/phpize.m4"
+        ln -sf "$build_dir/scripts/phpize.m4" /usr/local/lib/php/build/phpize.m4
+        echo "  ✅ phpize.m4 symlink created"
+    fi
+    
+    export PHP_PREFIX="$php_prefix"
+    export PHP_CONFIG="$php_config"
+    export PHPIZE="$phpize"
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export CFLAGS="-I/usr/local/include $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    
+    echo "[ * ] Running phpize..."
+    "$phpize"
+    echo "[ * ] Configuring APCu extension..."
+    ./configure --with-php-config="$php_config"
+    
+    echo "[ * ] Compiling APCu extension..."
+    make
+    
+    echo "[ * ] Installing APCu extension..."
+    make install INSTALL_ROOT="$install_dir"
+
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+
+    if [ ! -f "$ext_dir/apcu.so" ] && [ -f "$build_dir/ext/apcu/modules/apcu.so" ]; then
+        mkdir -p "$ext_dir"
+        cp "$build_dir/ext/apcu/modules/apcu.so" "$ext_dir/"
+        echo "  ✅ apcu.so copied from modules"
+    fi
+    
+    if [ -f "$ext_dir/apcu.so" ]; then
+        echo "  ✅ APCu extension installed to $ext_dir/apcu.so"
+        
+        local php_ini_dir="$install_dir/usr/local/etc"
+        mkdir -p "$php_ini_dir"
+        if [ -f "$php_ini_dir/php.ini" ]; then
+            if ! grep -q "^extension=apcu.so" "$php_ini_dir/php.ini"; then
+                echo "extension=apcu.so" >> "$php_ini_dir/php.ini"
+            fi
+            # 添加 APCu 配置
+            if ! grep -q "^apcu.enabled=1" "$php_ini_dir/php.ini"; then
+                echo "apcu.enabled=1" >> "$php_ini_dir/php.ini"
+                echo "apcu.shm_size=256M" >> "$php_ini_dir/php.ini"
+                echo "apcu.ttl=7200" >> "$php_ini_dir/php.ini"
+                echo "apcu.gc_ttl=3600" >> "$php_ini_dir/php.ini"
+                echo "apcu.entries_hint=4096" >> "$php_ini_dir/php.ini"
+                echo "  ✅ APCu configuration added to php.ini"
+            fi
+        else
+            echo "extension=apcu.so" > "$php_ini_dir/php.ini"
+            echo "apcu.enabled=1" >> "$php_ini_dir/php.ini"
+            echo "apcu.shm_size=256M" >> "$php_ini_dir/php.ini"
+            echo "apcu.ttl=7200" >> "$php_ini_dir/php.ini"
+            echo "apcu.gc_ttl=3600" >> "$php_ini_dir/php.ini"
+            echo "apcu.entries_hint=4096" >> "$php_ini_dir/php.ini"
+        fi
+    else
+        echo "⚠️  APCu extension not found in expected location"
+        find "$install_dir" -name "apcu.so" || echo "  Not found anywhere"
+    fi
+    
+    cd - > /dev/null
+    echo "  ✅ APCu extension build complete"
+    return 0
+}
+
+# ============================================================
 # 构建 PHP
 # ============================================================
 build_php() {
@@ -538,6 +681,11 @@ build_php() {
     # 下载 ImageMagick 扩展
     if ! download_imagick "$build_dir"; then
         echo "⚠️  ImageMagick extension download failed, continuing without it"
+    fi
+
+    # 下载 APCu 扩展
+    if ! download_apcu "$build_dir"; then
+        echo "⚠️  APCu extension download failed, continuing without it"
     fi
 
     cd "$build_dir" || return 1
@@ -1997,6 +2145,13 @@ EOF
     fi
 
     # ============================================================
+    # 编译 APCu 扩展（打包前安装）
+    # ============================================================
+    if ! build_apcu "$build_dir" "$install_dir"; then
+        echo "⚠️  APCu extension build failed"
+    fi
+
+    # ============================================================
     # 安装 IMAP 扩展（PHP 8.4 使用 PECL）
     # ============================================================
     IMAP_INSTALLED=0
@@ -2037,7 +2192,7 @@ EOF
     
     echo ""
     echo "PHP modules:"
-    "$php_bin" -m | grep -E "^(imagick|imap|phar|opcache|intl)" | sed 's/^/  /'
+    "$php_bin" -m | grep -E "^(imagick|apcu|imap|phar|opcache|intl)" | sed 's/^/  /'
     
     if [ -f "$install_dir/usr/local/bin/php" ]; then
         echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
@@ -2086,7 +2241,7 @@ create_package() {
     EXTENSION_DIR="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${ZEND_API_NO}"
 
     # 测试所有扩展
-    local extensions=("imagick")
+    local extensions=("imagick" "apcu")
     if [ "$BUILD_IMAP" = "yes" ]; then
         extensions+=("imap")
     fi
@@ -2106,7 +2261,7 @@ create_package() {
     done
     
     "$php_bin" $ext_list -r '
-        $extensions = ["imagick", "openssl", "intl"];
+        $extensions = ["imagick", "apcu", "openssl", "intl"];
         if (extension_loaded("imap")) {
             $extensions[] = "imap";
         }
@@ -2120,6 +2275,14 @@ create_package() {
         if (extension_loaded("imagick")) {
             $formats = Imagick::queryFormats("*");
             echo "ImageMagick supports " . count($formats) . " formats\n";
+        }
+        if (extension_loaded("apcu")) {
+            echo "APCu functions: " . (function_exists("apcu_store") ? "✅" : "❌") . "\n";
+            if (function_exists("apcu_store") && function_exists("apcu_fetch")) {
+                apcu_store("test_key", "test_value", 60);
+                $value = apcu_fetch("test_key");
+                echo "APCu test: " . ($value === "test_value" ? "✅" : "❌") . "\n";
+            }
         }
         if (extension_loaded("imap")) {
             echo "IMAP functions: " . (function_exists("imap_open") ? "✅" : "❌") . "\n";
@@ -2178,6 +2341,7 @@ PHP ${PHP_VERSION} compiled with OpenSSL 4.x support.
 This is a custom build of PHP 8.4.23 that includes:
 - OpenSSL 4.x compatibility patches
 - ImageMagick extension (imagick)
+- APCu extension (apcu) - User cache
 - IMAP extension (imap) - via PECL
 - FPM, CLI, CGI support
 - Common extensions: mbstring, bcmath, curl, gmp, mysqli, pdo_mysql, pgsql, pdo_pgsql, etc.
@@ -2205,7 +2369,7 @@ echo "To add to PATH:"
 echo "  export PATH=/usr/local/bin:\$PATH"
 echo ""
 echo "Verify extensions:"
-/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|imap|openssl|intl)" || echo "Some extensions not loaded"
+/usr/local/bin/php${ver_suffix} -m | grep -E "(imagick|apcu|imap|openssl|intl)" || echo "Some extensions not loaded"
 echo "========================================"
 EOF
     chmod +x "+POST_INSTALL"
@@ -2305,7 +2469,13 @@ EOF
     cat > "$test_php_ini" << EOF
 extension_dir=${EXT_DIR}
 extension=imagick.so
+extension=apcu.so
 zend_extension=opcache.so
+apcu.enabled=1
+apcu.shm_size=256M
+apcu.ttl=7200
+apcu.gc_ttl=3600
+apcu.entries_hint=4096
 EOF
 
     if [ -f "$EXT_DIR/imap.so" ]; then
@@ -2327,7 +2497,7 @@ EOF
     echo ""
     echo "[ * ] Testing extensions..."
 
-    local extensions=("openssl" "intl" "imagick" "phar" "opcache")
+    local extensions=("openssl" "intl" "imagick" "apcu" "phar" "opcache")
     if [ -f "$EXT_DIR/imap.so" ]; then
         extensions+=("imap")
     fi
@@ -2350,6 +2520,30 @@ EOF
         echo "  ✅ Imagick works"
     else
         echo "  ❌ Imagick test failed"
+        all_ok=0
+    fi
+
+    echo ""
+    echo "[ * ] Testing APCu functions..."
+    if "$PHP_TEST_BIN" -c "$test_php_ini" -r '
+        if (function_exists("apcu_store") && function_exists("apcu_fetch")) {
+            echo "  ✅ APCu functions exist\n";
+            apcu_store("test_key", "test_value", 60);
+            $value = apcu_fetch("test_key");
+            if ($value === "test_value") {
+                echo "  ✅ APCu basic operations work\n";
+            } else {
+                echo "  ❌ APCu store/fetch test failed\n";
+                exit(1);
+            }
+        } else {
+            echo "  ❌ APCu functions not found\n";
+            exit(1);
+        }
+    '; then
+        echo "  ✅ APCu works"
+    else
+        echo "  ❌ APCu test failed"
         all_ok=0
     fi
 
