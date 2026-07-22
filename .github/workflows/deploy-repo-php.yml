@@ -28,7 +28,6 @@ jobs:
       - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
         env:
-          IGNORE_OSVERSION: yes
           PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
           PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
         with:
@@ -46,7 +45,7 @@ jobs:
             echo "========================================"
             echo "Installing build dependencies..."
             echo "========================================"
-            pkg update -f
+            IGNORE_OSVERSION=yes pkg update -f
             pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt
 
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
@@ -134,7 +133,7 @@ jobs:
           path: |
             /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
             /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
-          retention-days: 2
+          retention-days: 1
 
       - name: Upload build log (always)
         if: always()
