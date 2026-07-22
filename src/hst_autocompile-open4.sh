@@ -954,7 +954,27 @@ if [ "$NGINX_B" = "true" ]; then
 		rm -rf ~/rpmbuild/SPECS/* ~/rpmbuild/SOURCES/* ~/rpmbuild/SRPMS/*
 	fi
 fi
-#!/bin/bash
+
+# ============================================================
+# 下载 PHP
+# ============================================================
+download_php() {
+    local file="$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz"
+
+    if [ -f "$file" ]; then
+        echo "[ ✓ ] PHP ${PHP_VERSION} already downloaded"
+        return 0
+    fi
+
+    echo "[ * ] Downloading PHP ${PHP_VERSION}..."
+    fetch -o "$file" "https://github.com/php/php-src/archive/refs/tags/php-${PHP_VERSION}.tar.gz"
+    if [ $? -ne 0 ]; then
+        echo "Failed to download PHP ${PHP_VERSION}"
+        return 1
+    fi
+    echo "[ ✓ ] Downloaded PHP ${PHP_VERSION}"
+    return 0
+}
 
 # ============================================================
 # 下载 ImageMagick 扩展源码
