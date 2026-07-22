@@ -828,7 +828,7 @@ if [ "$NGINX_B" = "true" ]; then
 		if [ "$use_src_folder" = 'true' ] && [ -d "$SRC_DIR" ]; then
 			cp -rf "$SRC_DIR/" "$BUILD_DIR/hestiacp-$branch_dash"
 		fi
-
+        
 		mkdir -p "${BUILD_DIR}/usr/local/hestia/nginx"
 		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia" 2> /dev/null || true
 
@@ -1128,6 +1128,7 @@ get_config_args() {
         "--with-sodium"
         "--with-password-argon2"
         "--with-ldap=/usr/local"
+        "--enable-pspell=shared"
         "--with-libedit"
         "--with-ffi"
         "--enable-gd"
@@ -1343,6 +1344,7 @@ install_imap_manual() {
     echo "  ✅ imap.so added to php.ini"
     return 0
 }
+
 # ============================================================
 # 从源码编译安装 aspell 库
 # ============================================================
@@ -2950,18 +2952,36 @@ prefix=/usr
 exec_prefix=${prefix}
 libdir=${exec_prefix}/lib
 includedir=${prefix}/include
+
 Name: bzip2
 Description: bzip2 compression library
 Version: 1.0.8
 Libs: -L${libdir} -lbz2
 Cflags: -I${includedir}
 EOF
-    export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 
-    # 获取配置参数
+    export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    echo "  ✅ bzip2.pc created and PKG_CONFIG_PATH updated"
+
+    # 获取基础配置参数
     mapfile -t CONFIG_ARGS < <(get_config_args)
+    echo "Config args: ${CONFIG_ARGS[*]}"
     CONFIG_ARGS_WITH_PHAR_SHARED=("${CONFIG_ARGS[@]}")
     CONFIG_ARGS_WITH_PHAR_SHARED+=("--enable-phar=shared")
+    echo "Final config args: ${CONFIG_ARGS_WITH_PHAR_SHARED[*]}"
+
+
+    # ============================================================
+    # 运行 configure - 使用系统 ICU
+    # ============================================================
+    echo "[ * ] Running configure..."
+
+    echo "=== DEBUG: CONFIG_ARGS_WITH_PHAR_SHARED ==="
+    echo "Length: ${#CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
+    for i in "${!CONFIG_ARGS_WITH_PHAR_SHARED[@]}"; do
+        echo "  [$i] ${CONFIG_ARGS_WITH_PHAR_SHARED[$i]}"
+    done
+    echo "=== END DEBUG ==="
 
     set +e
     ./configure \
@@ -3055,7 +3075,9 @@ EOF
     fi
     
     BUILD_STATUS=$?
-
+    if [ -n "$OLD_LD_PRELOAD" ]; then
+        export LD_PRELOAD="$OLD_LD_PRELOAD"
+    fi
     if [ $BUILD_STATUS -ne 0 ]; then
         echo ""
         echo "========================================"
@@ -3099,17 +3121,44 @@ EOF
     echo "  ✅ phar.phar ready"
 
     # ============================================================
-    # 安装 PHP 到 Hestia 路径
+    # 安装 PHP
     # ============================================================
     echo ""
     echo "[*] Installing PHP ${PHP_V} to Hestia path..."
     mkdir -p "$install_dir"
 
-    # 先安装 programs (phpize, php-config)
+    # 确定 make 命令
     if [ "$OSTYPE" = 'freebsd' ]; then
-        gmake install-programs INSTALL_ROOT="$install_dir" || true
+        MAKE_CMD="gmake"
     else
-        make install-programs INSTALL_ROOT="$install_dir" || true
+        MAKE_CMD="make"
+    fi
+
+    echo "[ * ] Installing phpize and php-config..."
+    if [ -f "Makefile" ]; then
+        if ! $MAKE_CMD install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
+            echo "  ⚠️  $MAKE_CMD install-programs failed, copying from source..."
+            if [ -f "$build_dir/phpize" ]; then
+                mkdir -p "$install_dir/usr/local/bin"
+                cp "$build_dir/phpize" "$install_dir/usr/local/bin/"
+                chmod 755 "$install_dir/usr/local/bin/phpize"
+                echo "  ✅ phpize copied from source"
+            fi
+            if [ -f "$build_dir/php-config" ]; then
+                cp "$build_dir/php-config" "$install_dir/usr/local/bin/"
+                chmod 755 "$install_dir/usr/local/bin/php-config"
+                echo "  ✅ php-config copied from source"
+            fi
+        else
+            echo "  ✅ phpize and php-config installed"
+        fi
+    fi
+
+    if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
+        echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
+        echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
+    else
+        echo "  ⚠️  phpize or php-config still missing"
     fi
 
     # 禁用 PEAR 后安装
@@ -3169,7 +3218,7 @@ EOF
             chmod 755 "$install_dir/usr/local/bin/php-config"
             echo "  ✅ php-config copied"
         fi
-    fi   # ← 这里结束 if ! $INSTALL_CMD install
+    fi 
 
     # 检查二进制文件是否存在
     if [ ! -f "$install_dir/usr/local/bin/php" ]; then
@@ -3200,6 +3249,7 @@ EOF
 
     echo ""
     echo "✅ PHP ${PHP_V} installed to Hestia path"
+    
 
     # ============================================================
     # 编译 ImageMagick 扩展
@@ -3216,22 +3266,32 @@ EOF
     fi
 
     # ============================================================
-    # 安装 PSPell 扩展
+    # 编译 PSpell 扩展
     # ============================================================
     if ! install_pspell "$install_dir" "$build_dir"; then
-        echo "⚠️  PSPell extension installation failed"
+        echo "⚠️  PSPell source build failed, trying PECL..."
+        if ! install_pspell_pecl "$install_dir" "$build_dir"; then
+            echo "⚠️  PSPell installation failed"
+        fi
     fi
-
     # ============================================================
-    # 安装 IMAP 扩展
+    # 编译  IMAP 扩展
     # ============================================================
+    IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
-        if ! install_imap_pecl "$install_dir" "$build_dir"; then
+        # 首先尝试 PECL 安装
+        if install_imap_pecl "$install_dir" "$build_dir"; then
+            IMAP_INSTALLED=1
+        else
             echo "⚠️  PECL installation failed, trying manual build..."
-            if ! install_imap_manual "$install_dir" "$build_dir"; then
-                echo "⚠️  IMAP extension build failed"
+            if install_imap_manual "$install_dir" "$build_dir"; then
+                IMAP_INSTALLED=1
+            else
+                echo "⚠️  IMAP extension build failed, continuing without it"
             fi
         fi
+    else
+        echo "[ * ] IMAP extension disabled (BUILD_IMAP=no)"
     fi
 
     # ============================================================
@@ -3307,46 +3367,29 @@ if [ "$PHP_B" = "true" ]; then
         # 复制二进制文件
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/bin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/bin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/"
         fi
         
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/sbin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/sbin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/"
         fi
         
         # 复制扩展文件
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/lib/php"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/"
         fi
         
         # 复制配置文件
         if [ -f "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc"
-            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/" 2>/dev/null || true
+            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/"
         fi
-		mkdir -p "${BUILD_DIR}/usr/local/hestia"
-		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia" 2> /dev/null || true
-
-		if [ "$OSTYPE" = 'freebsd' ]; then
-			env MAKEFLAGS="" gmake -j "$NUM_CPUS" && gmake INSTALL_ROOT="$BUILD_DIR" install
-		else
-			make -j "$NUM_CPUS" && make INSTALL_ROOT="$BUILD_DIR" install
-		fi
-
-		if [ "$use_src_folder" = 'true' ] && [ -d "$SRC_DIR" ]; then
-			cp -rf "$SRC_DIR/" "$BUILD_DIR/hestiacp-$branch_dash"
-		fi
-
-		mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia"
-
-		if [ -d "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php" ]; then
-			rm -rf "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php"
-		fi
-
-		mv "${BUILD_DIR}/usr/local/hestia/php" "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/"
-		cp "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
+        # 创建 hestia-php 软链接
+        if [ -f "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" ]; then
+            ln -sf php-fpm "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
+        fi
 
 		cd "$BUILD_DIR" || exit 1
 
@@ -3390,30 +3433,30 @@ if [ "$PHP_B" = "true" ]; then
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
-			get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
+            get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
 			get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2> /dev/null || get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
 			generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
 			if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
-				sed -i '' 's/epoll/kqueue/g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2> /dev/null
-				sed -i '' 's|/run/|/var/run/|g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2> /dev/null
-			fi
+                sed -i '' 's/epoll/kqueue/g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
+                sed -i '' 's|/run/|/var/run/|g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
+            fi
 
-			get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST"
-			get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
-			chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
+            get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+            get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
+            chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
 
-			echo "Building Hestia PHP PKG for FreeBSD..."
-			CLEAN_PHP_VER_FINAL=$(echo "${PHP_V}" | tr -d '\r"' | tr -d "'")
-			sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
-			sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+            echo "Building Hestia PHP PKG for FreeBSD..."
+            CLEAN_PHP_VER_FINAL=$(echo "${PHP_V}" | tr -d '\r"' | tr -d "'")
+            sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+            sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
 
-			mkdir -p "$BUILD_DIR_HESTIAPHP/+METADATA"
-			cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST"
-			cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/+METADATA"
+            cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST"
+            cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL"
 
-			echo "Building Hestia PHP PKG for FreeBSD..."
-			pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
-			mv -f $PKG_DIR/hestia-php-1*.pkg "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" 2> /dev/null
+            echo "Building Hestia PHP PKG for FreeBSD..."
+            pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
+            mv -f $PKG_DIR/hestia-php-*.pkg "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" 2>/dev/null
 
 			echo "[ * ] Verifying php package integrity..."
 			if pkg info -F "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" > /dev/null 2>&1; then
@@ -3428,8 +3471,8 @@ if [ "$PHP_B" = "true" ]; then
 		#rm -rf "$BUILD_DIR/usr"
 
 		if [ "$KEEPBUILD" != 'true' ]; then
-			rm -rf "$BUILD_DIR/php-${CLEAN_PHP_VER}" 2> /dev/null
-			rm -rf "$BUILD_DIR_HESTIAPHP"
+            rm -rf "$BUILD_DIR/php-${CLEAN_PHP_VER}" 2>/dev/null
+            rm -rf "$BUILD_DIR_HESTIAPHP" 2>/dev/null
 			if [ "$use_src_folder" = 'true' ] && [ -d "$BUILD_DIR/hestiacp-$branch_dash" ]; then
 				rm -rf "$BUILD_DIR/hestiacp-$branch_dash"
 			fi

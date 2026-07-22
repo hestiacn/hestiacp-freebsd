@@ -44,17 +44,17 @@ jobs:
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
 
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
-            # pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
+
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
             export HESTIA_DEBUG=true
 
-            chmod +x src/hst_autocompile.sh
+            chmod +x src/hst_autocompile-open4.sh
 
-            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
             echo "=== Autocompile Exit code: $EXIT_CODE ==="
@@ -134,7 +134,6 @@ jobs:
           aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
             --endpoint-url "$ENDPOINT" \
             --follow-symlinks \
-            --delete \
             --region auto
           echo "Deploying edge node html headers to bucket root..."
           aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto
