@@ -15,7 +15,7 @@ on:
         default: "main"
 
 jobs:
-  build:
+  build-and-deploy:
     name: Build pkg repository
     runs-on: ubuntu-latest
     strategy:
@@ -45,8 +45,8 @@ jobs:
             echo "========================================"
             echo "Installing build dependencies..."
             echo "========================================"
-            IGNORE_OSVERSION=yes pkg update -f
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt
+
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt
 
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
@@ -86,15 +86,11 @@ jobs:
             cd /tmp/hestiacp-src
             mkdir -p keys
             
-            if [ -n "$PKG_SIGNING_KEY" ]; then
-                printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
-                chmod 600 keys/hestiacp.key
-                echo "✅ Private key imported for signing"
-            else
-                echo "⚠️  No signing key provided, creating unsigned repository"
-            fi
+            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
 
-            ls -la keys/ 2>/dev/null || echo "No keys directory"
+            echo "[ ✓ ] Private key imported for signing"
+            ls -la keys/
 
             cd pkg
             echo ""
@@ -107,17 +103,13 @@ jobs:
 
             echo ""
             echo "Signing repository..."
-            if [ -f "/tmp/hestiacp-src/keys/hestiacp.key" ]; then
-                pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-                if [ $? -ne 0 ]; then
-                  echo "❌ Failed to sign repository!"
-                  exit 1
-                fi
-                echo "✅ Repository signed successfully!"
-            else
-                pkg repo .
-                echo "✅ Repository created without signature"
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            ls -la /tmp/hestiacp-src/keys/
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              exit 1
             fi
+            echo "[ ✓ ] Repository signed successfully!"
 
             echo ""
             echo "========================================"
