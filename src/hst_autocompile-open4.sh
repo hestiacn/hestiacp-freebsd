@@ -828,7 +828,7 @@ if [ "$NGINX_B" = "true" ]; then
 		if [ "$use_src_folder" = 'true' ] && [ -d "$SRC_DIR" ]; then
 			cp -rf "$SRC_DIR/" "$BUILD_DIR/hestiacp-$branch_dash"
 		fi
-
+        
 		mkdir -p "${BUILD_DIR}/usr/local/hestia/nginx"
 		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia" 2> /dev/null || true
 
@@ -1128,6 +1128,7 @@ get_config_args() {
         "--with-sodium"
         "--with-password-argon2"
         "--with-ldap=/usr/local"
+        "--enable-pspell=shared"
         "--with-libedit"
         "--with-ffi"
         "--enable-gd"
@@ -1930,6 +1931,36 @@ build_php() {
         export enable_dtrace=no
     fi
 
+    # ============================================================
+    # 配置 PSPell 环境
+    # ============================================================
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        echo "[ * ] Configuring PSPell support..."
+        
+        if pkg info | grep -q aspell; then
+            echo "  ✅ aspell already installed"
+        else
+            echo "  Installing aspell..."
+            pkg install -y aspell || true
+        fi
+        
+        if [ -f "/usr/local/lib/libaspell.so" ] || [ -f "/usr/local/lib/libpspell.so" ]; then
+            export PSPELL_CFLAGS="-I/usr/local/include"
+            export PSPELL_LIBS="-L/usr/local/lib -laspell"
+            export ac_cv_lib_pspell_pspell_new=yes
+            export ac_cv_lib_pspell_pspell_new_config=yes
+            export ac_cv_lib_pspell_pspell_check=yes
+            export ac_cv_lib_pspell_pspell_config=yes
+            echo "  ✅ PSPell libraries found"
+        else
+            echo "  ⚠️  PSPell libraries not found"
+            export PSPELL_LIBS="-laspell"
+            export ac_cv_lib_pspell_pspell_new=yes
+            export ac_cv_lib_pspell_pspell_new_config=yes
+            export ac_cv_lib_pspell_pspell_check=yes
+            export ac_cv_lib_pspell_pspell_config=yes
+        fi
+    fi
     # ============================================================
     # 从源码编译 libarchive（链接 OpenSSL 4.x）
     # ============================================================
@@ -2914,16 +2945,7 @@ EOF
         return 1
     }
 
-    echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
-    echo "CFLAGS: $CFLAGS"
-    export LDFLAGS="-L/usr/local/lib ${LDFLAGS}"
-    echo "LDFLAGS (without rpath for configure): $LDFLAGS"
-
-    # ============================================================
     # 修复 bzip2 pkg-config
-    # ============================================================
-    echo "[ * ] Creating bzip2.pc for pkg-config..."
-
     mkdir -p /usr/local/libdata/pkgconfig
     cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
 prefix=/usr
@@ -3039,12 +3061,20 @@ EOF
     mkdir -p "${BUILD_DIR}/usr/local/hestia"
     
     CURRENT_LIBS=$(grep "^LIBS" Makefile | head -1 | sed 's/^LIBS = //')
-    gmake -j "$NUM_CPUS" \
-        LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
-        LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
-        > "$LOG_DIR/build-${PHP_V}.log"
+    
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        gmake -j "$NUM_CPUS" \
+            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
+            LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
+            > "$LOG_DIR/build-${PHP_V}.log"
+    else
+        make -j "$NUM_CPUS" \
+            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
+            LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
+            > "$LOG_DIR/build-${PHP_V}.log"
+    fi
+    
     BUILD_STATUS=$?
-
     if [ -n "$OLD_LD_PRELOAD" ]; then
         export LD_PRELOAD="$OLD_LD_PRELOAD"
     fi
@@ -3059,10 +3089,14 @@ EOF
         tail -200 "$LOG_DIR/build-${PHP_V}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
-        gmake clean
-        if gmake -j1 >> "$LOG_DIR/build-${PHP_V}.log"; then
-            echo "[ ✓ ] Single core build succeeded!"
+        if [ "$OSTYPE" = 'freebsd' ]; then
+            gmake clean
+            gmake -j1 >> "$LOG_DIR/build-${PHP_V}.log"
         else
+            make clean
+            make -j1 >> "$LOG_DIR/build-${PHP_V}.log"
+        fi
+        if [ $? -ne 0 ]; then
             return 1
         fi
     fi
@@ -3074,14 +3108,11 @@ EOF
     echo "[*] Generating phar.phar..."
     cd "$build_dir" || return 1
     
-    if [ ! -f "modules/phar.so" ] && [ ! -f "ext/phar/.libs/phar.so" ]; then
-        echo "❌ phar.so not found! phar extension was not built."
-        echo "   Check: configure --enable-phar=shared"
-        return 1
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        gmake ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
+    else
+        make ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
     fi
-    
-    echo "  Attempt 1: make ext/phar/phar.phar"
-    make ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
     
     if [ ! -f "ext/phar/phar.phar" ] || [ ! -s "ext/phar/phar.phar" ]; then
         echo "❌ phar.phar not generated or empty"
@@ -3093,12 +3124,20 @@ EOF
     # 安装 PHP
     # ============================================================
     echo ""
-    echo "[*] Installing PHP ${PHP_V}..."
+    echo "[*] Installing PHP ${PHP_V} to Hestia path..."
     mkdir -p "$install_dir"
+
+    # 确定 make 命令
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        MAKE_CMD="gmake"
+    else
+        MAKE_CMD="make"
+    fi
+
     echo "[ * ] Installing phpize and php-config..."
     if [ -f "Makefile" ]; then
-        if ! gmake install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
-            echo "  ⚠️  make install-programs failed, copying from source..."
+        if ! $MAKE_CMD install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
+            echo "  ⚠️  $MAKE_CMD install-programs failed, copying from source..."
             if [ -f "$build_dir/phpize" ]; then
                 mkdir -p "$install_dir/usr/local/bin"
                 cp "$build_dir/phpize" "$install_dir/usr/local/bin/"
@@ -3113,13 +3152,13 @@ EOF
         else
             echo "  ✅ phpize and php-config installed"
         fi
+    fi
 
-        if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
-            echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
-            echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
-        else
-            echo "  ⚠️  phpize or php-config still missing"
-        fi
+    if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
+        echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
+        echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
+    else
+        echo "  ⚠️  phpize or php-config still missing"
     fi
 
     # 禁用 PEAR 后安装
@@ -3132,20 +3171,18 @@ EOF
         sed -i '' 's/^install-pear-installer:/# install-pear-installer:/g' Makefile
         sed -i '' '/^\t.*install-pear/ s/^/# /' Makefile
         sed -i '' '/^\t.*PEAR_INSTALLER/ s/^/# /' Makefile
-        echo ""
-        echo "  PEAR lines after:"
-        grep -n "install-pear" Makefile | head -10 || echo "    (none found)"
-        
-        echo ""
-        echo "  Makefile targets (after):"
-        grep -E "^install:|^install-|^pharcmd:" Makefile | head -10 | sed 's/^/    /'
-        
-        echo "  ✓ PEAR disabled in Makefile"
     fi
-    
+
     echo ""
-    echo "  Running: gmake install INSTALL_ROOT=\"$install_dir\""
-    if ! gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_V}.log" 2>&1; then
+    echo "[*] Installing PHP ${PHP_V}..."
+
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        INSTALL_CMD="gmake"
+    else
+        INSTALL_CMD="make"
+    fi
+
+    if ! $INSTALL_CMD install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_V}.log" 2>&1; then
         echo "❌ PHP install failed"
         echo ""
         echo "--- Last 50 lines of install log ---"
@@ -3155,7 +3192,7 @@ EOF
         echo "--- Trying component installation ---"
         for target in install-cli install-cgi install-fpm install-build install-pdo-headers; do
             echo "  Installing $target..."
-            gmake $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_V}.log" || true
+            $INSTALL_CMD $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_V}.log" || true
         done
         
         if [ -d "modules" ]; then
@@ -3195,12 +3232,7 @@ EOF
     if [ -f "Makefile.bak" ]; then
         mv Makefile.bak Makefile
     fi
-    # 创建头文件软链接，让 phpize 能找到
 
-    if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
-        ln -sf php "$install_dir/usr/local/bin/php-cgi"
-        echo "  ✓ Created php-cgi symlink"
-    fi
     # 创建软链接
     if [ ! -f "$install_dir/usr/local/bin/php" ]; then
         ln -sf "$install_dir/usr/local/hestia/php/bin/php" "$install_dir/usr/local/bin/php" || true
@@ -3241,13 +3273,16 @@ EOF
     fi
 
     # ============================================================
-    # 编译 PSpell 扩展（如果源码中存在）
+    # 编译 PSpell 扩展
     # ============================================================
     if ! install_pspell "$install_dir" "$build_dir"; then
-        echo "⚠️  PSPell extension installation failed, continuing without it"
+        echo "⚠️  PSPell source build failed, trying PECL..."
+        if ! install_pspell_pecl "$install_dir" "$build_dir"; then
+            echo "⚠️  PSPell installation failed"
+        fi
     fi
     # ============================================================
-    # 安装 IMAP 扩展（PHP 8.4 使用 PECL）
+    # 编译  IMAP 扩展
     # ============================================================
     IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
@@ -3339,24 +3374,24 @@ if [ "$PHP_B" = "true" ]; then
         # 复制二进制文件
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/bin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/bin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/"
         fi
         
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/sbin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/sbin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/"
         fi
         
         # 复制扩展文件
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/lib/php"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/"
         fi
         
         # 复制配置文件
         if [ -f "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc"
-            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/" 2>/dev/null || true
+            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/"
         fi
         # 创建 hestia-php 软链接
         if [ -f "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" ]; then
@@ -3405,29 +3440,26 @@ if [ "$PHP_B" = "true" ]; then
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
 			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
-
-            get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null || true
-            get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2>/dev/null || true
-            
-            generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
-            
-            if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
+            get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
+			get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2> /dev/null || get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
+			generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
+			if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
                 sed -i '' 's/epoll/kqueue/g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
                 sed -i '' 's|/run/|/var/run/|g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
             fi
 
-            get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST" 2>/dev/null || true
-            get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" 2>/dev/null || true
-            chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" 2>/dev/null || true
+            get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+            get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
+            chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
 
             echo "Building Hestia PHP PKG for FreeBSD..."
             CLEAN_PHP_VER_FINAL=$(echo "${PHP_V}" | tr -d '\r"' | tr -d "'")
-            sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST" 2>/dev/null || true
-            sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST" 2>/dev/null || true
+            sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+            sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
 
             mkdir -p "$BUILD_DIR_HESTIAPHP/+METADATA"
-            cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST" 2>/dev/null || true
-            cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL" 2>/dev/null || true
+            cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST"
+            cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL"
 
             echo "Building Hestia PHP PKG for FreeBSD..."
             pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
