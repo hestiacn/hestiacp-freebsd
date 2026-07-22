@@ -328,6 +328,7 @@ BUILD_DIR='/tmp/hestiacp-src'
 INSTALL_DIR='/usr/local/hestia'
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHIVE_DIR="$SRC_DIR/src/archive"
+PHP_VERSION="$PHP_V"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
 NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
