@@ -207,7 +207,6 @@ get_config_args() {
         "--with-openssl=/usr/local"
         "--with-sodium"
         "--with-password-argon2"
-        "--with-pspell=/usr/local"
         "--with-ldap=/usr/local"
         "--with-libedit"
         "--with-ffi"
@@ -423,6 +422,209 @@ install_imap_manual() {
     
     echo "  ✅ imap.so added to php.ini"
     return 0
+}
+
+# ============================================================
+# 安装 PSPell 扩展（源码编译优先，PECL 备用）
+# ============================================================
+install_pspell() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Installing PSPell extension"
+    echo "========================================"
+    
+    local installed=0
+    
+    # 先检查 aspell 是否安装
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        if ! pkg info | grep -q aspell; then
+            echo "  Installing aspell..."
+            pkg install -y aspell || true
+        fi
+    fi
+    
+    # ============================================================
+    # 尝试 1: 源码编译（如果存在）
+    # ============================================================
+    if [ -d "$build_dir/ext/pspell" ]; then
+        echo "[ * ] Attempt 1: Building PSPell from source..."
+        if build_pspell_from_source "$install_dir" "$build_dir"; then
+            installed=1
+            echo "  ✅ PSPell installed from source"
+        else
+            echo "  ⚠️  Source build failed, trying PECL..."
+        fi
+    else
+        echo "  ℹ️  PSPell source not found, trying PECL..."
+    fi
+    
+    # ============================================================
+    # 尝试 2: PECL 安装（如果源码编译失败或不存在）
+    # ============================================================
+    if [ $installed -eq 0 ]; then
+        echo "[ * ] Attempt 2: Installing PSPell via PECL..."
+        if install_pspell_via_pecl "$install_dir" "$build_dir"; then
+            installed=1
+            echo "  ✅ PSPell installed via PECL"
+        else
+            echo "  ❌ PSPell installation failed via PECL"
+        fi
+    fi
+    
+    # ============================================================
+    # 最终结果
+    # ============================================================
+    if [ $installed -eq 1 ]; then
+        echo "  ✅ PSPell installed successfully"
+        return 0
+    else
+        echo "  ❌ PSPell installation failed (both source and PECL)"
+        return 1
+    fi
+}
+
+# ============================================================
+# 从源码编译 PSPell
+# ============================================================
+build_pspell_from_source() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo "  [ * ] Building PSPell from source..."
+    
+    local php_prefix="$install_dir/usr/local"
+    local php_config="$php_prefix/bin/php-config"
+    local phpize="$php_prefix/bin/phpize"
+    
+    if [ ! -f "$phpize" ] || [ ! -f "$php_config" ]; then
+        echo "    ❌ phpize or php-config not found"
+        return 1
+    fi
+    
+    cd "$build_dir/ext/pspell" || return 1
+    
+    # 设置环境变量
+    export PSPELL_CFLAGS="-I/usr/local/include"
+    export PSPELL_LIBS="-L/usr/local/lib -laspell"
+    export ac_cv_lib_pspell_pspell_new=yes
+    export ac_cv_lib_pspell_pspell_new_config=yes
+    export ac_cv_lib_pspell_pspell_check=yes
+    export ac_cv_lib_pspell_pspell_config=yes
+    
+    echo "    Running phpize..."
+    "$phpize" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "    ❌ phpize failed"
+        cd - > /dev/null
+        return 1
+    fi
+    
+    echo "    Configuring..."
+    ./configure --with-php-config="$php_config" --with-pspell=/usr/local > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "    ❌ Configure failed"
+        cd - > /dev/null
+        return 1
+    fi
+    
+    echo "    Compiling..."
+    make > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "    ❌ Make failed"
+        cd - > /dev/null
+        return 1
+    fi
+    
+    echo "    Installing..."
+    make install INSTALL_ROOT="$install_dir" > /dev/null 2>&1
+    
+    # 检查是否安装成功
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    if [ ! -f "$ext_dir/pspell.so" ] && [ -f "modules/pspell.so" ]; then
+        mkdir -p "$ext_dir"
+        cp modules/pspell.so "$ext_dir/"
+    fi
+    
+    cd - > /dev/null
+    
+    if [ -f "$ext_dir/pspell.so" ]; then
+        # 添加到 php.ini
+        local php_ini="$install_dir/usr/local/etc/php.ini"
+        if ! grep -q "^extension=pspell.so" "$php_ini" 2>/dev/null; then
+            echo "extension=pspell.so" >> "$php_ini"
+        fi
+        echo "    ✅ pspell.so installed"
+        return 0
+    else
+        echo "    ❌ pspell.so not found after build"
+        return 1
+    fi
+}
+
+# ============================================================
+# 通过 PECL 安装 PSPell
+# ============================================================
+install_pspell_via_pecl() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo "  [ * ] Installing PSPell via PECL..."
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local pecl="$install_dir/usr/local/bin/pecl"
+    
+    if [ ! -f "$php_bin" ]; then
+        echo "    ❌ PHP binary not found"
+        return 1
+    fi
+    
+    # 确保 PECL 存在
+    if [ ! -f "$pecl" ]; then
+        echo "    Installing PEAR..."
+        cd "$build_dir" || return 1
+        if [ -f "phpize" ]; then
+            ./phpize > /dev/null 2>&1
+        fi
+        fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar > /dev/null 2>&1
+        "$php_bin" /tmp/go-pear.phar > /dev/null 2>&1
+        export PATH="$install_dir/usr/local/bin:$PATH"
+    fi
+    
+    export PATH="$install_dir/usr/local/bin:$PATH"
+    export PSPELL_CFLAGS="-I/usr/local/include"
+    export PSPELL_LIBS="-L/usr/local/lib -laspell"
+    
+    # 尝试安装
+    if pecl install pspell <<< "yes" > /dev/null 2>&1; then
+        # 查找 pspell.so
+        local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+        local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+        
+        local pspell_so=$(find /usr/local/lib/php/extensions -name "pspell.so" 2>/dev/null | head -1)
+        if [ -z "$pspell_so" ]; then
+            pspell_so=$(find "$install_dir" -name "pspell.so" 2>/dev/null | head -1)
+        fi
+        
+        if [ -n "$pspell_so" ] && [ -f "$pspell_so" ]; then
+            mkdir -p "$ext_dir"
+            cp "$pspell_so" "$ext_dir/"
+            echo "    ✅ pspell.so installed via PECL"
+            
+            local php_ini="$install_dir/usr/local/etc/php.ini"
+            if ! grep -q "^extension=pspell.so" "$php_ini" 2>/dev/null; then
+                echo "extension=pspell.so" >> "$php_ini"
+            fi
+            return 0
+        fi
+    fi
+    
+    echo "    ❌ PECL installation failed"
+    return 1
 }
 
 # ============================================================
@@ -643,67 +845,6 @@ build_apcu() {
     cd - > /dev/null
     echo "  ✅ APCu extension build complete"
     return 0
-}
-
-# ============================================================
-# 检测 configure 选项支持情况
-# ============================================================
-check_configure_options() {
-    local build_dir="$1"
-    local log_file="$2"
-    
-    cd "$build_dir" || return 1
-    
-    echo ""
-    echo "========================================"
-    echo "[ * ] Checking configure option support"
-    echo "========================================"
-    
-    # 1. 获取支持的选项列表
-    echo "[ 1/3 ] Getting supported options list..."
-    ./configure --help 2>/dev/null | grep -E "^\s*--(enable|with|disable)" | awk '{print $1}' | sed 's/,$//' | sort > /tmp/supported_opts.txt
-    echo "  Found $(wc -l < /tmp/supported_opts.txt) supported options"
-    
-    # 2. 检查我们的选项
-    echo ""
-    echo "[ 2/3 ] Checking our options..."
-    
-    # 获取我们使用的选项（从 CONFIG_ARGS_WITH_PHAR_SHARED）
-    local all_opts=("$@")
-    local unsupported=()
-    
-    for opt in "${all_opts[@]}"; do
-        # 提取选项名
-        opt_name=$(echo "$opt" | cut -d'=' -f1)
-        
-        if grep -q "^$opt_name$" /tmp/supported_opts.txt; then
-            echo "  ✅ $opt"
-        else
-            echo "  ❌ $opt (UNSUPPORTED)"
-            unsupported+=("$opt")
-        fi
-    done
-    
-    # 3. 显示结果
-    echo ""
-    echo "[ 3/3 ] Summary"
-    echo "========================================"
-    
-    if [ ${#unsupported[@]} -eq 0 ]; then
-        echo "✅ All options are supported!"
-    else
-        echo "⚠️  ${#unsupported[@]} unsupported options found:"
-        printf '    %s\n' "${unsupported[@]}"
-        echo ""
-        echo "These options will be ignored by configure."
-        echo "Consider removing them from get_config_args():"
-        for opt in "${unsupported[@]}"; do
-            echo "  # $opt"
-        done
-    fi
-    
-    echo "========================================"
-    return ${#unsupported[@]}
 }
 
 # ============================================================
@@ -1815,40 +1956,6 @@ EOF
     echo "[ ✓ ] OpenSSL 4.x environment configured"
 
     # ============================================================
-    # 配置 PSPell (PHP 8.4 使用 --enable-pspell)
-    # ============================================================
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        echo "[ * ] Configuring PSPell support..."
-        
-        # 检查 aspell 是否已安装
-        if pkg info | grep -q aspell; then
-            echo "  ✅ aspell already installed"
-        else
-            echo "  Installing aspell..."
-            pkg install -y aspell || true
-        fi
-        
-        # 检查库文件是否存在
-        if [ -f "/usr/local/lib/libaspell.so" ] || [ -f "/usr/local/lib/libpspell.so" ]; then
-            export PSPELL_CFLAGS="-I/usr/local/include"
-            export PSPELL_LIBS="-L/usr/local/lib -laspell"
-            export ac_cv_lib_pspell_pspell_new=yes
-            export ac_cv_lib_pspell_pspell_new_config=yes
-            export ac_cv_lib_pspell_pspell_check=yes
-            export ac_cv_lib_pspell_pspell_config=yes
-            echo "  ✅ PSPell libraries found, pspell will be compiled"
-        else
-            echo "  ⚠️  PSPell libraries not found, will skip pspell"
-            # 强制启用，让 configure 去检测
-            export PSPELL_LIBS="-laspell"
-            export ac_cv_lib_pspell_pspell_new=yes
-            export ac_cv_lib_pspell_pspell_new_config=yes
-            export ac_cv_lib_pspell_pspell_check=yes
-            export ac_cv_lib_pspell_pspell_config=yes
-        fi
-    fi
-
-    # ============================================================
     # 生成 configure 脚本
     # ============================================================
     if [ ! -f "configure" ]; then
@@ -1921,18 +2028,6 @@ EOF
     CONFIG_ARGS_WITH_PHAR_SHARED+=("--enable-phar=shared")
     echo "Final config args: ${CONFIG_ARGS_WITH_PHAR_SHARED[*]}"
 
-    # ============================================================
-    # 检测配置选项（新增）
-    # ============================================================
-    check_configure_options "$build_dir" "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
-    UNSUPPORTED_COUNT=$?
-
-    if [ $UNSUPPORTED_COUNT -gt 0 ]; then
-        echo ""
-        echo "⚠️  Found $UNSUPPORTED_COUNT unsupported options."
-        echo "   Continuing anyway (they will be ignored)..."
-        echo ""
-    fi
 
     # ============================================================
     # 运行 configure - 使用系统 ICU
@@ -1955,15 +2050,9 @@ EOF
         LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
         LIBS="-licui18n -licuuc -licudata -licuio" \
         DTRACE=/usr/sbin/dtrace \
-        PSPELL_LIBS="-laspell" \
-        PSPELL_CFLAGS="-I/usr/local/include" \
-        ac_cv_lib_pspell_pspell_new=yes \
-        ac_cv_lib_pspell_pspell_new_config=yes \
-        ac_cv_lib_pspell_pspell_check=yes \
-        ac_cv_lib_pspell_pspell_config=yes \
+        LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
         ac_cv_lib_c_client_mail_open=yes \
         ac_cv_lib_c_client_imap_open=yes \
-        LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
         php_cv_struct_flock=yes \
         php_cv_struct_flock_linux=no \
         php_cv_struct_flock_bsd=yes \
@@ -2238,7 +2327,7 @@ EOF
         ln -sf . php
         cd - > /dev/null
     fi
-    
+
     # ============================================================
     # 编译 ImageMagick 扩展（打包前安装）
     # ============================================================
@@ -2251,6 +2340,13 @@ EOF
     # ============================================================
     if ! build_apcu "$build_dir" "$install_dir"; then
         echo "⚠️  APCu extension build failed"
+    fi
+
+    # ============================================================
+    # 安装 PSPell 扩展（源码优先，PECL 备用）
+    # ============================================================
+    if ! install_pspell "$install_dir" "$build_dir"; then
+        echo "⚠️  PSPell extension installation failed, continuing without it"
     fi
 
     # ============================================================
