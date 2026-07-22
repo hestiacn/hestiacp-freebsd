@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14]
+        freebsd_version: [14, 15]
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
