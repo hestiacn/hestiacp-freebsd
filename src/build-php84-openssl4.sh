@@ -423,9 +423,8 @@ install_imap_manual() {
     echo "  ✅ imap.so added to php.ini"
     return 0
 }
-
 # ============================================================
-# 安装 PSPell 扩展（源码编译优先，PECL 备用）
+# 安装 PSPell 扩展（纯本地独立源码自编译，完全解耦 PECL）
 # ============================================================
 install_pspell() {
     local install_dir="$1"
@@ -433,67 +432,95 @@ install_pspell() {
     
     echo ""
     echo "========================================"
-    echo "[ * ] Installing PSPell extension"
+    echo "[ * ] Installing PSPell extension and GNU aspell dependency"
     echo "========================================"
     
     local installed=0
     
-    # 先检查 aspell 是否安装
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        if ! pkg info | grep -q aspell; then
-            echo "  Installing aspell..."
-            pkg install -y aspell || true
-        fi
+    # ============================================================
+    # Step 1: 从 GNU 官方源全自动满血自编译 aspell 底层物理依赖
+    # ============================================================
+    echo "[ * ] Building GNU aspell 0.60.8.2 from GNU FTP Source..."
+    
+    local aspell_tar="aspell-0.60.8.2.tar.gz"
+    local aspell_url="https://gnu.org{aspell_tar}"
+    local aspell_build_path="/tmp/aspell-build-pool"
+    
+    rm -rf "$aspell_build_path"
+    mkdir -p "$aspell_build_path"
+    
+    echo "    Downloading GNU aspell source..."
+    if ! fetch -o "${aspell_build_path}/${aspell_tar}" "$aspell_url" 2>/dev/null; then
+        curl -fsSL -o "${aspell_build_path}/${aspell_tar}" "$aspell_url"
     fi
     
+    if [ -f "${aspell_build_path}/${aspell_tar}" ]; then
+        cd "$aspell_build_path" || return 1
+        tar -xzf "$aspell_tar"
+        cd aspell-0.60.8.2 || return 1
+        
+        echo "    Configuring GNU aspell..."
+        export CXXFLAGS="-O2"
+        ./configure --prefix=/usr/local
+        
+        if [ $? -eq 0 ]; then
+            echo "    Compiling GNU aspell..."
+            make -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)
+            
+            if [ $? -eq 0 ]; then
+                echo "    Installing GNU aspell..."
+                # 先安装到当前虚拟机环境供编译连接
+                make install
+                # 强行通过 DESTDIR 焊进你的 HestiaCP 二进制隔离包沙盒中，防止客户端漏依赖
+                make install DESTDIR="$install_dir"
+                echo "  ✅ GNU aspell base successfully installed into both VM and package sandbox!"
+            else
+                echo "    ❌ GNU aspell Make compilation failed"
+            fi
+        else
+            echo "    ❌ GNU aspell Configure failed"
+        fi
+        cd - > /dev/null
+    else
+        echo "    ❌ Failed to download GNU aspell source package"
+    fi
+    
+    # 清理临时物理编译脏数据
+    rm -rf "$aspell_build_path"
+
     # ============================================================
-    # 尝试 1: 源码编译（如果存在）
+    # Step 2: 核心源码编译（直接锁定内嵌的 ext/pspell）
     # ============================================================
     if [ -d "$build_dir/ext/pspell" ]; then
-        echo "[ * ] Attempt 1: Building PSPell from source..."
+        echo "[ * ] Building PSPell directly from source tree..."
         if build_pspell_from_source "$install_dir" "$build_dir"; then
             installed=1
             echo "  ✅ PSPell installed from source"
         else
-            echo "  ⚠️  Source build failed, trying PECL..."
+            echo "  ❌ Source build failed"
         fi
     else
-        echo "  ℹ️  PSPell source not found, trying PECL..."
+        echo "  ❌ Fatal Error: PSPell source tree not found at $build_dir/ext/pspell!"
     fi
     
     # ============================================================
-    # 尝试 2: PECL 安装（如果源码编译失败或不存在）
-    # ============================================================
-    if [ $installed -eq 0 ]; then
-        echo "[ * ] Attempt 2: Installing PSPell via PECL..."
-        if install_pspell_via_pecl "$install_dir" "$build_dir"; then
-            installed=1
-            echo "  ✅ PSPell installed via PECL"
-        else
-            echo "  ❌ PSPell installation failed via PECL"
-        fi
-    fi
-    
-    # ============================================================
-    # 最终结果
+    # 最终状态收尾
     # ============================================================
     if [ $installed -eq 1 ]; then
         echo "  ✅ PSPell installed successfully"
         return 0
     else
-        echo "  ❌ PSPell installation failed (both source and PECL)"
+        echo "  ❌ PSPell installation failed"
         return 1
     fi
 }
 
 # ============================================================
-# 从源码编译 PSPell
+# 从源码自编译封装 PSPell.so
 # ============================================================
 build_pspell_from_source() {
     local install_dir="$1"
     local build_dir="$2"
-    
-    echo "  [ * ] Building PSPell from source..."
     
     local php_prefix="$install_dir/usr/local"
     local php_config="$php_prefix/bin/php-config"
@@ -506,7 +533,7 @@ build_pspell_from_source() {
     
     cd "$build_dir/ext/pspell" || return 1
     
-    # 设置环境变量
+    # 死死锁定刚刚自编译打好的 GNU aspell 物理路径和依赖库
     export PSPELL_CFLAGS="-I/usr/local/include"
     export PSPELL_LIBS="-L/usr/local/lib -laspell"
     export ac_cv_lib_pspell_pspell_new=yes
@@ -515,7 +542,7 @@ build_pspell_from_source() {
     export ac_cv_lib_pspell_pspell_config=yes
     
     echo "    Running phpize..."
-    "$phpize" > /dev/null 2>&1
+    "$phpize"
     if [ $? -ne 0 ]; then
         echo "    ❌ phpize failed"
         cd - > /dev/null
@@ -523,7 +550,7 @@ build_pspell_from_source() {
     fi
     
     echo "    Configuring..."
-    ./configure --with-php-config="$php_config" --with-pspell=/usr/local > /dev/null 2>&1
+    ./configure --with-php-config="$php_config" --with-pspell=/usr/local
     if [ $? -ne 0 ]; then
         echo "    ❌ Configure failed"
         cd - > /dev/null
@@ -531,7 +558,7 @@ build_pspell_from_source() {
     fi
     
     echo "    Compiling..."
-    make > /dev/null 2>&1
+    make -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 2)
     if [ $? -ne 0 ]; then
         echo "    ❌ Make failed"
         cd - > /dev/null
@@ -539,9 +566,9 @@ build_pspell_from_source() {
     fi
     
     echo "    Installing..."
-    make install INSTALL_ROOT="$install_dir" > /dev/null 2>&1
+    make install INSTALL_ROOT="$install_dir"
     
-    # 检查是否安装成功
+    # 动态抓取当前 PHP 编译分支的 ZEND_MODULE_API_NO 版本号
     local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
     local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
     
@@ -553,78 +580,17 @@ build_pspell_from_source() {
     cd - > /dev/null
     
     if [ -f "$ext_dir/pspell.so" ]; then
-        # 添加到 php.ini
+        # 稳妥注入 php.ini 配置文件
         local php_ini="$install_dir/usr/local/etc/php.ini"
         if ! grep -q "^extension=pspell.so" "$php_ini" 2>/dev/null; then
             echo "extension=pspell.so" >> "$php_ini"
         fi
-        echo "    ✅ pspell.so installed"
+        echo "    ✅ pspell.so successfully activated in php.ini"
         return 0
     else
-        echo "    ❌ pspell.so not found after build"
+        echo "    ❌ pspell.so missing after build"
         return 1
     fi
-}
-
-# ============================================================
-# 通过 PECL 安装 PSPell
-# ============================================================
-install_pspell_via_pecl() {
-    local install_dir="$1"
-    local build_dir="$2"
-    
-    echo "  [ * ] Installing PSPell via PECL..."
-    
-    local php_bin="$install_dir/usr/local/bin/php"
-    local pecl="$install_dir/usr/local/bin/pecl"
-    
-    if [ ! -f "$php_bin" ]; then
-        echo "    ❌ PHP binary not found"
-        return 1
-    fi
-    
-    # 确保 PECL 存在
-    if [ ! -f "$pecl" ]; then
-        echo "    Installing PEAR..."
-        cd "$build_dir" || return 1
-        if [ -f "phpize" ]; then
-            ./phpize > /dev/null 2>&1
-        fi
-        fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar > /dev/null 2>&1
-        "$php_bin" /tmp/go-pear.phar > /dev/null 2>&1
-        export PATH="$install_dir/usr/local/bin:$PATH"
-    fi
-    
-    export PATH="$install_dir/usr/local/bin:$PATH"
-    export PSPELL_CFLAGS="-I/usr/local/include"
-    export PSPELL_LIBS="-L/usr/local/lib -laspell"
-    
-    # 尝试安装
-    if pecl install pspell <<< "yes" > /dev/null 2>&1; then
-        # 查找 pspell.so
-        local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
-        local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
-        
-        local pspell_so=$(find /usr/local/lib/php/extensions -name "pspell.so" 2>/dev/null | head -1)
-        if [ -z "$pspell_so" ]; then
-            pspell_so=$(find "$install_dir" -name "pspell.so" 2>/dev/null | head -1)
-        fi
-        
-        if [ -n "$pspell_so" ] && [ -f "$pspell_so" ]; then
-            mkdir -p "$ext_dir"
-            cp "$pspell_so" "$ext_dir/"
-            echo "    ✅ pspell.so installed via PECL"
-            
-            local php_ini="$install_dir/usr/local/etc/php.ini"
-            if ! grep -q "^extension=pspell.so" "$php_ini" 2>/dev/null; then
-                echo "extension=pspell.so" >> "$php_ini"
-            fi
-            return 0
-        fi
-    fi
-    
-    echo "    ❌ PECL installation failed"
-    return 1
 }
 
 # ============================================================
