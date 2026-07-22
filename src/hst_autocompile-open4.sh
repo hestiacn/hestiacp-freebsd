@@ -328,7 +328,6 @@ BUILD_DIR='/tmp/hestiacp-src'
 INSTALL_DIR='/usr/local/hestia'
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHIVE_DIR="$SRC_DIR/src/archive"
-PHP_VERSION="$PHP_V"
 PKG_DIR="$BUILD_DIR/pkg"
 LOG_DIR="$BUILD_DIR/logs"
 NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
@@ -944,20 +943,20 @@ fi
 # 下载 PHP
 # ============================================================
 download_php() {
-    local file="$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz"
+    local file="$ARCHIVE_DIR/php-${PHP_V}.tar.gz"
 
     if [ -f "$file" ]; then
-        echo "[ ✓ ] PHP ${PHP_VERSION} already downloaded"
+        echo "[ ✓ ] PHP ${PHP_V} already downloaded"
         return 0
     fi
 
-    echo "[ * ] Downloading PHP ${PHP_VERSION}..."
-    fetch -o "$file" "https://github.com/php/php-src/archive/refs/tags/php-${PHP_VERSION}.tar.gz"
+    echo "[ * ] Downloading PHP ${PHP_V}..."
+    fetch -o "$file" "https://github.com/php/php-src/archive/refs/tags/php-${PHP_V}.tar.gz"
     if [ $? -ne 0 ]; then
-        echo "Failed to download PHP ${PHP_VERSION}"
+        echo "Failed to download PHP ${PHP_V}"
         return 1
     fi
-    echo "[ ✓ ] Downloaded PHP ${PHP_VERSION}"
+    echo "[ ✓ ] Downloaded PHP ${PHP_V}"
     return 0
 }
 
@@ -1136,7 +1135,7 @@ apply_patches() {
 
     cd "$build_dir" || return 1
 
-    echo "[ * ] Applying patches for PHP ${PHP_VERSION}..."
+    echo "[ * ] Applying patches for PHP ${PHP_V}..."
 
     # 更新版权年份
     if [ -f "./main/main.c" ] && [ -f "./Zend/zend.c" ]; then
@@ -1164,7 +1163,7 @@ apply_patches() {
         grep "Copyright" ./Zend/zend.c || true
     fi
 
-    echo "[ ✓ ] All patches applied for PHP ${PHP_VERSION}"
+    echo "[ ✓ ] All patches applied for PHP ${PHP_V}"
     cd - > /dev/null || return 1
 }
 
@@ -1767,30 +1766,30 @@ build_apcu() {
 # 构建 PHP（使用 Hestia 路径）
 # ============================================================
 build_php() {
-    local build_dir="$BUILD_DIR/php-src-${PHP_VERSION}"
-    local install_dir="$BUILD_DIR/php-${PHP_VERSION}"
-    local major=$(echo "$PHP_VERSION" | cut -d. -f1)
-    local minor=$(echo "$PHP_VERSION" | cut -d. -f2)
+    local build_dir="$BUILD_DIR/php-src-${PHP_V}"
+    local install_dir="$BUILD_DIR/php-${PHP_V}"
+    local major=$(echo "$PHP_V" | cut -d. -f1)
+    local minor=$(echo "$PHP_V" | cut -d. -f2)
 
     echo ""
     echo "========================================"
-    echo "[ * ] Building PHP ${PHP_VERSION} with OpenSSL 4.x"
+    echo "[ * ] Building PHP ${PHP_V} with OpenSSL 4.x"
     echo "========================================"
 
     if ! download_php; then
-        echo "❌ Failed to download PHP ${PHP_VERSION}"
+        echo "❌ Failed to download PHP ${PHP_V}"
         return 1
     fi
 
     if [ ! -d "$build_dir" ]; then
-        echo "[ * ] Extracting PHP ${PHP_VERSION}..."
-        tar -xf "$ARCHIVE_DIR/php-${PHP_VERSION}.tar.gz" -C "$BUILD_DIR"
-        if [ -d "$BUILD_DIR/php-src-php-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-src-php-${PHP_VERSION}" "$build_dir"
-        elif [ -d "$BUILD_DIR/php-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-${PHP_VERSION}" "$build_dir"
-        elif [ -d "$BUILD_DIR/php-src-${PHP_VERSION}" ]; then
-            mv "$BUILD_DIR/php-src-${PHP_VERSION}" "$build_dir"
+        echo "[ * ] Extracting PHP ${PHP_V}..."
+        tar -xf "$ARCHIVE_DIR/php-${PHP_V}.tar.gz" -C "$BUILD_DIR"
+        if [ -d "$BUILD_DIR/php-src-php-${PHP_V}" ]; then
+            mv "$BUILD_DIR/php-src-php-${PHP_V}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-${PHP_V}" ]; then
+            mv "$BUILD_DIR/php-${PHP_V}" "$build_dir"
+        elif [ -d "$BUILD_DIR/php-src-${PHP_V}" ]; then
+            mv "$BUILD_DIR/php-src-${PHP_V}" "$build_dir"
         fi
     fi
 
@@ -2919,7 +2918,7 @@ EOF
     # ============================================================
     # 配置 PHP - 使用 Hestia 路径
     # ============================================================
-    echo "[ * ] Configuring PHP ${PHP_VERSION} for Hestia..."
+    echo "[ * ] Configuring PHP ${PHP_V} for Hestia..."
     cd "$build_dir" || {
         echo "❌ Failed to return to PHP source directory"
         return 1
@@ -2993,14 +2992,14 @@ EOF
         EDIT_LIBS="-ledit -lncurses" \
         ac_cv_sizeof_off_t=8 \
         ac_cv_type_off_t=yes \
-        > "$LOG_DIR/configure-${PHP_VERSION}.log"
+        > "$LOG_DIR/configure-${PHP_V}.log"
 
     CONFIGURE_STATUS=$?
     export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
-        tail -300 "$LOG_DIR/configure-${PHP_VERSION}.log"
+        tail -300 "$LOG_DIR/configure-${PHP_V}.log"
         return 1
     fi
 
@@ -3019,7 +3018,7 @@ EOF
     # ============================================================
     # 编译 PHP
     # ============================================================
-    echo "[ * ] Compiling PHP ${PHP_VERSION} (using ${NUM_CPUS} cores)..."
+    echo "[ * ] Compiling PHP ${PHP_V} (using ${NUM_CPUS} cores)..."
     mkdir -p "${BUILD_DIR}/usr/local/hestia"
     
     CURRENT_LIBS=$(grep "^LIBS" Makefile | head -1 | sed 's/^LIBS = //')
@@ -3028,12 +3027,12 @@ EOF
         gmake -j "$NUM_CPUS" \
             LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
             LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
-            > "$LOG_DIR/build-${PHP_VERSION}.log"
+            > "$LOG_DIR/build-${PHP_V}.log"
     else
         make -j "$NUM_CPUS" \
             LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
             LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
-            > "$LOG_DIR/build-${PHP_VERSION}.log"
+            > "$LOG_DIR/build-${PHP_V}.log"
     fi
     
     BUILD_STATUS=$?
@@ -3043,18 +3042,18 @@ EOF
         echo "========================================"
         echo "❌ BUILD FAILED"
         echo "========================================"
-        grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_VERSION}.log" | head -200
+        grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_V}.log" | head -200
         echo ""
         echo "Last 200 lines:"
-        tail -200 "$LOG_DIR/build-${PHP_VERSION}.log"
+        tail -200 "$LOG_DIR/build-${PHP_V}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
         if [ "$OSTYPE" = 'freebsd' ]; then
             gmake clean
-            gmake -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"
+            gmake -j1 >> "$LOG_DIR/build-${PHP_V}.log"
         else
             make clean
-            make -j1 >> "$LOG_DIR/build-${PHP_VERSION}.log"
+            make -j1 >> "$LOG_DIR/build-${PHP_V}.log"
         fi
         if [ $? -ne 0 ]; then
             return 1
@@ -3084,7 +3083,7 @@ EOF
     # 安装 PHP 到 Hestia 路径
     # ============================================================
     echo ""
-    echo "[*] Installing PHP ${PHP_VERSION} to Hestia path..."
+    echo "[*] Installing PHP ${PHP_V} to Hestia path..."
     mkdir -p "$install_dir"
 
     # 先安装 programs (phpize, php-config)
@@ -3107,7 +3106,7 @@ EOF
     fi
 
     echo ""
-    echo "[*] Installing PHP ${PHP_VERSION}..."
+    echo "[*] Installing PHP ${PHP_V}..."
 
     if [ "$OSTYPE" = 'freebsd' ]; then
         INSTALL_CMD="gmake"
@@ -3115,17 +3114,17 @@ EOF
         INSTALL_CMD="make"
     fi
 
-    if ! $INSTALL_CMD install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_VERSION}.log" 2>&1; then
+    if ! $INSTALL_CMD install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_V}.log" 2>&1; then
         echo "❌ PHP install failed"
         echo ""
         echo "--- Last 50 lines of install log ---"
-        tail -50 "$LOG_DIR/install-${PHP_VERSION}.log"
+        tail -50 "$LOG_DIR/install-${PHP_V}.log"
         
         echo ""
         echo "--- Trying component installation ---"
         for target in install-cli install-cgi install-fpm install-build install-pdo-headers; do
             echo "  Installing $target..."
-            $INSTALL_CMD $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_VERSION}.log" || true
+            $INSTALL_CMD $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_V}.log" || true
         done
         
         if [ -d "modules" ]; then
@@ -3181,7 +3180,7 @@ EOF
     fi
 
     echo ""
-    echo "✅ PHP ${PHP_VERSION} installed to Hestia path"
+    echo "✅ PHP ${PHP_V} installed to Hestia path"
 
     # ============================================================
     # 编译 ImageMagick 扩展
@@ -3238,7 +3237,7 @@ EOF
     "$php_bin" -m | grep -E "^(imagick|apcu|imap|pspell|phar|opcache|intl)" | sed 's/^/  /'
     
     if [ -f "$install_dir/usr/local/bin/php" ]; then
-        echo "✅ PHP ${PHP_VERSION} with OpenSSL 4.x built successfully!"
+        echo "✅ PHP ${PHP_V} with OpenSSL 4.x built successfully!"
         "$install_dir/usr/local/bin/php" -v || true
         return 0
     else
@@ -3278,35 +3277,35 @@ if [ "$PHP_B" = "true" ]; then
         echo "[ * ] Copying to Hestia package directory..."
         
         # 从 build_php 的安装目录复制
-        if [ -d "$BUILD_DIR/php-${PHP_VERSION}/usr/local/hestia/php" ]; then
+        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/hestia/php" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia"
-            mv "$BUILD_DIR/php-${PHP_VERSION}/usr/local/hestia/php" "$BUILD_DIR_HESTIAPHP/usr/local/hestia/"
-        elif [ -d "$BUILD_DIR/php-${PHP_VERSION}/usr/local/hestia" ]; then
+            mv "$BUILD_DIR/php-${PHP_V}/usr/local/hestia/php" "$BUILD_DIR_HESTIAPHP/usr/local/hestia/"
+        elif [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/hestia" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local"
-            mv "$BUILD_DIR/php-${PHP_VERSION}/usr/local/hestia" "$BUILD_DIR_HESTIAPHP/usr/local/"
+            mv "$BUILD_DIR/php-${PHP_V}/usr/local/hestia" "$BUILD_DIR_HESTIAPHP/usr/local/"
         fi
         
         # 复制二进制文件
-        if [ -d "$BUILD_DIR/php-${PHP_VERSION}/usr/local/bin" ]; then
+        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/bin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/bin"
-            cp -r "$BUILD_DIR/php-${PHP_VERSION}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/" 2>/dev/null || true
         fi
         
-        if [ -d "$BUILD_DIR/php-${PHP_VERSION}/usr/local/sbin" ]; then
+        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/sbin" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/sbin"
-            cp -r "$BUILD_DIR/php-${PHP_VERSION}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/" 2>/dev/null || true
         fi
         
         # 复制扩展文件
-        if [ -d "$BUILD_DIR/php-${PHP_VERSION}/usr/local/lib/php/extensions" ]; then
+        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/lib/php"
-            cp -r "$BUILD_DIR/php-${PHP_VERSION}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/" 2>/dev/null || true
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/" 2>/dev/null || true
         fi
         
         # 复制配置文件
-        if [ -f "$BUILD_DIR/php-${PHP_VERSION}/usr/local/etc/php.ini" ]; then
+        if [ -f "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc"
-            cp "$BUILD_DIR/php-${PHP_VERSION}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/" 2>/dev/null || true
+            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/" 2>/dev/null || true
         fi
         
         cd "$BUILD_DIR" || exit 1
