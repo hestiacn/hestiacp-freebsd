@@ -344,7 +344,12 @@ BUILD_DIR='/tmp/hestiacp-src'
 INSTALL_DIR='/usr/local/hestia'
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHIVE_DIR="$SRC_DIR/src/archive"
-
+PKG_DIR="$BUILD_DIR/pkg"
+LOG_DIR="$BUILD_DIR/logs"
+ARTIFACT_DIR="${ARTIFACT_DIR:-/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts}"
+NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_IMAP="${BUILD_IMAP:-yes}"
 if command -v arch > /dev/null 2>&1; then
 	architecture="$(arch)"
 else
@@ -1931,36 +1936,6 @@ build_php() {
     fi
 
     # ============================================================
-    # 配置 PSPell 环境
-    # ============================================================
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        echo "[ * ] Configuring PSPell support..."
-        
-        if pkg info | grep -q aspell; then
-            echo "  ✅ aspell already installed"
-        else
-            echo "  Installing aspell..."
-            pkg install -y aspell || true
-        fi
-        
-        if [ -f "/usr/local/lib/libaspell.so" ] || [ -f "/usr/local/lib/libpspell.so" ]; then
-            export PSPELL_CFLAGS="-I/usr/local/include"
-            export PSPELL_LIBS="-L/usr/local/lib -laspell"
-            export ac_cv_lib_pspell_pspell_new=yes
-            export ac_cv_lib_pspell_pspell_new_config=yes
-            export ac_cv_lib_pspell_pspell_check=yes
-            export ac_cv_lib_pspell_pspell_config=yes
-            echo "  ✅ PSPell libraries found"
-        else
-            echo "  ⚠️  PSPell libraries not found"
-            export PSPELL_LIBS="-laspell"
-            export ac_cv_lib_pspell_pspell_new=yes
-            export ac_cv_lib_pspell_pspell_new_config=yes
-            export ac_cv_lib_pspell_pspell_check=yes
-            export ac_cv_lib_pspell_pspell_config=yes
-        fi
-    fi
-    # ============================================================
     # 从源码编译 libarchive（链接 OpenSSL 4.x）
     # ============================================================
     echo ""
@@ -2944,7 +2919,16 @@ EOF
         return 1
     }
 
+    echo "OpenSSL prefix: ${OPENSSL_PREFIX:-/usr/local}"
+    echo "CFLAGS: $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib ${LDFLAGS}"
+    echo "LDFLAGS (without rpath for configure): $LDFLAGS"
+
+    # ============================================================
     # 修复 bzip2 pkg-config
+    # ============================================================
+    echo "[ * ] Creating bzip2.pc for pkg-config..."
+
     mkdir -p /usr/local/libdata/pkgconfig
     cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
 prefix=/usr
@@ -3230,6 +3214,12 @@ EOF
     # 恢复 Makefile
     if [ -f "Makefile.bak" ]; then
         mv Makefile.bak Makefile
+    fi
+
+    # 创建头文件软链接，让 phpize 能找到
+    if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
+        ln -sf php "$install_dir/usr/local/bin/php-cgi"
+        echo "  ✓ Created php-cgi symlink"
     fi
 
     # 创建软链接
