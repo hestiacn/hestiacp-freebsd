@@ -10,7 +10,23 @@
 
 # Clear previous screen output
 clear
+# ============================================
+# 日志配置 - 实时写入 build.log
+# ============================================
+LOG_FILE="build.log"
 
+# 创建日志文件
+touch "$LOG_FILE"
+
+# 将 stdout 和 stderr 重定向到 tee，同时输出到终端和日志文件
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+# 设置日志开始时间
+echo "========================================"
+echo "HestiaCP FreeBSD Build Log"
+echo "Started at: $(date)"
+echo "========================================"
+echo ""
 # Define download function
 download_file() {
 	local url=$1
@@ -125,14 +141,14 @@ generate_plist() {
 	find . -type d ! -name "." | sort -r | sed 's|^\./|@dir /|' >> "$plist_file"
 
 	# 统计
-	local file_count=$(grep -v '^@' "$plist_file" | wc -l | tr -d ' ')
-	local dir_count=$(grep -c '^@dir' "$plist_file" || echo 0)
+	local file_count=$(grep -v '^@' "$plist_file" 2> /dev/null | wc -l | tr -d ' ')
+	local dir_count=$(grep -c '^@dir' "$plist_file" 2> /dev/null || echo 0)
 
 	echo "✅ PLIST generated: $file_count files, $dir_count directories"
 
 	# 验证 web-terminal 的 node_modules 是否被包含
 	if [ "$pkg_name" = "hestia-web-terminal" ] && [ -d "$pkg_dir/usr/local/hestia/web-terminal/node_modules" ]; then
-		local npm_count=$(find "$pkg_dir/usr/local/hestia/web-terminal/node_modules" -type f | wc -l | tr -d ' ')
+		local npm_count=$(find "$pkg_dir/usr/local/hestia/web-terminal/node_modules" -type f 2> /dev/null | wc -l | tr -d ' ')
 		echo "   📦 node_modules contains $npm_count files (included)"
 	fi
 }
@@ -226,12 +242,12 @@ sign_repository() {
 		fi
 		# ============================================
 		
-		cp "/home/runner/work/$REPO/keys/hestiacp.key.pub" "$pkg_dir/hestia.pub"
+		cp "/home/runner/work/$REPO/keys/hestiacp.key.pub" "$pkg_dir/hestia.pub" 2> /dev/null || true
 		echo "[ ✓ ] Repository signed with CI key"
 		return 0
 	else
 		echo "[ ! ] No signing key found, creating repository without signature"
-		pkg repo .
+		pkg repo . 2> /dev/null || true
 		
 		# ============================================
 		# 无签名仓库也需要生成压缩格式
@@ -260,11 +276,11 @@ fix_zlib_for_freebsd() {
 		# 1. 修复 ggmake → gmake
 		for target_file in Makefile.in Makefile configure; do
 			if [ -f "$target_file" ]; then
-				sed -i '' 's/ggmake/gmake/g' "$target_file"
-				sed -i '' 's/\tmake/\tgmake/g' "$target_file"
-				sed -i '' 's/make /gmake /g' "$target_file"
-				sed -i '' 's/\$(MAKE)/gmake/g' "$target_file"
-				sed -i '' 's/^MAKE=.*/MAKE=gmake/' "$target_file"
+				sed -i '' 's/ggmake/gmake/g' "$target_file" 2> /dev/null || true
+				sed -i '' 's/\tmake/\tgmake/g' "$target_file" 2> /dev/null || true
+				sed -i '' 's/make /gmake /g' "$target_file" 2> /dev/null || true
+				sed -i '' 's/\$(MAKE)/gmake/g' "$target_file" 2> /dev/null || true
+				sed -i '' 's/^MAKE=.*/MAKE=gmake/' "$target_file" 2> /dev/null || true
 			fi
 		done
 
@@ -272,7 +288,7 @@ fix_zlib_for_freebsd() {
 		# 这样每次生成的 Makefile 都会包含它
 		if [ -f "Makefile.in" ]; then
 			# 检查是否已有 distclean 目标
-			if ! grep -q "^distclean:" Makefile.in; then
+			if ! grep -q "^distclean:" Makefile.in 2> /dev/null; then
 				echo "" >> Makefile.in
 				echo "distclean:" >> Makefile.in
 				echo "	@echo '[ ✓ ] Bypassing distclean (FreeBSD compatibility)'" >> Makefile.in
@@ -284,7 +300,7 @@ fix_zlib_for_freebsd() {
 
 		# 3. 如果 Makefile 已存在，也直接添加空目标
 		if [ -f "Makefile" ]; then
-			if ! grep -q "^distclean:" Makefile; then
+			if ! grep -q "^distclean:" Makefile 2> /dev/null; then
 				echo "" >> Makefile
 				echo "distclean:" >> Makefile
 				echo "	@echo '[ ✓ ] Bypassing distclean (FreeBSD compatibility)'" >> Makefile
@@ -328,11 +344,7 @@ BUILD_DIR='/tmp/hestiacp-src'
 INSTALL_DIR='/usr/local/hestia'
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHIVE_DIR="$SRC_DIR/src/archive"
-PKG_DIR="$BUILD_DIR/pkg"
-LOG_DIR="$BUILD_DIR/logs"
-NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_IMAP="${BUILD_IMAP:-yes}"
+
 if command -v arch > /dev/null 2>&1; then
 	architecture="$(arch)"
 else
@@ -454,10 +466,10 @@ if [ "$OSTYPE" = 'freebsd' ]; then
 	fi
 
 	if [ "$use_src_folder" = 'true' ] && [ -d "$LOCAL_PKG_BASE" ]; then
-		BUILD_VER=$(grep "version:" "$LOCAL_PKG_BASE/hestia/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-		NGINX_V=$(grep "version:" "$LOCAL_PKG_BASE/nginx/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-		PHP_V=$(grep "version:" "$LOCAL_PKG_BASE/php/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-		WEB_TERMINAL_V=$(grep "version:" "$LOCAL_PKG_BASE/web-terminal/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+		BUILD_VER=$(grep "version:" "$LOCAL_PKG_BASE/hestia/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+		NGINX_V=$(grep "version:" "$LOCAL_PKG_BASE/nginx/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+		PHP_V=$(grep "version:" "$LOCAL_PKG_BASE/php/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+		WEB_TERMINAL_V=$(grep "version:" "$LOCAL_PKG_BASE/web-terminal/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
 	else
 		BUILD_VER=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/pkg/hestia/+MANIFEST" | grep "version:" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
 		NGINX_V=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/pkg/nginx/+MANIFEST" | grep "version:" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
@@ -470,25 +482,25 @@ if [ "$OSTYPE" = 'freebsd' ]; then
 		REAL_MANIFEST_NGINX=$(find "$SRC_DIR" -type f -path "*/pkg/nginx/+MANIFEST" | head -n1)
 		if [ -f "$REAL_MANIFEST_NGINX" ]; then
 			REAL_BASE_DIR=$(echo "$REAL_MANIFEST_NGINX" | sed 's|/pkg/nginx/+MANIFEST||')
-			BUILD_VER=$(grep "version:" "$REAL_BASE_DIR/pkg/hestia/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-			NGINX_V=$(grep "version:" "$REAL_BASE_DIR/pkg/nginx/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-			PHP_V=$(grep "version:" "$REAL_BASE_DIR/pkg/php/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
-			WEB_TERMINAL_V=$(grep "version:" "$REAL_BASE_DIR/pkg/web-terminal/+MANIFEST" | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+			BUILD_VER=$(grep "version:" "$REAL_BASE_DIR/pkg/hestia/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+			NGINX_V=$(grep "version:" "$REAL_BASE_DIR/pkg/nginx/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+			PHP_V=$(grep "version:" "$REAL_BASE_DIR/pkg/php/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
+			WEB_TERMINAL_V=$(grep "version:" "$REAL_BASE_DIR/pkg/web-terminal/+MANIFEST" 2> /dev/null | head -n1 | cut -d':' -f2 | tr -d '"'\''\r ')
 		fi
 	fi
 
 elif [ "$OSTYPE" = 'rhel' ]; then
 	if [ -d "$SRC_DIR/src/rpm" ]; then LOCAL_RPM_BASE="$SRC_DIR/src/rpm"; else LOCAL_RPM_BASE="$SRC_DIR/rpm"; fi
 	if [ "$use_src_folder" = 'true' ] && [ -d "$LOCAL_RPM_BASE" ]; then
-		BUILD_VER=$(grep "Version:" "$LOCAL_RPM_BASE/hestia/hestia.spec" | head -n1 | cut -d' ' -f2 | tr -d '\r')
-		NGINX_V=$(grep "Version:" "$LOCAL_RPM_BASE/nginx/hestia-nginx.spec" | head -n1 | cut -d' ' -f2 | tr -d '\r')
-		PHP_V=$(grep "Version:" "$LOCAL_RPM_BASE/php/hestia-php.spec" | head -n1 | cut -d' ' -f2 | tr -d '\r')
-		WEB_TERMINAL_V=$(grep "Version:" "$LOCAL_RPM_BASE/web-terminal/hestia-web-terminal.spec" | head -n1 | cut -d' ' -f2 | tr -d '\r')
+		BUILD_VER=$(grep "Version:" "$LOCAL_RPM_BASE/hestia/hestia.spec" 2> /dev/null | head -n1 | cut -d' ' -f2 | tr -d '\r')
+		NGINX_V=$(grep "Version:" "$LOCAL_RPM_BASE/nginx/hestia-nginx.spec" 2> /dev/null | head -n1 | cut -d' ' -f2 | tr -d '\r')
+		PHP_V=$(grep "Version:" "$LOCAL_RPM_BASE/php/hestia-php.spec" 2> /dev/null | head -n1 | cut -d' ' -f2 | tr -d '\r')
+		WEB_TERMINAL_V=$(grep "Version:" "$LOCAL_RPM_BASE/web-terminal/hestia-web-terminal.spec" 2> /dev/null | head -n1 | cut -d' ' -f2 | tr -d '\r')
 	else
 		BUILD_VER=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/rpm/hestia/hestia.spec" | grep "Version:" | head -n1 | cut -d' ' -f2 | tr -d '\r')
 		NGINX_V=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/rpm/nginx/hestia-nginx.spec" | grep "Version:" | head -n1 | cut -d' ' -f2 | tr -d '\r')
 		PHP_V=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/rpm/php/hestia-php.spec" | grep "Version:" | head -n1 | cut -d' ' -f2 | tr -d '\r')
-		WEB_TERMINAL_V=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/rpm/web-terminal/hestia-web-terminal.spec" | grep "Version:" | head -n1 | cut -d' ' -f2 | tr -d '\r')
+		WEB_TERMINAL_V=$(curl -s "https://raw.githubusercontent.com/$REPO/$branch/src/rpm/web-terminal/hestia-web-terminal.spec" 2> /dev/null | grep "Version:" | head -n1 | cut -d' ' -f2 | tr -d '\r')
 	fi
 else
 	if [ -d "$SRC_DIR/src/deb" ]; then LOCAL_DEB_BASE="$SRC_DIR/src/deb"; else LOCAL_DEB_BASE="$SRC_DIR/deb"; fi
@@ -514,6 +526,7 @@ fi
 OPENSSL_V='4.0.1'
 PCRE_V='10.47'
 ZLIB_V='1.3.2'
+
 # 根据操作系统显示不同的版本信息
 if [ "$OSTYPE" = 'freebsd' ]; then
 	echo "Build version $BUILD_VER for FreeBSD"
@@ -544,13 +557,13 @@ if [ "$dontinstalldeps" != 'true' ]; then
 		echo "Installing FreeBSD build dependencies..."
 		pkg install -y $SOFTWARE
 
-		NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
+		NODE_VERSION=$(node -v 2> /dev/null | cut -d'v' -f2 | cut -d'.' -f1)
 		if [ -z "$NODE_VERSION" ] || [ "$NODE_VERSION" -lt 24 ]; then
 			echo "[ ! ] Node.js version 24+ is required for Hestia Vhost compilation. Forcing update..."
 			pkg install -y node
 		fi
 
-		NUM_CPUS=$(sysctl -n hw.ncpu || echo 4)
+		NUM_CPUS=$(sysctl -n hw.ncpu 2> /dev/null || echo 4)
 
 	elif [ "$OSTYPE" = 'rhel' ]; then
 		SOFTWARE='wget tar git curl mock rpm-build rpmdevtools'
@@ -710,7 +723,7 @@ if [ "$NGINX_B" = "true" ]; then
 			fi
 
 			# 强力清空历史残留，保障纯净度
-			rm -rf nginx-* openssl-* pcre2-* zlib-* v1.*
+			rm -rf nginx-* openssl-* pcre2-* zlib-* v1.* 2> /dev/null
 
 			echo "[ * ] Unpacking raw materials via native bsdtar toolchain..."
 			bsdtar -xf "$NGINX_FILE"
@@ -738,7 +751,7 @@ if [ "$NGINX_B" = "true" ]; then
 
 			# 保底高级雷达防线
 			if [ -z "$REAL_NGINX_DIR" ]; then
-				REAL_NGINX_DIR=$(find "$BUILD_DIR" -maxdepth 2 -type f -name "configure" | grep -E 'nginx|src' | head -n1 | xargs dirname)
+				REAL_NGINX_DIR=$(find "$BUILD_DIR" -maxdepth 2 -type f -name "configure" | grep -E 'nginx|src' | head -n1 | xargs dirname 2> /dev/null)
 			fi
 
 			if [ -z "$REAL_NGINX_DIR" ] || [ ! -d "$REAL_NGINX_DIR" ]; then
@@ -775,25 +788,25 @@ if [ "$NGINX_B" = "true" ]; then
 
 				cd "$ZLIB_SRC_DIR"
 				# 修复 zlib Makefile
-				sed -i '' 's/ggmake/gmake/g' Makefile
+				sed -i '' 's/ggmake/gmake/g' Makefile 2> /dev/null || true
 				# 确保有空目标
-				if ! grep -q "^distclean:" Makefile; then
+				if ! grep -q "^distclean:" Makefile 2> /dev/null; then
 					echo "" >> Makefile
 					echo "distclean:" >> Makefile
 					echo "	@echo '[ ✓ ] Bypassing distclean (FreeBSD)'" >> Makefile
 					echo "clean:" >> Makefile
 					echo "	@echo '[ ✓ ] Bypassing clean (FreeBSD)'" >> Makefile
 				fi
-				rm -f Makefile
+				rm -f Makefile 2> /dev/null || true
 				cd "$BUILD_DIR_NGINX" || exit 1
 
 				# 修复 nginx objs/Makefile
 				if [ -f "objs/Makefile" ]; then
 					# 删除或替换 distclean 行
-					sed -i '' '/distclean/d' objs/Makefile
+					sed -i '' '/distclean/d' objs/Makefile 2> /dev/null || true
 					# 修复 ggmake
-					sed -i '' 's/ggmake/gmake/g' objs/Makefile
-					sed -i '' 's/make /gmake /g' objs/Makefile
+					sed -i '' 's/ggmake/gmake/g' objs/Makefile 2> /dev/null || true
+					sed -i '' 's/make /gmake /g' objs/Makefile 2> /dev/null || true
 				fi
 			fi
 		fi
@@ -817,7 +830,7 @@ if [ "$NGINX_B" = "true" ]; then
 		fi
 
 		mkdir -p "${BUILD_DIR}/usr/local/hestia/nginx"
-		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia"
+		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia" 2> /dev/null || true
 
 		if [ "$OSTYPE" = 'freebsd' ]; then
 			env MAKEFLAGS="" gmake -j "$NUM_CPUS" && gmake DESTDIR="$BUILD_DIR" install
@@ -904,7 +917,7 @@ if [ "$NGINX_B" = "true" ]; then
 
 			echo "Building Hestia Nginx PKG for FreeBSD..."
 			pkg create -m "$BUILD_DIR_HESTIANGINX/+METADATA" -p "$BUILD_DIR_HESTIANGINX/+PLIST" -r "$BUILD_DIR_HESTIANGINX" -o "$PKG_DIR"
-			mv -f $PKG_DIR/hestia-nginx-1*.pkg "$PKG_DIR/hestia-nginx-${CLEAN_NGINX_VER_FINAL}.pkg"
+			mv -f $PKG_DIR/hestia-nginx-1*.pkg "$PKG_DIR/hestia-nginx-${CLEAN_NGINX_VER_FINAL}.pkg" 2> /dev/null
 			echo "[ * ] Verifying nginx package integrity..."
 			if pkg info -F "$PKG_DIR/hestia-nginx-${CLEAN_NGINX_VER_FINAL}.pkg" > /dev/null 2>&1; then
 				echo "✅ Nginx package is valid."
@@ -1766,6 +1779,12 @@ build_apcu() {
 # 构建 PHP（使用 Hestia 路径）
 # ============================================================
 build_php() {
+    # ============================================================
+    # 确保日志目录存在
+    # ============================================================
+    LOG_DIR="$BUILD_DIR/logs"
+    mkdir -p "$LOG_DIR"
+
     local build_dir="$BUILD_DIR/php-src-${PHP_V}"
     local install_dir="$BUILD_DIR/php-${PHP_V}"
     local major=$(echo "$PHP_V" | cut -d. -f1)
@@ -2992,14 +3011,14 @@ EOF
         EDIT_LIBS="-ledit -lncurses" \
         ac_cv_sizeof_off_t=8 \
         ac_cv_type_off_t=yes \
-        > "$LOG_DIR/configure-${PHP_V}.log"
+        > "$BUILD_DIR/logs/configure-${PHP_V}.log"
 
     CONFIGURE_STATUS=$?
     export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
-        tail -300 "$LOG_DIR/configure-${PHP_V}.log"
+        tail -300 "$BUILD_DIR/logs/configure-${PHP_V}.log"
         return 1
     fi
 
@@ -3307,56 +3326,71 @@ if [ "$PHP_B" = "true" ]; then
             mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc"
             cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/" 2>/dev/null || true
         fi
-        
-        cd "$BUILD_DIR" || exit 1
+		mkdir -p "${BUILD_DIR}/usr/local/hestia"
+		[ ! -d "/usr/local/hestia" ] && mkdir -p "/usr/local/hestia" 2> /dev/null || true
 
-        if [ "$OSTYPE" = 'freebsd' ]; then
-            chown -R root:wheel "$BUILD_DIR_HESTIAPHP"
-        else
-            chown -R root:root "$BUILD_DIR_HESTIAPHP"
-        fi
+		if [ "$OSTYPE" = 'freebsd' ]; then
+			env MAKEFLAGS="" gmake -j "$NUM_CPUS" && gmake INSTALL_ROOT="$BUILD_DIR" install
+		else
+			make -j "$NUM_CPUS" && make INSTALL_ROOT="$BUILD_DIR" install
+		fi
 
-        # ============================================================
-        # Debian 打包
-        # ============================================================
-        if [ "$BUILD_DEB" = true ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/DEBIAN"
-            get_branch_file 'src/deb/php/control' "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-            [ "$BUILD_ARCH" != "amd64" ] && sed -i "s/amd64/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+		if [ "$use_src_folder" = 'true' ] && [ -d "$SRC_DIR" ]; then
+			cp -rf "$SRC_DIR/" "$BUILD_DIR/hestiacp-$branch_dash"
+		fi
 
-            os=$(lsb_release -is)
-            release=$(lsb_release -rs)
-            if [ "$os" = "Ubuntu" ] && [ "$release" = "20.04" ]; then
-                sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-                sed -i "s/libzip4/libzip5/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-            fi
-            if [ "$os" = "Ubuntu" ] && [ "$release" = "24.04" ]; then
-                sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-                sed -i "s/libzip4/libzip4t64/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-            fi
+		mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia"
 
-            get_branch_file 'src/deb/php/copyright' "$BUILD_DIR_HESTIAPHP/DEBIAN/copyright"
-            get_branch_file 'src/deb/php/postinst' "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
-            chmod +x "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
-            get_branch_file 'src/deb/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
-            get_branch_file 'src/deb/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
+		if [ -d "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php" ]; then
+			rm -rf "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php"
+		fi
 
-            echo "Building PHP DEB"
-            dpkg-deb -Zxz --build "$BUILD_DIR_HESTIAPHP" "$DEB_DIR"
-        fi
+		mv "${BUILD_DIR}/usr/local/hestia/php" "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/"
+		cp "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
 
-        # ============================================================
-        # FreeBSD 打包
-        # ============================================================
-        if [ "$BUILD_PKG" = "true" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/rc.d"
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/php"
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/etc"
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
-            
-            get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
+		cd "$BUILD_DIR" || exit 1
+
+		if [ "$OSTYPE" = 'freebsd' ]; then
+			chown -R root:wheel "$BUILD_DIR_HESTIAPHP"
+		else
+			chown -R root:root "$BUILD_DIR_HESTIAPHP"
+		fi
+
+		# Debian 打包保持原汁原味
+		if [ "$BUILD_DEB" = true ]; then
+			mkdir -p "$BUILD_DIR_HESTIAPHP/DEBIAN"
+			get_branch_file 'src/deb/php/control' "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+			[ "$BUILD_ARCH" != "amd64" ] && sed -i "s/amd64/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+
+			os=$(lsb_release -is)
+			release=$(lsb_release -rs)
+			if [ "$os" = "Ubuntu" ] && [ "$release" = "20.04" ]; then
+				sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+				sed -i "s/libzip4/libzip5/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+			fi
+			if [ "$os" = "Ubuntu" ] && [ "$release" = "24.04" ]; then
+				sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+				sed -i "s/libzip4/libzip4t64/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+			fi
+
+			get_branch_file 'src/deb/php/copyright' "$BUILD_DIR_HESTIAPHP/DEBIAN/copyright"
+			get_branch_file 'src/deb/php/postinst' "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
+			chmod +x "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
+			get_branch_file 'src/deb/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
+			get_branch_file 'src/deb/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
+
+			echo "Building PHP DEB"
+			dpkg-deb -Zxz --build "$BUILD_DIR_HESTIAPHP" "$DEB_DIR"
+		fi
+
+		if [ "$BUILD_PKG" = "true" ]; then
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/rc.d"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/php"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/etc"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
+			get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
 			get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2> /dev/null || get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
 			generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
 			if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
@@ -3364,56 +3398,57 @@ if [ "$PHP_B" = "true" ]; then
 				sed -i '' 's|/run/|/var/run/|g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2> /dev/null
 			fi
 
-            get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST"
-            get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
-            chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
+			get_branch_file 'src/pkg/php/+MANIFEST' "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+			get_branch_file 'src/pkg/php/+POST-INSTALL' "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
+			chmod 755 "$BUILD_DIR_HESTIAPHP/+POST-INSTALL"
 
-            echo "Building Hestia PHP PKG for FreeBSD..."
-            CLEAN_PHP_VER_FINAL=$(echo "${PHP_V}" | tr -d '\r"' | tr -d "'")
-            sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
-            sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+			echo "Building Hestia PHP PKG for FreeBSD..."
+			CLEAN_PHP_VER_FINAL=$(echo "${PHP_V}" | tr -d '\r"' | tr -d "'")
+			sed -i '' "s/%VERSION%/${CLEAN_PHP_VER_FINAL}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
+			sed -i '' "s/%ARCH%/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/+MANIFEST"
 
-            mkdir -p "$BUILD_DIR_HESTIAPHP/+METADATA"
-            cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST"
-            cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL"
+			mkdir -p "$BUILD_DIR_HESTIAPHP/+METADATA"
+			cp "$BUILD_DIR_HESTIAPHP/+MANIFEST" "$BUILD_DIR_HESTIAPHP/+METADATA/+MANIFEST"
+			cp "$BUILD_DIR_HESTIAPHP/+POST-INSTALL" "$BUILD_DIR_HESTIAPHP/+METADATA/+POST-INSTALL"
 
-            echo "Building Hestia PHP PKG for FreeBSD..."
-            pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
-            mv -f $PKG_DIR/hestia-php-*.pkg "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg"
+			echo "Building Hestia PHP PKG for FreeBSD..."
+			pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
+			mv -f $PKG_DIR/hestia-php-1*.pkg "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" 2> /dev/null
 
-            echo "[ * ] Verifying php package integrity..."
-            if pkg info -F "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" > /dev/null 2>&1; then
-                echo "✅ PHP package is valid."
-            else
-                echo "❌ ERROR: PHP package validation failed!"
-                exit 1
-            fi
-            cd "$PKG_DIR" || exit 1
-        fi
+			echo "[ * ] Verifying php package integrity..."
+			if pkg info -F "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" > /dev/null 2>&1; then
+				echo "✅ PHP package is valid."
+			else
+				echo "❌ ERROR: PHP package validation failed!"
+				exit 1
+			fi
+			cd "$PKG_DIR" || exit 1
+		fi
 
-        # 清理
-        if [ "$KEEPBUILD" != 'true' ]; then
-            rm -rf "$BUILD_DIR/php-${CLEAN_PHP_VER}"
-            rm -rf "$BUILD_DIR_HESTIAPHP"
-            if [ "$use_src_folder" = 'true' ] && [ -d "$BUILD_DIR/hestiacp-$branch_dash" ]; then
-                rm -rf "$BUILD_DIR/hestiacp-$branch_dash"
-            fi
-        fi
-    fi
+		#rm -rf "$BUILD_DIR/usr"
 
-    # RPM 打包
-    if [ "$BUILD_RPM" = true ]; then
-        get_branch_file 'src/rpm/php/php-fpm.conf' "$HOME/rpmbuild/SOURCES/php-fpm.conf"
-        get_branch_file 'src/rpm/php/php.ini' "$HOME/rpmbuild/SOURCES/php.ini"
-        get_branch_file 'src/rpm/php/hestia-php.spec' "$HOME/rpmbuild/SPECS/hestia-php.spec"
-        get_branch_file 'src/rpm/php/hestia-php.service' "$HOME/rpmbuild/SOURCES/hestia-php.service"
-        download_file "$PHP" "$HOME/rpmbuild/SOURCES/"
-        echo "Building PHP RPM"
-        rpmbuild -bs ~/rpmbuild/SPECS/hestia-php.spec
-        mock -r rocky+epel-9-$(arch) ~/rpmbuild/SRPMS/hestia-php-$PHP_V-1.el9.src.rpm
-        cp /var/lib/mock/rocky+epel-9-$(arch)/result/*.rpm $RPM_DIR
-        rm -rf ~/rpmbuild/SPECS/* ~/rpmbuild/SOURCES/* ~/rpmbuild/SRPMS/*
-    fi
+		if [ "$KEEPBUILD" != 'true' ]; then
+			rm -rf "$BUILD_DIR/php-${CLEAN_PHP_VER}" 2> /dev/null
+			rm -rf "$BUILD_DIR_HESTIAPHP"
+			if [ "$use_src_folder" = 'true' ] && [ -d "$BUILD_DIR/hestiacp-$branch_dash" ]; then
+				rm -rf "$BUILD_DIR/hestiacp-$branch_dash"
+			fi
+		fi
+	fi
+
+	# RPM 打包保持原汁原味
+	if [ "$BUILD_RPM" = true ]; then
+		get_branch_file 'src/rpm/php/php-fpm.conf' "$HOME/rpmbuild/SOURCES/php-fpm.conf"
+		get_branch_file 'src/rpm/php/php.ini' "$HOME/rpmbuild/SOURCES/php.ini"
+		get_branch_file 'src/rpm/php/hestia-php.spec' "$HOME/rpmbuild/SPECS/hestia-php.spec"
+		get_branch_file 'src/rpm/php/hestia-php.service' "$HOME/rpmbuild/SOURCES/hestia-php.service"
+		download_file "$PHP" "$HOME/rpmbuild/SOURCES/"
+		echo "Building PHP RPM"
+		rpmbuild -bs ~/rpmbuild/SPECS/hestia-php.spec
+		mock -r rocky+epel-9-$(arch) ~/rpmbuild/SRPMS/hestia-php-$PHP_V-1.el9.src.rpm
+		cp /var/lib/mock/rocky+epel-9-$(arch)/result/*.rpm $RPM_DIR
+		rm -rf ~/rpmbuild/SPECS/* ~/rpmbuild/SOURCES/* ~/rpmbuild/SRPMS/*
+	fi
 fi
 
 # =================================================================================
@@ -3497,7 +3532,7 @@ if [ "$WEB_TERMINAL_B" = "true" ]; then
 			cp "$BUILD_DIR_HESTIA_TERMINAL/+POST-INSTALL" "$BUILD_DIR_HESTIA_TERMINAL/+METADATA/+POST-INSTALL"
 			echo "Building Hestia Web Terminal PKG for FreeBSD..."
 			pkg create -m "$BUILD_DIR_HESTIA_TERMINAL/+METADATA" -p "$BUILD_DIR_HESTIA_TERMINAL/+PLIST" -r "$BUILD_DIR_HESTIA_TERMINAL" -o "$PKG_DIR"
-			mv -f $PKG_DIR/hestia-web-terminal-1*.pkg "$PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg"
+			mv -f $PKG_DIR/hestia-web-terminal-1*.pkg "$PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg" 2> /dev/null
 			echo "[ * ] Verifying web-terminal package integrity..."
 			if pkg info -F "$PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg" > /dev/null 2>&1; then
 				echo "✅ Web-terminal package is valid."
@@ -3673,7 +3708,7 @@ if [ "$HESTIA_B" = "true" ]; then
 				echo "Building Hestia Control Panel PKG for FreeBSD..."
 				pkg create -m "$BUILD_DIR_HESTIA/+METADATA" -p "$BUILD_DIR_HESTIA/+PLIST" -r "$BUILD_DIR_HESTIA" -o "$PKG_DIR"
 
-				mv -f $PKG_DIR/hestia-1*.pkg "$PKG_DIR/hestia-${BUILD_VER}.pkg"
+				mv -f $PKG_DIR/hestia-1*.pkg "$PKG_DIR/hestia-${BUILD_VER}.pkg" 2> /dev/null
 
 				echo "[ * ] Verifying generated package integrity..."
 				if pkg info -F "$PKG_DIR/hestia-${BUILD_VER}.pkg" > /dev/null 2>&1; then
