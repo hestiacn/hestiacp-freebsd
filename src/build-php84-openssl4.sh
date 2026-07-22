@@ -423,7 +423,6 @@ install_imap_manual() {
     echo "  ✅ imap.so added to php.ini"
     return 0
 }
-
 # ============================================================
 # 从源码编译安装 aspell 库
 # ============================================================
@@ -488,7 +487,8 @@ build_pspell_manual() {
     
     if [ ! -f "pspell.tgz" ]; then
         echo "    Downloading PSPell PECL source..."
-        fetch -o pspell.tgz https://github.com/php/pecl-pspell/archive/refs/tags/v1.0.0.tar.gz || true
+        fetch -o pspell.tgz https://pecl.php.net/get/pspell-1.0.1.tgz || \
+        fetch -o pspell.tgz https://github.com/php/pecl-text-pspell/archive/refs/tags/1.0.1.tar.gz || true
     fi
     
     if [ ! -f "pspell.tgz" ]; then
