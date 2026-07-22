@@ -1128,7 +1128,6 @@ get_config_args() {
         "--with-sodium"
         "--with-password-argon2"
         "--with-ldap=/usr/local"
-        "--enable-pspell=shared"
         "--with-libedit"
         "--with-ffi"
         "--enable-gd"
@@ -3257,7 +3256,7 @@ EOF
         ln -sf . php
         cd - > /dev/null
     fi
-    
+
     # ============================================================
     # 编译 ImageMagick 扩展
     # ============================================================
