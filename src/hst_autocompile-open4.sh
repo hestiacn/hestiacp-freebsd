@@ -2454,7 +2454,7 @@ build_php() {
         # 在编译 c-client 之前，直接替换src\php8.4\ssl_unix.c
         if [ -f "src/osdep/unix/ssl_unix.c" ]; then
             echo "[ * ] 替换 ssl_unix.c (OpenSSL 4.x 兼容)"
-            cp "$SRC_DIR/php8.4/ssl_unix.c" "src/osdep/unix/ssl_unix.c"
+            cp "$SRC_DIR/src/php8.4/ssl_unix.c" "src/osdep/unix/ssl_unix.c"
             echo "  ✅ 已替换 ssl_unix.c"
         else
             echo "  ⚠️  文件不存在: src/osdep/unix/ssl_unix.c"
