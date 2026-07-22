@@ -192,8 +192,9 @@ get_config_args() {
         "--enable-sysvsem"
         "--enable-sysvshm"
         "--enable-calendar"
-        "--with-pic"
         "--enable-phpdbg"
+        "--enable-pspell=shared"
+        "--with-pic"
         "--with-gettext=/usr/local"
         "--with-curl"
         "--with-gmp=/usr/local"
@@ -208,9 +209,6 @@ get_config_args() {
         "--with-sodium"
         "--with-password-argon2"
         "--with-ldap=/usr/local"
-        "--with-imap=/usr/local"
-        "--with-imap-ssl=/usr/local"
-        "--with-pspell=/usr/local"
         "--with-libedit"
         "--with-ffi"
         "--enable-gd"
@@ -645,6 +643,67 @@ build_apcu() {
     cd - > /dev/null
     echo "  ✅ APCu extension build complete"
     return 0
+}
+
+# ============================================================
+# 检测 configure 选项支持情况
+# ============================================================
+check_configure_options() {
+    local build_dir="$1"
+    local log_file="$2"
+    
+    cd "$build_dir" || return 1
+    
+    echo ""
+    echo "========================================"
+    echo "[ * ] Checking configure option support"
+    echo "========================================"
+    
+    # 1. 获取支持的选项列表
+    echo "[ 1/3 ] Getting supported options list..."
+    ./configure --help 2>/dev/null | grep -E "^\s*--(enable|with|disable)" | awk '{print $1}' | sed 's/,$//' | sort > /tmp/supported_opts.txt
+    echo "  Found $(wc -l < /tmp/supported_opts.txt) supported options"
+    
+    # 2. 检查我们的选项
+    echo ""
+    echo "[ 2/3 ] Checking our options..."
+    
+    # 获取我们使用的选项（从 CONFIG_ARGS_WITH_PHAR_SHARED）
+    local all_opts=("$@")
+    local unsupported=()
+    
+    for opt in "${all_opts[@]}"; do
+        # 提取选项名
+        opt_name=$(echo "$opt" | cut -d'=' -f1)
+        
+        if grep -q "^$opt_name$" /tmp/supported_opts.txt; then
+            echo "  ✅ $opt"
+        else
+            echo "  ❌ $opt (UNSUPPORTED)"
+            unsupported+=("$opt")
+        fi
+    done
+    
+    # 3. 显示结果
+    echo ""
+    echo "[ 3/3 ] Summary"
+    echo "========================================"
+    
+    if [ ${#unsupported[@]} -eq 0 ]; then
+        echo "✅ All options are supported!"
+    else
+        echo "⚠️  ${#unsupported[@]} unsupported options found:"
+        printf '    %s\n' "${unsupported[@]}"
+        echo ""
+        echo "These options will be ignored by configure."
+        echo "Consider removing them from get_config_args():"
+        for opt in "${unsupported[@]}"; do
+            echo "  # $opt"
+        done
+    fi
+    
+    echo "========================================"
+    return ${#unsupported[@]}
 }
 
 # ============================================================
@@ -1756,6 +1815,40 @@ EOF
     echo "[ ✓ ] OpenSSL 4.x environment configured"
 
     # ============================================================
+    # 配置 PSPell (PHP 8.4 使用 --enable-pspell)
+    # ============================================================
+    if [ "$OSTYPE" = 'freebsd' ]; then
+        echo "[ * ] Configuring PSPell support..."
+        
+        # 检查 aspell 是否已安装
+        if pkg info | grep -q aspell; then
+            echo "  ✅ aspell already installed"
+        else
+            echo "  Installing aspell..."
+            pkg install -y aspell || true
+        fi
+        
+        # 检查库文件是否存在
+        if [ -f "/usr/local/lib/libaspell.so" ] || [ -f "/usr/local/lib/libpspell.so" ]; then
+            export PSPELL_CFLAGS="-I/usr/local/include"
+            export PSPELL_LIBS="-L/usr/local/lib -laspell"
+            export ac_cv_lib_pspell_pspell_new=yes
+            export ac_cv_lib_pspell_pspell_new_config=yes
+            export ac_cv_lib_pspell_pspell_check=yes
+            export ac_cv_lib_pspell_pspell_config=yes
+            echo "  ✅ PSPell libraries found, pspell will be compiled"
+        else
+            echo "  ⚠️  PSPell libraries not found, will skip pspell"
+            # 强制启用，让 configure 去检测
+            export PSPELL_LIBS="-laspell"
+            export ac_cv_lib_pspell_pspell_new=yes
+            export ac_cv_lib_pspell_pspell_new_config=yes
+            export ac_cv_lib_pspell_pspell_check=yes
+            export ac_cv_lib_pspell_pspell_config=yes
+        fi
+    fi
+
+    # ============================================================
     # 生成 configure 脚本
     # ============================================================
     if [ ! -f "configure" ]; then
@@ -1827,16 +1920,19 @@ EOF
     CONFIG_ARGS_WITH_PHAR_SHARED=("${CONFIG_ARGS[@]}")
     CONFIG_ARGS_WITH_PHAR_SHARED+=("--enable-phar=shared")
     echo "Final config args: ${CONFIG_ARGS_WITH_PHAR_SHARED[*]}"
-    echo ""
-    echo "========================================"
-    echo "[ DEBUG ] 编译前检查"
-    echo "========================================"
-    echo "  当前目录: $(pwd)"
-    echo "  Makefile 是否存在: $([ -f Makefile ] && echo '✅ 是' || echo '❌ 否')"
-    echo "  gmake 路径: $(which gmake || echo '❌ 未找到 gmake')"
-    echo "  make 路径: $(which make || echo '❌ 未找到 make')"
-    echo "========================================"
-    echo ""
+
+    # ============================================================
+    # 检测配置选项（新增）
+    # ============================================================
+    check_configure_options "$build_dir" "${CONFIG_ARGS_WITH_PHAR_SHARED[@]}"
+    UNSUPPORTED_COUNT=$?
+
+    if [ $UNSUPPORTED_COUNT -gt 0 ]; then
+        echo ""
+        echo "⚠️  Found $UNSUPPORTED_COUNT unsupported options."
+        echo "   Continuing anyway (they will be ignored)..."
+        echo ""
+    fi
 
     # ============================================================
     # 运行 configure - 使用系统 ICU
@@ -1858,9 +1954,15 @@ EOF
         CXXFLAGS="-std=c++17" \
         LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
         LIBS="-licui18n -licuuc -licudata -licuio" \
-        --with-icu=/usr/local \
         DTRACE=/usr/sbin/dtrace \
         PSPELL_LIBS="-laspell" \
+        PSPELL_CFLAGS="-I/usr/local/include" \
+        ac_cv_lib_pspell_pspell_new=yes \
+        ac_cv_lib_pspell_pspell_new_config=yes \
+        ac_cv_lib_pspell_pspell_check=yes \
+        ac_cv_lib_pspell_pspell_config=yes \
+        ac_cv_lib_c_client_mail_open=yes \
+        ac_cv_lib_c_client_imap_open=yes \
         LDAP_LIBS="-L/usr/local/lib -lldap -llber" \
         php_cv_struct_flock=yes \
         php_cv_struct_flock_linux=no \
