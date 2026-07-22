@@ -1,4 +1,4 @@
-name: Build PHP 8.4 with OpenSSL 4.x
+name: Build FreeBSD pkg Repository
 
 on:
   release:
@@ -15,115 +15,130 @@ on:
         default: "main"
 
 jobs:
-  build-php84-openssl4:
-    name: Build PHP 8.4.23 with OpenSSL 4.x on FreeBSD 14.0
+  build:
+    name: Build pkg repository
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: [14, 15]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
 
-      - name: Build PHP 8.4.23 with OpenSSL 4.x
+      - name: Build HestiaCP packages
         uses: vmactions/freebsd-vm@v1
+        env:
+          PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
         with:
-          release: "14.0"
+          release: "${{ matrix.freebsd_version }}.0"
           usesh: true
           sync: rsync
           copyback: true
           run: |
-            set -e
-
-            export IGNORE_OSVERSION=yes
-            export ASSUME_ALWAYS_YES=yes
-
-            cd /home/runner/work/hestiacp-freebsd/hestiacp-freebsd
-
-            echo "========================================"
-            echo "Build PHP 8.4.23 with OpenSSL 4.x"
-            echo "========================================"
-
-            # 安装编译依赖
-            echo "[ * ] Installing build dependencies..."
-            pkg update -f
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
             
-            # 创建 bash 软链接
+            WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+            cd "$WORKSPACE"
+
+            echo "========================================"
+            echo "Installing build dependencies..."
+            echo "========================================"
+            pkg update -f
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node libxml2 libxslt bison libzip sqlite3 re2c gmp python oniguruma
+
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
 
+            export HESTIA_DEBUG=true
+            chmod +x src/hst_autocompile-open4.sh
+
             echo ""
-            echo "OpenSSL version:"
-            /usr/local/bin/openssl version
-            echo ""
-
-            # 设置使用 OpenSSL 4.x
-            export OPENSSL_PREFIX="/usr/local"
-            export OPENSSL_VERSION="4.x"
-            export OPENSSL_INCLUDE="${OPENSSL_PREFIX}/include/openssl"
-            export OPENSSL_LIB="${OPENSSL_PREFIX}/lib"
-            export CFLAGS="-I${OPENSSL_INCLUDE} -I/usr/include -I/usr/local/include -Wno-deprecated-declarations"
-            export LDFLAGS="-L${OPENSSL_LIB} -L/usr/lib -L/usr/local/lib"
-            export PKG_CONFIG_PATH="${OPENSSL_LIB}/pkgconfig:/usr/local/lib/pkgconfig"
-            export OPENSSL_OPT="--with-openssl=${OPENSSL_PREFIX}"
-            export LD_LIBRARY_PATH="${OPENSSL_LIB}:/usr/lib"
-
-            export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
-            mkdir -p "$ARTIFACT_DIR"
-
-            chmod +x src/build-php84-openssl4.sh
-
-            echo "[ * ] Starting PHP 8.4.23 build with OpenSSL 4.x..."
-            echo "OPENSSL_OPT: $OPENSSL_OPT"
-            echo "OPENSSL_PREFIX: $OPENSSL_PREFIX"
-            echo "OPENSSL_INCLUDE: $OPENSSL_INCLUDE"
-            echo "OPENSSL_LIB: $OPENSSL_LIB"
-            echo "CFLAGS: $CFLAGS"
-            echo "LDFLAGS: $LDFLAGS"
-            echo ""
-
-            # 运行构建脚本
-            bash src/hst_autocompile-open4.sh --php --noinstall --keepbuild main 2>&1 | tee build-php84-openssl4.log
+            echo "========================================"
+            echo "Starting HestiaCP build..."
+            echo "FreeBSD version: ${{ matrix.freebsd_version }}"
+            echo "========================================"
+            
+            bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
-            echo "=== Exit code: $EXIT_CODE ==="
+            echo ""
+            echo "=== Autocompile Exit code: $EXIT_CODE ==="
 
-            if [ $EXIT_CODE -ne 0 ]; then
-                echo ""
-                echo "========================================"
-                echo "❌ BUILD FAILED"
-                echo "========================================"
-                echo ""
-                echo "=== All errors ==="
-                grep -E "error:|Error:" build-php84-openssl4.log || echo "No errors found"
-                echo ""
-                echo "========================================"
-                echo "Full build log (last 500 lines):"
-                echo "========================================"
-                tail -500 build-php84-openssl4.log
-                exit 1
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "✅ Compilation completed successfully!"
+            else
+              echo "❌ Error: Compilation failed with exit code $EXIT_CODE"
+              echo ""
+              echo "=== Last 200 lines of build.log ==="
+              tail -200 build.log
+              exit 1
             fi
 
             echo ""
             echo "========================================"
-            echo "✅ BUILD AND PACKAGE COMPLETED"
+            echo "Signing repository..."
             echo "========================================"
+            
+            cd /tmp/hestiacp-src
+            mkdir -p keys
+            
+            if [ -n "$PKG_SIGNING_KEY" ]; then
+                printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
+                chmod 600 keys/hestiacp.key
+                echo "✅ Private key imported for signing"
+            else
+                echo "⚠️  No signing key provided, creating unsigned repository"
+            fi
+
+            ls -la keys/ 2>/dev/null || echo "No keys directory"
+
+            cd pkg
             echo ""
-            echo "=== Build artifacts ==="
-            ls -la "$ARTIFACT_DIR/"
+            echo "=== Package files ==="
+            ls -la
 
-      - name: Upload PHP package
-        if: success()
-        uses: actions/upload-artifact@v7
-        with:
-          name: php84-openssl4-package
-          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/*.pkg
-          retention-days: 30
+            # 更新 pkg
+            IGNORE_OSVERSION=yes pkg update -f
+            pkg upgrade -y pkg
 
-      - name: Upload build log
+            echo ""
+            echo "Signing repository..."
+            if [ -f "/tmp/hestiacp-src/keys/hestiacp.key" ]; then
+                pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+                if [ $? -ne 0 ]; then
+                  echo "❌ Failed to sign repository!"
+                  exit 1
+                fi
+                echo "✅ Repository signed successfully!"
+            else
+                pkg repo .
+                echo "✅ Repository created without signature"
+            fi
+
+            echo ""
+            echo "========================================"
+            echo "Build artifacts:"
+            echo "========================================"
+            ls -la /tmp/hestiacp-src/pkg/
+
+      - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-log-php84-openssl4
-          path: build-php84-openssl4.log
+          name: hestia-pkgs-freebsd-${{ matrix.freebsd_version }}
+          path: |
+            /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
+            /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
+          retention-days: 30
+
+      - name: Upload build log (always)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-freebsd-${{ matrix.freebsd_version }}
+          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
           retention-days: 7
