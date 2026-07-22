@@ -36,8 +36,8 @@ jobs:
           sync: rsync
           copyback: true
           run: |
-            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
-            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
+            export IGNORE_OSVERSION=yes
+            export ASSUME_ALWAYS_YES=yes
             
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
@@ -46,23 +46,38 @@ jobs:
             echo "Installing build dependencies..."
             echo "========================================"
 
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2
 
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
 
-            export HESTIA_DEBUG=true
-            chmod +x src/hst_autocompile-open4.sh
+            echo ""
+            echo "========================================"
+            echo "Building PHP 8.4.23 with OpenSSL 4.x"
+            echo "========================================"
+            
+            # 设置 OpenSSL 4.x 环境
+            export OPENSSL_PREFIX="/usr/local"
+            export OPENSSL_VERSION="4.x"
+            export OPENSSL_INCLUDE="${OPENSSL_PREFIX}/include/openssl"
+            export OPENSSL_LIB="${OPENSSL_PREFIX}/lib"
+            export CFLAGS="-I${OPENSSL_INCLUDE} -I/usr/include -I/usr/local/include -Wno-deprecated-declarations"
+            export LDFLAGS="-L${OPENSSL_LIB} -L/usr/lib -L/usr/local/lib"
+            export PKG_CONFIG_PATH="${OPENSSL_LIB}/pkgconfig:/usr/local/lib/pkgconfig"
+            export LD_LIBRARY_PATH="${OPENSSL_LIB}:/usr/lib"
+
 
             echo ""
             echo "========================================"
-            echo "Starting HestiaCP build..."
-            echo "FreeBSD version: ${{ matrix.freebsd_version }}"
+            echo "Building HestiaCP packages..."
             echo "========================================"
-            
-            bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+
+            export HESTIA_DEBUG=true
+            chmod +x src/hst_autocompile-open4.sh
+
+            /usr/local/bin/bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
             echo ""
@@ -80,42 +95,10 @@ jobs:
 
             echo ""
             echo "========================================"
-            echo "Signing repository..."
-            echo "========================================"
-            
-            cd /tmp/hestiacp-src
-            mkdir -p keys
-            
-            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
-            chmod 600 keys/hestiacp.key
-
-            echo "[ ✓ ] Private key imported for signing"
-            ls -la keys/
-
-            cd pkg
-            echo ""
-            echo "=== Package files ==="
-            ls -la
-
-            # 更新 pkg
-            IGNORE_OSVERSION=yes pkg update -f
-            pkg upgrade -y pkg
-
-            echo ""
-            echo "Signing repository..."
-            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
-            ls -la /tmp/hestiacp-src/keys/
-            if [ $? -ne 0 ]; then
-              echo "[ ✗ ] Failed to sign repository!"
-              exit 1
-            fi
-            echo "[ ✓ ] Repository signed successfully!"
-
-            echo ""
-            echo "========================================"
             echo "Build artifacts:"
             echo "========================================"
             ls -la /tmp/hestiacp-src/pkg/
+            ls -la "$ARTIFACT_DIR/"
 
       - name: Upload build artifacts
         if: always()
@@ -125,12 +108,13 @@ jobs:
           path: |
             /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
             /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
-          retention-days: 30
+            /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build-php84-openssl4.log
+          retention-days: 7
 
-      - name: Upload build log
-        if: always()
+      - name: Upload PHP package
+        if: success()
         uses: actions/upload-artifact@v7
         with:
-          name: build-log-freebsd-${{ matrix.freebsd_version }}
-          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
-          retention-days: 7
+          name: php84-openssl4-package
+          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/*.pkg
+          retention-days: 30
