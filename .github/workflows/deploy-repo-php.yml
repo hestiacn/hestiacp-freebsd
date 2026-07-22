@@ -83,7 +83,7 @@ jobs:
             echo ""
 
             # 运行构建脚本
-            bash src/hst_autocompile.sh --php --noinstall --keepbuild main 2>&1 | tee build-php84-openssl4.log
+            bash src/hst_autocompile-open4.sh --php --noinstall --keepbuild main 2>&1 | tee build-php84-openssl4.log
             EXIT_CODE=$?
 
             echo "=== Exit code: $EXIT_CODE ==="
