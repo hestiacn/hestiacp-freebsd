@@ -2548,7 +2548,7 @@ build_php() {
             exit 1
         fi
 
-        cd imap-imap-2007f_upstream
+        cd /tmp/imap-imap-2007f_upstream
 
         # ============================================================
         # 验证并修复 osdep.c
