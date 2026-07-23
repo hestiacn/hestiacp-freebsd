@@ -32,7 +32,7 @@
 #endif
 
 /* OpenSSL 4.x compatibility */
-#define OPENSSL_API_COMPAT 0x10100000L
+#define OPENSSL_API_COMPAT 0x30000000L
 #ifndef OPENSSL_NO_DEPRECATED
 #define OPENSSL_NO_DEPRECATED
 #endif

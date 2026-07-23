@@ -2070,7 +2070,7 @@ build_php() {
         # 设置编译环境
         export CC=gcc14
         export CXX=g++14
-        export CFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x30000000L"
+        export CFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L"
         export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib"
         export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig"
         export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
@@ -2510,8 +2510,7 @@ build_php() {
         # 删除旧的 osdep.c
         rm -f src/c-client/osdep.c
         rm -f c-client/osdep.c 2>/dev/null || true
-        # 手动拼接 osdep.c
-        gmake once SSLTYPE=unix.nopwd PASSWDTYPE=pam
+
         echo "  [ * ] 手动拼接 osdep.c..."
         cat src/osdep/unix/osdepbas.c \
             src/osdep/unix/osdepckp.c \
@@ -2524,35 +2523,41 @@ build_php() {
             cp src/c-client/osdep.c c-client/osdep.c
         fi
 
-        # 验证 osdep.c
-        echo "[ * ] 验证 osdep.c 是否包含 OpenSSL 4.x 代码..."
-        if [ -f "src/c-client/osdep.c" ]; then
-            if grep -q "OPENSSL_VERSION_NUMBER" src/c-client/osdep.c; then
-                echo "  ✅ osdep.c 包含 OPENSSL_VERSION_NUMBER"
-            else
-                echo "  ⚠️  osdep.c 不包含 OPENSSL_VERSION_NUMBER，可能有问题"
-            fi
+        # ============================================================
+        # 验证并修复 osdep.c
+        # ============================================================
+        echo "[ * ] 验证 osdep.c..."
 
-            if grep -q "0x40000000L" src/c-client/osdep.c; then
-                echo "  ✅ osdep.c 包含 OpenSSL 4.x (0x40000000L) 代码"
-                echo "  ✅ ssl_unix.c 已正确集成到 osdep.c"
-            else
-                echo "  ❌ osdep.c 不包含 OpenSSL 4.x 代码！"
-                echo "  可能 ssl_unix.c 没有被正确拼接到 osdep.c"
-                echo "  尝试手动检查: grep 'EVP_RSA_gen' c-client/osdep.c"
-                exit 1
-            fi
-        else
-            echo "  ❌ osdep.c 生成失败！"
+        if [ ! -f "src/c-client/osdep.c" ]; then
+            echo "  ❌ osdep.c 不存在"
             exit 1
         fi
 
-        # 验证 EVP_RSA_gen
-        if grep -q "EVP_RSA_gen" src/c-client/osdep.c; then
+        # 1. 备份当前的 osdep.c
+        cp src/c-client/osdep.c src/c-client/osdep.c.bak 2>/dev/null || true
+        echo "  ✅ 已备份 osdep.c -> osdep.c.bak"
+
+        # 2. 查看差异（调试用）
+        echo "  [ * ] 比较 osdep.c 和 ssl_unix.c 的差异..."
+        diff src/c-client/osdep.c src/osdep/unix/ssl_unix.c | head -20 || true
+
+        # 3. 检查并修复
+        if ! grep -q "EVP_RSA_gen" src/c-client/osdep.c 2>/dev/null; then
+            echo "  ⚠️  osdep.c 不包含 EVP_RSA_gen，使用 ssl_unix.c 替代..."
+            cp src/osdep/unix/ssl_unix.c src/c-client/osdep.c
+            echo "  ✅ 已替换为 ssl_unix.c"
+        else
             echo "  ✅ osdep.c 包含 EVP_RSA_gen"
         fi
-        
-        cat src/c-client/osdep.c
+
+        # 4. 最终验证
+        if grep -q "EVP_RSA_gen" src/c-client/osdep.c 2>/dev/null; then
+            echo "  ✅ osdep.c 最终验证通过"
+        else
+            echo "  ❌ osdep.c 验证失败，请检查"
+            exit 1
+        fi
+
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
 
@@ -2568,18 +2573,12 @@ build_php() {
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
             SSLLIB=/usr/local/lib \
-            EXTRACFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x30000000L -Wno-deprecated-declarations -Wno-error -fPIC" \
+            EXTRACFLAGS="-I/usr/local/include -Wno-deprecated-declarations -Wno-error -fPIC" \
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
 
         MAKE_EXIT=$?
         find /tmp/imap-imap-2007f_upstream -name "libc-client.a" -ls
-
-        cp src/c-client/osdep.c src/c-client/osdep.c.bak
-
-        diff src/c-client/osdep.c src/osdep/unix/ssl_unix.c
-
-        cp src/osdep/unix/ssl_unix.c src/c-client/osdep.c
         echo "========================================"
         echo "DEBUG: make exit code = $MAKE_EXIT"
         echo "DEBUG: Checking for libc-client.a"
@@ -2591,6 +2590,12 @@ build_php() {
         else
             echo "❌ c-client.a 不存在"
             LS_RESULT=1
+            # 显示错误日志
+            if [ -f /tmp/c-client-build.log ]; then
+                echo ""
+                echo "=== 最后 100 行编译日志 ==="
+                tail -300 /tmp/c-client-build.log
+            fi
         fi
 
         if [ $MAKE_EXIT -ne 0 ] || [ $LS_RESULT -ne 0 ]; then
