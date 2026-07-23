@@ -32,7 +32,6 @@
 #endif
 
 /* OpenSSL 4.x compatibility */
-#define OPENSSL_API_COMPAT 0x10100000L
 #ifndef OPENSSL_NO_DEPRECATED
 #define OPENSSL_NO_DEPRECATED
 #endif
@@ -42,7 +41,6 @@
 #include <openssl/x509.h>
 #include <openssl/rsa.h>
 #include <openssl/ssl.h>
-#include <openssl/rsa.h>
 #include <openssl/evp.h>  
 #include <openssl/err.h>
 #include <openssl/pem.h>
@@ -235,9 +233,7 @@ static char *ssl_start_work (SSLSTREAM *stream,char *host,unsigned long flags)
   if (ssl_last_error) fs_give ((void **) &ssl_last_error);
   ssl_last_host = host;
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L
-  if (!(stream->context = SSL_CTX_new ((flags & NET_TLSCLIENT) ?
-				       TLS_client_method () :
-				       TLS_client_method ())))
+if (!(stream->context = SSL_CTX_new (TLS_client_method ())))
 #else
   if (!(stream->context = SSL_CTX_new ((flags & NET_TLSCLIENT) ?
 				       TLSv1_client_method () :
@@ -752,9 +748,7 @@ void ssl_server_init (char *server)
   }
 				/* create context */
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L
-  if (!(stream->context = SSL_CTX_new (start_tls ?
-				       TLS_server_method () :
-				       TLS_server_method ())))
+if (!(stream->context = SSL_CTX_new (TLS_server_method ())))
 #else
   if (!(stream->context = SSL_CTX_new (start_tls ?
 				       TLSv1_server_method () :
@@ -779,11 +773,12 @@ void ssl_server_init (char *server)
 	      key,tcp_clienthost ());
 
     else {
-#if OPENSSL_VERSION_NUMBER < 0x40000000L
-      if (SSL_CTX_need_tmp_RSA (stream->context))
-	SSL_CTX_set_tmp_rsa_callback (stream->context,ssl_genkey);
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L
+    /* OpenSSL 4.0: SSL_CTX_set_tmp_rsa_callback is deprecated but still works */
+    SSL_CTX_set_tmp_rsa_callback(stream->context, ssl_genkey);
 #else
-      (void)ssl_genkey;
+    if (SSL_CTX_need_tmp_RSA (stream->context))
+        SSL_CTX_set_tmp_rsa_callback (stream->context,ssl_genkey);
 #endif
 				/* create new SSL connection */
       if (!(stream->con = SSL_new (stream->context)))
@@ -829,30 +824,35 @@ void ssl_server_init (char *server)
 
 static RSA *ssl_genkey (SSL *con,int export,int keylength)
 {
-  unsigned long i;
-  static RSA *key = NIL;
-  if (!key) {
+unsigned long i;
+static RSA *key = NIL;
+if (!key) {
 #if OPENSSL_VERSION_NUMBER >= 0x40000000L
     EVP_PKEY *pkey = EVP_RSA_gen(export ? keylength : 2048);
     if (!pkey) {
-      syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
-              tcp_clienthost ());
-      while (i = ERR_get_error ())
-        syslog (LOG_ALERT,"SSL error status: %s",ERR_error_string (i,NIL));
-      exit (1);
+        syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
+                tcp_clienthost ());
+        while ((i = ERR_get_error()))
+            syslog (LOG_ALERT,"SSL error status: %s",ERR_error_string (i,NIL));
+        exit (1);
     }
     key = EVP_PKEY_get1_RSA(pkey);
     EVP_PKEY_free(pkey);
+    if (!key) {
+        syslog (LOG_ALERT,"Unable to extract RSA key from EVP_PKEY, host=%.80s",
+                tcp_clienthost ());
+        exit (1);
+    }
 #else
     if (!(key = RSA_generate_key (export ? keylength : 1024,RSA_F4,NIL,NIL))) {
-      syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
-	      tcp_clienthost ());
-      while (i = ERR_get_error ())
-	syslog (LOG_ALERT,"SSL error status: %s",ERR_error_string (i,NIL));
-      exit (1);
+        syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
+            tcp_clienthost ());
+        while ((i = ERR_get_error()))
+            syslog (LOG_ALERT,"SSL error status: %s",ERR_error_string (i,NIL));
+        exit (1);
     }
 #endif
-  }
+}
   return key;
 }
 

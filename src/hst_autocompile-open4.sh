@@ -2529,7 +2529,34 @@ build_php() {
         export CFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
         export CXXFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
         echo "  ✅ OPENSSL_VERSION_NUMBER=0x40000000L 已设置"
+
+        # ============================================================
+        # 强制使用 OpenSSL 4.x 兼容代码
+        # ============================================================
+        echo "[ * ] 强制使用 OpenSSL 4.x 兼容的 ssl_unix.c..."
+
+        cd c-client
+
+        # 删除旧文件，强制重新生成
+        rm -f osdep.c osdep.o osdepssl.c
+
+        # 复制新文件
+        cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" osdepssl.c
+
+        # 验证
+        if grep -q "EVP_RSA_gen" osdepssl.c 2>/dev/null; then
+            echo "  ✅ osdepssl.c 包含 EVP_RSA_gen"
+        else
+            echo "  ❌ osdepssl.c 不包含 EVP_RSA_gen"
+            cat osdepssl.c | head -20
+            exit 1
+        fi
+
+        cd ..
+
+        echo "  ✅ 强制使用 OpenSSL 4.x 兼容代码完成"
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
+
         gmake bsf \
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
@@ -2537,7 +2564,6 @@ build_php() {
             EXTRACFLAGS="-I/usr/local/include -Wno-deprecated-declarations -Wno-error -fPIC" \
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
-
         MAKE_EXIT=$?
         find /tmp/imap-imap-2007f_upstream -name "libc-client.a" -ls
         echo "========================================"
