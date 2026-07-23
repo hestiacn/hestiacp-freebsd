@@ -2449,50 +2449,8 @@ build_php() {
         cd /tmp
         extract_archive imap-imap-2007f_upstream.tar.gz
         cd imap-imap-2007f_upstream
-
-        # 复制额外的源文件（但不覆盖 ssl_unix.c）
-        echo "[ * ] 复制额外的 c-client 源文件..."
-        # 先复制其他 .c 文件，排除 ssl_unix.c
-        for f in "$SRC_DIR/src/php7.0/c-client/"*.c; do
-            filename=$(basename "$f")
-            if [ "$filename" != "ssl_unix.c" ]; then
-                cp "$f" src/osdep/unix/
-                echo "  ✅ 复制: $filename"
-            fi
-        done
-
-        # 复制 mtest.c
-        cp "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c 2>/dev/null || true
-
-        # 复制修改后的 ssl_unix.c（确保使用我们的版本）
-        echo "[ * ] 使用 OpenSSL 4.x 兼容的 ssl_unix.c..."
-        cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" src/osdep/unix/ssl_unix.c
-
-        # 创建 osdepssl.c 软链接
-        rm -f src/osdep/unix/osdepssl.c
-        ln -sf ssl_unix.c src/osdep/unix/osdepssl.c
-        echo "  ✅ osdepssl.c -> ssl_unix.c"
-
-        # 删除旧的 osdep.c，强制重新生成
-        rm -f c-client/osdep.c
-
-        # 重新生成 osdep.c（使用 gmake）
-        echo "[ * ] 重新生成 osdep.c..."
-        gmake osdep.c
-
-        # 验证
-        echo "[ * ] 验证 osdep.c 是否包含 OpenSSL 4.x 代码..."
-        if grep -q "OPENSSL_VERSION_NUMBER" c-client/osdep.c; then
-            echo "  ✅ osdep.c 包含 OPENSSL_VERSION_NUMBER"
-        else
-            echo "  ⚠️  osdep.c 不包含 OPENSSL_VERSION_NUMBER，可能有问题"
-        fi
-
-        if grep -q "0x40000000L" c-client/osdep.c; then
-            echo "  ✅ osdep.c 包含 OpenSSL 4.x (0x40000000L) 代码"
-        else
-            echo "  ⚠️  osdep.c 不包含 OpenSSL 4.x 代码，请检查"
-        fi
+        cp "$SRC_DIR/src/php7.0/c-client/"*.c src/osdep/unix/
+        cp "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c
 
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
