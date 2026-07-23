@@ -2460,6 +2460,7 @@ build_php() {
         sed -i '' 's|SSLLIB=/usr/lib|SSLLIB=/usr/local/lib|g' Makefile
         grep -n "SSLINCLUDE\|SSLLIB" Makefile | head -100
         echo "  ✅ Makefile patched"
+
         # ============================================================
         # 调试：检测 src/c-client 目录下的 ssl_unix.c 内容
         # ============================================================
@@ -2469,12 +2470,7 @@ build_php() {
         echo "========================================"
 
         # 进入 src/c-client 目录
-        if [ -d "src/c-client" ]; then
-            cd src/c-client || exit 1
-        else
-            echo "  ❌ src/c-client 目录不存在"
-            exit 1
-        fi
+        cd src/c-client || exit 1
 
         # 1. 显示当前目录
         echo "[ * ] 当前目录: $(pwd)"
@@ -2600,6 +2596,7 @@ build_php() {
         echo "========================================"
         echo "[ DEBUG ] 继续编译..."
         echo "========================================"
+        
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
         gmake bsf \
             SSLTYPE=unix.nopwd \
