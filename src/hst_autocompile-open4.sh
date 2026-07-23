@@ -2566,6 +2566,36 @@ build_php() {
             EXTRACFLAGS="-I/usr/local/include -Wno-deprecated-declarations -Wno-error -fPIC" \
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
+        # ============================================================
+        # 查看生成的 osdep.c 内容
+        # ============================================================
+        echo ""
+        echo "========================================"
+        echo "[ DEBUG ] 查看 osdep.c 内容"
+        echo "========================================"
+
+        cd c-client
+        cat osdep.c
+        if [ -f osdep.c ]; then
+            echo "[ * ] osdep.c 文件大小: $(wc -l < osdep.c) 行"
+            echo ""
+            echo "=== osdep.c 开头 50 行 ==="
+            head -50 osdep.c
+            echo ""
+            echo "=== osdep.c 中 SSL 相关部分 (搜索 ssl) ==="
+            grep -n "ssl\|SSL\|RSA\|EVP" osdep.c | head -30
+            echo ""
+            echo "=== osdep.c 中 OpenSSL 头文件包含 ==="
+            grep -n "#include.*openssl" osdep.c || echo "  ❌ 没有找到 OpenSSL 头文件包含！"
+            echo ""
+            echo "=== osdep.c 中 ssl_genkey 函数 ==="
+            grep -n "ssl_genkey\|RSA_generate_key\|EVP_RSA_gen" osdep.c | head -10
+        else
+            echo "❌ osdep.c 不存在"
+        fi
+
+        cd ..
+
         MAKE_EXIT=$?
         find /tmp/imap-imap-2007f_upstream -name "libc-client.a" -ls
         echo "========================================"
