@@ -2514,10 +2514,231 @@ build_php() {
         # 手动拼接 osdep.c
         gmake once SSLTYPE=unix.nopwd PASSWDTYPE=pam
         echo "  [ * ] 手动拼接 osdep.c..."
+        echo "[ * ] 检查 osdep.c 拼接源文件..."
+
+        # ============================================================
+        # 1. 检查所有源文件是否存在
+        # ============================================================
+        echo "  [ * ] 检查源文件..."
+
+        # 定义需要检查的文件列表
+        FILES_TO_CHECK=(
+            "src/osdep/unix/osdepbas.c"
+            "src/osdep/unix/osdepckp.c"
+            "src/osdep/unix/osdeplog.c"
+            "src/osdep/unix/osdepssl.c"
+        )
+
+        ALL_EXIST=1
+        for file in "${FILES_TO_CHECK[@]}"; do
+            if [ -f "$file" ]; then
+                echo "    ✅ $file 存在"
+                # 显示文件大小和类型
+                ls -la "$file" | awk '{print "       " $9 " (" $5 " bytes)"}'
+            elif [ -L "$file" ]; then
+                echo "    ✅ $file 是软链接，指向 $(readlink $file)"
+            else
+                echo "    ❌ $file 不存在！"
+                ALL_EXIST=0
+            fi
+        done
+
+        if [ $ALL_EXIST -eq 0 ]; then
+            echo "  ❌ 部分源文件缺失，无法拼接 osdep.c"
+            echo "  尝试运行: gmake once SSLTYPE=unix.nopwd PASSWDTYPE=pam"
+            exit 1
+        fi
+
+        echo "  ✅ 所有源文件存在"
+
+        # ============================================================
+        # 2. 检查每个源文件的内容（关键函数）
+        # ============================================================
+        echo ""
+        echo "  [ * ] 检查源文件内容..."
+
+        # 检查 osdepssl.c 是否包含 OpenSSL 4.x 代码
+        if grep -q "0x40000000L" src/osdep/unix/osdepssl.c; then
+            echo "    ✅ osdepssl.c 包含 OpenSSL 4.x 代码 (0x40000000L)"
+        else
+            echo "    ❌ osdepssl.c 不包含 OpenSSL 4.x 代码"
+            exit 1
+        fi
+
+        if grep -q "EVP_RSA_gen" src/osdep/unix/osdepssl.c; then
+            echo "    ✅ osdepssl.c 包含 EVP_RSA_gen"
+        else
+            echo "    ⚠️  osdepssl.c 不包含 EVP_RSA_gen"
+        fi
+
+        if grep -q "OPENSSL_init_ssl" src/osdep/unix/osdepssl.c; then
+            echo "    ✅ osdepssl.c 包含 OPENSSL_init_ssl"
+        else
+            echo "    ⚠️  osdepssl.c 不包含 OPENSSL_init_ssl"
+        fi
+
+        # 检查 osdepssl.c 是否包含旧 API（不应该有）
+        if grep -q "RSA_generate_key" src/osdep/unix/osdepssl.c; then
+            echo "    ⚠️  osdepssl.c 包含 RSA_generate_key（可能被条件编译包含）"
+        fi
+
+        # ============================================================
+        # 3. 查看每个源文件的头部（确认内容）
+        # ============================================================
+        echo ""
+        echo "  [ * ] 各源文件头部信息..."
+
+        for file in "${FILES_TO_CHECK[@]}"; do
+            echo "    --- $file ---"
+            head -10 "$file" | sed 's/^/      /'
+            echo ""
+        done
+
+        # ============================================================
+        # 4. 执行拼接
+        # ============================================================
+        echo "  [ * ] 执行拼接..."
+        echo "  命令: cat src/osdep/unix/osdepbas.c \\"
+        echo "          src/osdep/unix/osdepckp.c \\"
+        echo "          src/osdep/unix/osdeplog.c \\"
+        echo "          src/osdep/unix/osdepssl.c > src/c-client/osdep.c"
+
         cat src/osdep/unix/osdepbas.c \
             src/osdep/unix/osdepckp.c \
             src/osdep/unix/osdeplog.c \
             src/osdep/unix/osdepssl.c > src/c-client/osdep.c
+
+        if [ $? -eq 0 ]; then
+            echo "  ✅ osdep.c 拼接成功"
+        else
+            echo "  ❌ osdep.c 拼接失败"
+            exit 1
+        fi
+
+        # ============================================================
+        # 5. 验证拼接后的 osdep.c
+        # ============================================================
+        echo ""
+        echo "  [ * ] 验证拼接后的 osdep.c..."
+
+        if [ ! -f "src/c-client/osdep.c" ]; then
+            echo "  ❌ src/c-client/osdep.c 不存在"
+            exit 1
+        fi
+
+        # 文件信息
+        echo "    📁 文件: src/c-client/osdep.c"
+        echo "    📏 大小: $(wc -c < src/c-client/osdep.c) bytes"
+        echo "    📄 行数: $(wc -l < src/c-client/osdep.c) lines"
+
+        # 检查是否包含 OpenSSL 4.x 代码
+        echo ""
+        echo "    [ * ] 检查 OpenSSL 4.x 代码..."
+
+        if grep -q "0x40000000L" src/c-client/osdep.c; then
+            echo "      ✅ 包含 0x40000000L (OpenSSL 4.x 版本检查)"
+            # 显示所在行
+            grep -n "0x40000000L" src/c-client/osdep.c | head -3 | sed 's/^/         /'
+        else
+            echo "      ❌ 不包含 0x40000000L"
+        fi
+
+        if grep -q "EVP_RSA_gen" src/c-client/osdep.c; then
+            echo "      ✅ 包含 EVP_RSA_gen (OpenSSL 4.x RSA 生成)"
+            grep -n "EVP_RSA_gen" src/c-client/osdep.c | head -3 | sed 's/^/         /'
+        else
+            echo "      ❌ 不包含 EVP_RSA_gen"
+        fi
+
+        if grep -q "OPENSSL_init_ssl" src/c-client/osdep.c; then
+            echo "      ✅ 包含 OPENSSL_init_ssl (OpenSSL 4.x 初始化)"
+            grep -n "OPENSSL_init_ssl" src/c-client/osdep.c | head -3 | sed 's/^/         /'
+        else
+            echo "      ❌ 不包含 OPENSSL_init_ssl"
+        fi
+
+        # 检查是否还包含旧 API
+        echo ""
+        echo "    [ * ] 检查旧 API..."
+
+        if grep -q "RSA_generate_key" src/c-client/osdep.c; then
+            echo "      ⚠️  包含 RSA_generate_key（可能被条件编译包含）"
+            grep -n "RSA_generate_key" src/c-client/osdep.c | head -3 | sed 's/^/         /'
+        else
+            echo "      ✅ 不包含 RSA_generate_key"
+        fi
+
+        if grep -q "SSL_library_init" src/c-client/osdep.c; then
+            echo "      ⚠️  包含 SSL_library_init（可能被条件编译包含）"
+            grep -n "SSL_library_init" src/c-client/osdep.c | head -3 | sed 's/^/         /'
+        else
+            echo "      ✅ 不包含 SSL_library_init"
+        fi
+
+        if grep -q "SSLv23_method" src/c-client/osdep.c; then
+            echo "      ⚠️  包含 SSLv23_method（可能被条件编译包含）"
+        else
+            echo "      ✅ 不包含 SSLv23_method"
+        fi
+
+        # ============================================================
+        # 6. 显示拼接后的关键函数
+        # ============================================================
+        echo ""
+        echo "  [ * ] 关键函数预览..."
+
+        # 显示 ssl_onceonlyinit 函数
+        echo ""
+        echo "    --- ssl_onceonlyinit() ---"
+        grep -A 15 "void ssl_onceonlyinit" src/c-client/osdep.c | head -20 | sed 's/^/      /'
+
+        # 显示 ssl_genkey 函数
+        echo ""
+        echo "    --- ssl_genkey() ---"
+        grep -A 25 "static RSA \*ssl_genkey" src/c-client/osdep.c | head -30 | sed 's/^/      /'
+
+        # ============================================================
+        # 7. 最终验证结果
+        # ============================================================
+        echo ""
+        echo "  [ * ] 最终验证结果..."
+
+        ERRORS=0
+
+        if grep -q "0x40000000L" src/c-client/osdep.c; then
+            echo "    ✅ OpenSSL 4.x 版本检查 - 通过"
+        else
+            echo "    ❌ OpenSSL 4.x 版本检查 - 失败"
+            ERRORS=$((ERRORS+1))
+        fi
+
+        if grep -q "EVP_RSA_gen" src/c-client/osdep.c; then
+            echo "    ✅ EVP_RSA_gen - 通过"
+        else
+            echo "    ❌ EVP_RSA_gen - 失败"
+            ERRORS=$((ERRORS+1))
+        fi
+
+        if grep -q "OPENSSL_init_ssl" src/c-client/osdep.c; then
+            echo "    ✅ OPENSSL_init_ssl - 通过"
+        else
+            echo "    ❌ OPENSSL_init_ssl - 失败"
+            ERRORS=$((ERRORS+1))
+        fi
+
+        if [ $ERRORS -eq 0 ]; then
+            echo ""
+            echo "  ✅✅✅ osdep.c 拼接成功！包含所有 OpenSSL 4.x 代码"
+        else
+            echo ""
+            echo "  ❌❌❌ osdep.c 拼接失败，发现 $ERRORS 个问题"
+            exit 1
+        fi
+
+        echo ""
+        echo "========================================"
+        echo "[ * ] osdep.c 验证完成"
+        echo "========================================"
 
         if [ -L "c-client" ]; then
             echo "  c-client 是软链接，指向 $(readlink c-client)"
@@ -2552,7 +2773,7 @@ build_php() {
         if grep -q "EVP_RSA_gen" src/c-client/osdep.c; then
             echo "  ✅ osdep.c 包含 EVP_RSA_gen"
         fi
-        
+
         cat src/c-client/osdep.c
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
