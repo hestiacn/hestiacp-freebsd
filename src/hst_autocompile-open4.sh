@@ -2451,7 +2451,9 @@ build_php() {
         cd imap-imap-2007f_upstream
 
         cp "$SCRIPT_DIR/php7.0/c-client/"*.c src/osdep/unix/
+        
         cp "$SCRIPT_DIR/php7.0/mtest.c" src/mtest/mtest.c
+        
 
         # ============================================================
         # 检查并复制修改后的 ssl_unix.c
@@ -2508,7 +2510,7 @@ build_php() {
         # 删除旧的 osdep.c
         rm -f src/c-client/osdep.c
         rm -f c-client/osdep.c 2>/dev/null || true
-
+        cp src/osdep/unix/ssl_unix.c src/c-client/
         # 手动拼接 osdep.c
         gmake once SSLTYPE=unix.nopwd PASSWDTYPE=pam
         echo "  [ * ] 手动拼接 osdep.c..."
