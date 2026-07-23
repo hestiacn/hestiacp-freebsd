@@ -2462,11 +2462,53 @@ build_php() {
         done
 
         # 复制 mtest.c
-        cp "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c 2>/dev/null || true
+        cp "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c || true
 
-        # 复制修改后的 ssl_unix.c（确保使用我们的版本）
-        echo "[ * ] 使用 OpenSSL 4.x 兼容的 ssl_unix.c..."
-        cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" src/osdep/unix/ssl_unix.c
+        # ============================================================
+        # 检查并复制修改后的 ssl_unix.c
+        # ============================================================
+        echo "[ * ] 检查 OpenSSL 4.x 兼容的 ssl_unix.c..."
+
+        SSL_SRC="$SRC_DIR/src/php7.0/c-client/ssl_unix.c"
+        SSL_DST="src/osdep/unix/ssl_unix.c"
+
+        # 检查源文件是否存在
+        if [ ! -f "$SSL_SRC" ]; then
+            echo "  ❌ 源文件不存在: $SSL_SRC"
+            exit 1
+        fi
+
+        # 检查源文件是否包含 OpenSSL 4.x 代码
+        if grep -q "0x40000000L" "$SSL_SRC"; then
+            echo "  ✅ 源文件包含 OpenSSL 4.x 兼容代码"
+        else
+            echo "  ❌ 源文件不包含 OpenSSL 4.x 兼容代码"
+            echo "  请确保 $SSL_SRC 是正确的 OpenSSL 4.x 版本"
+            exit 1
+        fi
+
+        # 检查目标文件是否存在，如果存在则检查是否已经是正确版本
+        if [ -f "$SSL_DST" ]; then
+            if grep -q "0x40000000L" "$SSL_DST"; then
+                echo "  ✅ 目标文件已是 OpenSSL 4.x 版本，无需复制"
+            else
+                echo "  ⚠️  目标文件是旧版本，正在替换..."
+                cp "$SSL_SRC" "$SSL_DST"
+                echo "  ✅ 已替换为 OpenSSL 4.x 版本"
+            fi
+        else
+            echo "  ⚠️  目标文件不存在，正在复制..."
+            cp "$SSL_SRC" "$SSL_DST"
+            echo "  ✅ 已复制 OpenSSL 4.x 版本"
+        fi
+
+        # 验证目标文件
+        if grep -q "0x40000000L" "$SSL_DST"; then
+            echo "  ✅ 验证通过: $SSL_DST 包含 OpenSSL 4.x 代码"
+        else
+            echo "  ❌ 验证失败: $SSL_DST 不包含 OpenSSL 4.x 代码"
+            exit 1
+        fi
 
         # 创建 osdepssl.c 软链接
         rm -f src/osdep/unix/osdepssl.c
@@ -2478,20 +2520,29 @@ build_php() {
 
         # 重新生成 osdep.c（使用 gmake）
         echo "[ * ] 重新生成 osdep.c..."
-        gmake osdep.c
+        make osdep.c
 
-        # 验证
+        # 验证 osdep.c
         echo "[ * ] 验证 osdep.c 是否包含 OpenSSL 4.x 代码..."
-        if grep -q "OPENSSL_VERSION_NUMBER" c-client/osdep.c; then
-            echo "  ✅ osdep.c 包含 OPENSSL_VERSION_NUMBER"
-        else
-            echo "  ⚠️  osdep.c 不包含 OPENSSL_VERSION_NUMBER，可能有问题"
-        fi
+        if [ -f "c-client/osdep.c" ]; then
+            if grep -q "OPENSSL_VERSION_NUMBER" c-client/osdep.c; then
+                echo "  ✅ osdep.c 包含 OPENSSL_VERSION_NUMBER"
+            else
+                echo "  ⚠️  osdep.c 不包含 OPENSSL_VERSION_NUMBER，可能有问题"
+            fi
 
-        if grep -q "0x40000000L" c-client/osdep.c; then
-            echo "  ✅ osdep.c 包含 OpenSSL 4.x (0x40000000L) 代码"
+            if grep -q "0x40000000L" c-client/osdep.c; then
+                echo "  ✅ osdep.c 包含 OpenSSL 4.x (0x40000000L) 代码"
+                echo "  ✅ ssl_unix.c 已正确集成到 osdep.c"
+            else
+                echo "  ❌ osdep.c 不包含 OpenSSL 4.x 代码！"
+                echo "  可能 ssl_unix.c 没有被正确拼接到 osdep.c"
+                echo "  尝试手动检查: grep 'EVP_RSA_gen' c-client/osdep.c"
+                exit 1
+            fi
         else
-            echo "  ⚠️  osdep.c 不包含 OpenSSL 4.x 代码，请检查"
+            echo "  ❌ osdep.c 生成失败！"
+            exit 1
         fi
 
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
@@ -2504,7 +2555,7 @@ build_php() {
         echo "  ✅ Makefile patched"
 
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
-        gmake bsf \
+        make bsf \
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
             SSLLIB=/usr/local/lib \
