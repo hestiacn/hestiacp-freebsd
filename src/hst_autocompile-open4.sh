@@ -2460,7 +2460,146 @@ build_php() {
         sed -i '' 's|SSLLIB=/usr/lib|SSLLIB=/usr/local/lib|g' Makefile
         grep -n "SSLINCLUDE\|SSLLIB" Makefile | head -100
         echo "  ✅ Makefile patched"
+        # ============================================================
+        # 调试：检测 src/c-client 目录下的 ssl_unix.c 内容
+        # ============================================================
+        echo ""
+        echo "========================================"
+        echo "[ DEBUG ] 检测 src/c-client/ssl_unix.c 内容"
+        echo "========================================"
 
+        # 进入 src/c-client 目录
+        if [ -d "src/c-client" ]; then
+            cd src/c-client || exit 1
+        else
+            echo "  ❌ src/c-client 目录不存在"
+            exit 1
+        fi
+
+        # 1. 显示当前目录
+        echo "[ * ] 当前目录: $(pwd)"
+
+        # 2. 列出 src/c-client 目录下的 ssl 相关文件
+        echo ""
+        echo "[ * ] src/c-client 目录下的 ssl 相关文件:"
+        ls -la ssl*.c 2>/dev/null || echo "  没有 ssl 文件"
+        ls -la osdepssl.c 2>/dev/null || echo "  没有 osdepssl.c"
+
+        # 3. 显示 ssl_unix.c 的完整内容（如果存在）
+        echo ""
+        echo "[ * ] src/c-client/ssl_unix.c 完整内容:"
+        echo "========================================"
+        if [ -f "ssl_unix.c" ]; then
+            cat ssl_unix.c
+            echo "========================================"
+            echo "  ✅ ssl_unix.c 存在"
+        else
+            echo "  ❌ ssl_unix.c 不存在"
+        fi
+
+        # 4. 检查是否包含 OpenSSL 4.x 代码
+        echo ""
+        echo "[ * ] 检查 OpenSSL 4.x 代码:"
+        if grep -q "0x40000000L" ssl_unix.c 2>/dev/null; then
+            echo "  ✅ 包含 0x40000000L (OpenSSL 4.x)"
+        else
+            echo "  ❌ 不包含 0x40000000L"
+        fi
+
+        if grep -q "EVP_RSA_gen" ssl_unix.c 2>/dev/null; then
+            echo "  ✅ 包含 EVP_RSA_gen"
+        else
+            echo "  ❌ 不包含 EVP_RSA_gen"
+        fi
+
+        if grep -q "RSA_generate_key" ssl_unix.c 2>/dev/null; then
+            echo "  ⚠️  包含 RSA_generate_key (旧版 OpenSSL)"
+        else
+            echo "  ✅ 不包含 RSA_generate_key"
+        fi
+
+        # 5. 显示 osdepssl.c 软链接指向
+        echo ""
+        echo "[ * ] osdepssl.c 软链接指向:"
+        if [ -L "osdepssl.c" ]; then
+            echo "  osdepssl.c -> $(readlink osdepssl.c)"
+        else
+            echo "  osdepssl.c 不是软链接"
+        fi
+
+        # 回到上级目录
+        cd ../..
+
+        # ============================================================
+        # 调试：检测 Makefile 如何生成 osdep.c
+        # ============================================================
+        echo ""
+        echo "========================================"
+        echo "[ DEBUG ] 检测 Makefile 中 osdep.c 生成规则"
+        echo "========================================"
+
+        # 显示 Makefile 中 osdep.c 相关规则
+        echo "[ * ] Makefile 中 osdep.c 相关规则:"
+        grep -A 5 -B 5 "osdep.c:" Makefile 2>/dev/null || echo "  未找到 osdep.c 规则"
+
+        echo ""
+        echo "[ * ] Makefile 中 ssl 相关规则:"
+        grep -A 3 -B 3 "ssl_unix" Makefile 2>/dev/null || echo "  未找到 ssl 相关规则"
+
+        echo ""
+        echo "[ * ] Makefile 中 OS 变量:"
+        grep "^OS=" Makefile 2>/dev/null || echo "  OS 未在 Makefile 中定义"
+
+        echo ""
+        echo "========================================"
+        echo "[ DEBUG ] 检测完成"
+        echo "========================================"
+        echo ""
+
+        # ============================================================
+        # 强制覆盖 src/c-client/ssl_unix.c（如果发现是旧版本）
+        # ============================================================
+        echo "[ * ] 检查并强制覆盖 src/c-client/ssl_unix.c..."
+
+        if [ -f "src/c-client/ssl_unix.c" ]; then
+            if ! grep -q "0x40000000L" src/c-client/ssl_unix.c 2>/dev/null; then
+                echo "  ⚠️  src/c-client/ssl_unix.c 不包含 OpenSSL 4.x 代码，正在覆盖..."
+                cp -f "$SSL_SRC" src/c-client/ssl_unix.c
+                echo "  ✅ 已覆盖 src/c-client/ssl_unix.c"
+            else
+                echo "  ✅ src/c-client/ssl_unix.c 已包含 OpenSSL 4.x 代码"
+            fi
+        else
+            echo "  ⚠️  src/c-client/ssl_unix.c 不存在，正在复制..."
+            cp -f "$SSL_SRC" src/c-client/ssl_unix.c
+            echo "  ✅ 已复制 src/c-client/ssl_unix.c"
+        fi
+
+        # 最终验证
+        echo ""
+        echo "[ * ] 最终验证 src/c-client/ssl_unix.c:"
+        if grep -q "0x40000000L" src/c-client/ssl_unix.c 2>/dev/null; then
+            echo "  ✅ src/c-client/ssl_unix.c 包含 OpenSSL 4.x 代码"
+        else
+            echo "  ❌ src/c-client/ssl_unix.c 不包含 OpenSSL 4.x 代码"
+            echo "  文件内容:"
+            head -50 src/c-client/ssl_unix.c
+            exit 1
+        fi
+
+        # 由于 src/c-client 是软链接，还要确保 c-client 指向同一个文件
+        echo ""
+        echo "[ * ] 检查 c-client 软链接指向:"
+        if [ -L "c-client" ]; then
+            echo "  c-client -> $(readlink c-client)"
+        else
+            echo "  c-client 不是软链接"
+        fi
+
+        echo ""
+        echo "========================================"
+        echo "[ DEBUG ] 继续编译..."
+        echo "========================================"
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
         gmake bsf \
             SSLTYPE=unix.nopwd \
