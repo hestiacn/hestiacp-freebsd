@@ -31,11 +31,6 @@
 #define RSA_F4 65537L
 #endif
 
-/* OpenSSL 4.x compatibility */
-#ifndef OPENSSL_NO_DEPRECATED
-#define OPENSSL_NO_DEPRECATED
-#endif
-
 #define crypt ssl_private_crypt
 #include <openssl/x509v3.h>
 #include <openssl/x509.h>
