@@ -2515,12 +2515,16 @@ build_php() {
         ln -sf ssl_unix.c src/osdep/unix/osdepssl.c
         echo "  ✅ osdepssl.c -> ssl_unix.c"
 
-        # 删除旧的 osdep.c，强制重新生成
+        echo "[ * ] 重新生成 osdep.c..."
+
+        # 删除旧的 osdep.c
         rm -f c-client/osdep.c
 
-        # 重新生成 osdep.c（使用 gmake）
-        echo "[ * ] 重新生成 osdep.c..."
-        make osdep.c
+        # 手动拼接 osdep.c
+        cat src/osdep/unix/osdepbas.c \
+            src/osdep/unix/osdepckp.c \
+            src/osdep/unix/osdeplog.c \
+            src/osdep/unix/osdepssl.c > c-client/osdep.c
 
         # 验证 osdep.c
         echo "[ * ] 验证 osdep.c 是否包含 OpenSSL 4.x 代码..."
@@ -2555,7 +2559,7 @@ build_php() {
         echo "  ✅ Makefile patched"
 
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
-        make bsf \
+        gmake bsf \
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
             SSLLIB=/usr/local/lib \
