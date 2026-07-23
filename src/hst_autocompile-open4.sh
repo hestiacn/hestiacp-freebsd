@@ -2541,14 +2541,16 @@ build_php() {
         rm -f osdep.c osdep.o osdepssl.c
 
         # 复制新文件
+        cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" ssl_unix.c
+
+        # 同时直接创建 osdepssl.c（以防 make 的 ln 失败）
         cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" osdepssl.c
 
         # 验证
-        if grep -q "EVP_RSA_gen" osdepssl.c 2>/dev/null; then
-            echo "  ✅ osdepssl.c 包含 EVP_RSA_gen"
+        if grep -q "EVP_RSA_gen" ssl_unix.c 2>/dev/null; then
+            echo "  ✅ ssl_unix.c 包含 EVP_RSA_gen"
         else
-            echo "  ❌ osdepssl.c 不包含 EVP_RSA_gen"
-            cat osdepssl.c | head -20
+            echo "  ❌ ssl_unix.c 不包含 EVP_RSA_gen"
             exit 1
         fi
 
