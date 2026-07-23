@@ -6,7 +6,7 @@ on:
     types: [published]
   push:
     branches:
-      - mains
+      - main
       - release
   workflow_dispatch:
     inputs:

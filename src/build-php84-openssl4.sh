@@ -1520,23 +1520,54 @@ build_php() {
         cd /tmp
         extract_archive imap-imap-2007f_upstream.tar.gz
         cd imap-imap-2007f_upstream
-        cp "$SCRIPT_DIR/php7.0/c-client/"*.c src/osdep/unix/
-        cp "$SCRIPT_DIR/php7.0/mtest.c" src/mtest/mtest.c
-        
+
+        echo "[ * ] 复制 c-client 源文件到..."
+        mkdir -p src/osdep/unix
+
+        # 复制所有 .c 文件到 src/osdep/unix/
+        cp -f "$SCRIPT_DIR/php7.0/c-client/"*.c src/osdep/unix/ || true
+        echo "  ✅ 已复制 c-client/*.c 到 src/osdep/unix/"
+
+        # 复制 mtest.c
+        cp -f "$SCRIPT_DIR/php7.0/mtest.c" src/mtest/mtest.c || true
+        echo "  ✅ 已复制 mtest.c"
+        SSL_SRC="$SCRIPT_DIR/php7.0/c-client/ssl_unix.c"
+
+        if [ ! -f "$SSL_SRC" ]; then
+            echo "  ❌ 源文件不存在: $SSL_SRC"
+            exit 1
+        fi
+
+        # 强制复制到 src/osdep/unix/（tools/an 会从这里创建软链接）
+        cp -f "$SSL_SRC" src/osdep/unix/ssl_unix.c
+        echo "  ✅ 已复制 OpenSSL 4.x 版本到 src/osdep/unix/ssl_unix.c"
+
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
+
         echo "  Fixing OpenSSL paths for FreeBSD..."
         sed -i '' 's|SSLINCLUDE=/usr/include/openssl|SSLINCLUDE=/usr/local/include|g' Makefile
         sed -i '' 's|SSLLIB=/usr/lib|SSLLIB=/usr/local/lib|g' Makefile
-        grep -n "SSLINCLUDE\|SSLLIB" Makefile | head -100
         echo "  ✅ Makefile patched"
 
+        # 先运行 tools/an 创建软链接
+        tools/an "ln -s" src/osdep/unix c-client
+        export CFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
+        export CXXFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
+        echo "  ✅ OPENSSL_VERSION_NUMBER=0x40000000L 已设置"
+        # 强制使用 OpenSSL 4.x 兼容代码
+        cd c-client
+        rm -f osdep.c osdep.o osdepssl.c
+        cp "$SCRIPT_DIR/php7.0/c-client/ssl_unix.c" ssl_unix.c
+        cp "$SCRIPT_DIR/php7.0/c-client/ssl_unix.c" osdepssl.c
+        cd ..
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
-        make bsf \
+
+        gmake bsf \
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
             SSLLIB=/usr/local/lib \
-            EXTRACFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L -Wno-deprecated-declarations -Wno-error -fPIC" \
+            EXTRACFLAGS="-I/usr/local/include -DOPENSSL_VERSION_NUMBER=0x40000000L -Wno-deprecated-declarations -Wno-error -fPIC" \
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
 
