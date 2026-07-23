@@ -2451,14 +2451,7 @@ build_php() {
         cd imap-imap-2007f_upstream
         cp "$SRC_DIR/src/php7.0/c-client/"*.c src/osdep/unix/
         cp "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c
-        # 在编译 c-client 之前，直接替换src\php8.4\ssl_unix.c
-        if [ -f "src/osdep/unix/ssl_unix.c" ]; then
-            echo "[ * ] 替换 ssl_unix.c (OpenSSL 4.x 兼容)"
-            cp "$SRC_DIR/src/php8.4/ssl_unix.c" "src/osdep/unix/ssl_unix.c"
-            echo "  ✅ 已替换 ssl_unix.c"
-        else
-            echo "  ⚠️  文件不存在: src/osdep/unix/ssl_unix.c"
-        fi
+
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
         echo "  Fixing OpenSSL paths for FreeBSD..."

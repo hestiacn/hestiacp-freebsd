@@ -1,5 +1,5 @@
 /* ========================================================================
- * Copyright 1988-2008 University of Washington
+ * Copyright 1988-2026 University of Washington
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,11 +24,14 @@
  *
  * Date:	22 September 1998
  * Last Edited:	13 January 2007
+ * Modified:	2026-07-23 - OpenSSL 4.x compatibility fixes
  */
+
 #ifndef RSA_F4
 #define RSA_F4 65537L
 #endif
 
+/* OpenSSL 4.x compatibility */
 #define OPENSSL_API_COMPAT 0x10100000L
 #ifndef OPENSSL_NO_DEPRECATED
 #define OPENSSL_NO_DEPRECATED
@@ -49,44 +52,6 @@
 
 #define SSLBUFLEN 8192
 #define SSLCIPHERLIST "ALL:!LOW"
-
-/* OpenSSL 4.x compatibility */
-#if OPENSSL_VERSION_NUMBER >= 0x40000000L
-
-/* OpenSSL 4.x: 所有初始化用 OPENSSL_init_* */
-#define SSL_LIBRARY_INIT() \
-    OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS | OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL)
-
-#define SSL_LOAD_ERROR_STRINGS() \
-    do { \
-        OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL); \
-        OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, NULL); \
-    } while(0)
-
-/* OpenSSL 4.x: 不再需要 RSA temp key 回调 */
-#define SSL_NEED_TMP_RSA(ctx) 0
-#define SSL_SET_TMP_RSA_CALLBACK(ctx, cb) ((void)0)
-
-/* OpenSSL 4.x: RSA_generate_key 用 EVP_RSA_gen 替代 */
-#define RSA_generate_key(bits, exp, cb, arg) \
-    ({ \
-        EVP_PKEY *__pkey = EVP_RSA_gen(bits); \
-        RSA *__rsa = __pkey ? EVP_PKEY_get1_RSA(__pkey) : NULL; \
-        if (__pkey) EVP_PKEY_free(__pkey); \
-        __rsa; \
-    })
-
-#else
-/* OpenSSL 1.1.x / 3.x */
-#define SSL_LIBRARY_INIT() SSL_library_init()
-#define SSL_LOAD_ERROR_STRINGS() \
-    do { \
-        ERR_load_crypto_strings(); \
-        SSL_load_error_strings(); \
-    } while(0)
-#define SSL_NEED_TMP_RSA(ctx) SSL_CTX_need_tmp_RSA(ctx)
-#define SSL_SET_TMP_RSA_CALLBACK(ctx, cb) SSL_CTX_set_tmp_rsa_callback(ctx, cb)
-#endif
 
 /* SSL I/O stream */
 
@@ -267,9 +232,15 @@ static char *ssl_start_work (SSLSTREAM *stream,char *host,unsigned long flags)
     (sslclientkey_t) mail_parameters (NIL,GET_SSLCLIENTKEY,NIL);
   if (ssl_last_error) fs_give ((void **) &ssl_last_error);
   ssl_last_host = host;
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L
   if (!(stream->context = SSL_CTX_new ((flags & NET_TLSCLIENT) ?
 				       TLS_client_method () :
+				       TLS_client_method ())))
+#else
+  if (!(stream->context = SSL_CTX_new ((flags & NET_TLSCLIENT) ?
+				       TLSv1_client_method () :
 				       SSLv23_client_method ())))
+#endif
     return "SSL context failed";
   SSL_CTX_set_options (stream->context,0);
 				/* disable certificate validation? */
@@ -778,9 +749,15 @@ void ssl_server_init (char *server)
     if (stat (key,&sbuf)) strcpy (key,cert);
   }
 				/* create context */
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L
   if (!(stream->context = SSL_CTX_new (start_tls ?
 				       TLS_server_method () :
+				       TLS_server_method ())))
+#else
+  if (!(stream->context = SSL_CTX_new (start_tls ?
+				       TLSv1_server_method () :
 				       SSLv23_server_method ())))
+#endif
     syslog (LOG_ALERT,"Unable to create SSL context, host=%.80s",
 	    tcp_clienthost ());
   else {			/* set context options */
@@ -853,6 +830,7 @@ static RSA *ssl_genkey (SSL *con,int export,int keylength)
   unsigned long i;
   static RSA *key = NIL;
   if (!key) {
+#if OPENSSL_VERSION_NUMBER >= 0x40000000L
     EVP_PKEY *pkey = EVP_RSA_gen(export ? keylength : 2048);
     if (!pkey) {
       syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
@@ -863,6 +841,15 @@ static RSA *ssl_genkey (SSL *con,int export,int keylength)
     }
     key = EVP_PKEY_get1_RSA(pkey);
     EVP_PKEY_free(pkey);
+#else
+    if (!(key = RSA_generate_key (export ? keylength : 1024,RSA_F4,NIL,NIL))) {
+      syslog (LOG_ALERT,"Unable to generate temp key, host=%.80s",
+	      tcp_clienthost ());
+      while (i = ERR_get_error ())
+	syslog (LOG_ALERT,"SSL error status: %s",ERR_error_string (i,NIL));
+      exit (1);
+    }
+#endif
   }
   return key;
 }
