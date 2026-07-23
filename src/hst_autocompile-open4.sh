@@ -2552,7 +2552,8 @@ build_php() {
         if grep -q "EVP_RSA_gen" src/c-client/osdep.c; then
             echo "  ✅ osdep.c 包含 EVP_RSA_gen"
         fi
-
+        
+        cat src/c-client/osdep.c
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
         perl -pi -e 's/read x; case "\$\$x" in y\) exit 0;; \\*\) .*;; esac/read x; case "\$\$x" in y\) exit 0;; *\) exit 0;; esac/g' Makefile
 
@@ -2563,135 +2564,14 @@ build_php() {
         echo "  ✅ Makefile patched"
 
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
-        # 4. 查看拼接后的 osdep.c 内容（关键部分）
-        echo ""
-        echo "========================================"
-        echo "[ * ] 查看 osdep.c 中的关键代码"
-        echo "========================================"
 
-        # 检查文件是否存在
-        if [ -f "c-client/osdep.c" ]; then
-            OSDEP_FILE="c-client/osdep.c"
-        elif [ -f "src/c-client/osdep.c" ]; then
-            OSDEP_FILE="src/c-client/osdep.c"
-        else
-            echo "  ❌ osdep.c 不存在！"
-            exit 1
-        fi
-
-        echo "  📁 文件: $OSDEP_FILE"
-        echo "  📏 大小: $(wc -c < $OSDEP_FILE) bytes"
-        echo "  📄 行数: $(wc -l < $OSDEP_FILE) lines"
-        echo ""
-
-        # 查看 ssl_onceonlyinit 函数（包含 SSL 初始化）
-        echo "========================================"
-        echo "1. ssl_onceonlyinit() - SSL 初始化"
-        echo "========================================"
-        grep -A 30 "void ssl_onceonlyinit" "$OSDEP_FILE" | head -35
-        echo ""
-
-        # 查看 ssl_genkey 函数（包含 RSA 生成）
-        echo "========================================"
-        echo "2. ssl_genkey() - RSA 密钥生成"
-        echo "========================================"
-        grep -A 50 "static RSA \*ssl_genkey" "$OSDEP_FILE" | head -55
-        echo ""
-
-        # 查看 SSL 相关宏定义
-        echo "========================================"
-        echo "3. OpenSSL 版本检查"
-        echo "========================================"
-        grep -n "0x40000000L" "$OSDEP_FILE" || echo "  ❌ 没有找到 0x40000000L！"
-        echo ""
-
-        # 查看 EVP_RSA_gen 调用
-        echo "========================================"
-        echo "4. EVP_RSA_gen 调用"
-        echo "========================================"
-        grep -n "EVP_RSA_gen" "$OSDEP_FILE" || echo "  ❌ 没有找到 EVP_RSA_gen！"
-        echo ""
-
-        # 查看 RSA_generate_key 调用（应该被条件编译排除）
-        echo "========================================"
-        echo "5. RSA_generate_key 调用（应该只在 #else 分支）"
-        echo "========================================"
-        grep -n "RSA_generate_key" "$OSDEP_FILE" || echo "  ✅ 没有找到 RSA_generate_key（已被 EVP_RSA_gen 替代）"
-        echo ""
-
-        # 查看 OPENSSL_init_ssl 调用
-        echo "========================================"
-        echo "6. OPENSSL_init_ssl 调用"
-        echo "========================================"
-        grep -n "OPENSSL_init_ssl" "$OSDEP_FILE" || echo "  ❌ 没有找到 OPENSSL_init_ssl！"
-        echo ""
-
-        # 检查 SSL_library_init（旧 API，应该被条件编译排除）
-        echo "========================================"
-        echo "7. SSL_library_init 调用（旧 API）"
-        echo "========================================"
-        grep -n "SSL_library_init" "$OSDEP_FILE" || echo "  ✅ 没有找到 SSL_library_init（已用 OPENSSL_init_ssl 替代）"
-        echo ""
-
-        echo "========================================"
-        echo "[ * ] 验证结果总结"
-        echo "========================================"
-
-        # 综合验证
-        ERRORS=0
-
-        if grep -q "0x40000000L" "$OSDEP_FILE"; then
-            echo "  ✅ OpenSSL 4.x 版本检查 (0x40000000L) - 通过"
-        else
-            echo "  ❌ OpenSSL 4.x 版本检查 - 失败"
-            ERRORS=$((ERRORS+1))
-        fi
-
-        if grep -q "EVP_RSA_gen" "$OSDEP_FILE"; then
-            echo "  ✅ EVP_RSA_gen (OpenSSL 4.x RSA) - 通过"
-        else
-            echo "  ❌ EVP_RSA_gen - 失败"
-            ERRORS=$((ERRORS+1))
-        fi
-
-        if grep -q "OPENSSL_init_ssl" "$OSDEP_FILE"; then
-            echo "  ✅ OPENSSL_init_ssl (OpenSSL 4.x 初始化) - 通过"
-        else
-            echo "  ❌ OPENSSL_init_ssl - 失败"
-            ERRORS=$((ERRORS+1))
-        fi
-
-        if grep -q "RSA_generate_key" "$OSDEP_FILE"; then
-            echo "  ⚠️  RSA_generate_key (旧 API) 仍然存在，检查是否在 #else 分支中"
-        fi
-
-        if [ $ERRORS -eq 0 ]; then
-            echo ""
-            echo "  ✅✅✅ osdep.c 已成功更新为 OpenSSL 4.x 版本！"
-        else
-            echo ""
-            echo "  ❌❌❌ osdep.c 更新失败，发现 $ERRORS 个问题"
-            echo "  请检查 ssl_unix.c 是否正确复制到 src/osdep/unix/"
-        fi
-
-        echo "========================================"
-
-        # 5. 如果验证通过，继续编译
-        if [ $ERRORS -eq 0 ]; then
-            echo ""
-            echo "[ * ] 开始编译 c-client..."
-            gmake bsf \
-                SSLTYPE=unix.nopwd \
-                SSLINCLUDE=/usr/local/include \
-                SSLLIB=/usr/local/lib \
-                EXTRACFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L -Wno-deprecated-declarations -Wno-error -fPIC" \
-                EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
-                INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
-        else
-            echo ""
-            echo "❌ 验证失败，停止编译"
-            exit 1
-        fi
+        gmake bsf \
+            SSLTYPE=unix.nopwd \
+            SSLINCLUDE=/usr/local/include \
+            SSLLIB=/usr/local/lib \
+            EXTRACFLAGS="-I/usr/local/include -DOPENSSL_API_COMPAT=0x10100000L -Wno-deprecated-declarations -Wno-error -fPIC" \
+            EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
+            INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
 
         MAKE_EXIT=$?
         find /tmp/imap-imap-2007f_upstream -name "libc-client.a" -ls
