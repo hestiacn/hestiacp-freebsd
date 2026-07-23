@@ -32,7 +32,7 @@
 #endif
 
 /* OpenSSL 4.x compatibility */
-#define OPENSSL_API_COMPAT 0x30000000L
+#define OPENSSL_API_COMPAT 0x10100000L
 #ifndef OPENSSL_NO_DEPRECATED
 #define OPENSSL_NO_DEPRECATED
 #endif
@@ -42,6 +42,8 @@
 #include <openssl/x509.h>
 #include <openssl/rsa.h>
 #include <openssl/ssl.h>
+#include <openssl/rsa.h>
+#include <openssl/evp.h>  
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/buffer.h>
