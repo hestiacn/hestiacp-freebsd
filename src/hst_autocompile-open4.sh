@@ -2524,12 +2524,12 @@ build_php() {
         fi
 
         # ============================================================
-        # 确保 c-client 目录下的 ssl_unix.c 是 OpenSSL 4.x 版本
+        # 确保 c-client 目录下的 ssl_unix.c 是 OpenSSL 4.x 版本src\c-client
         # ============================================================
         echo "[ * ] 确保 c-client 使用正确的 ssl_unix.c..."
 
         # 进入 c-client 目录（支持软链接）
-        cd c-client || exit 1
+        cd src/c-client || exit 1
 
         # 复制 OpenSSL 4.x 版本的 ssl_unix.c
         cp "$SSL_SRC" ssl_unix.c
