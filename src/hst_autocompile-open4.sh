@@ -2516,26 +2516,32 @@ build_php() {
         echo "  ✅ osdepssl.c -> ssl_unix.c"
 
         echo "[ * ] 重新生成 osdep.c..."
-
         # 删除旧的 osdep.c
-        rm -f c-client/osdep.c
+        rm -f src/c-client/osdep.c
+        rm -f c-client/osdep.c 2>/dev/null || true
 
         # 手动拼接 osdep.c
         cat src/osdep/unix/osdepbas.c \
             src/osdep/unix/osdepckp.c \
             src/osdep/unix/osdeplog.c \
-            src/osdep/unix/osdepssl.c > c-client/osdep.c
+            src/osdep/unix/osdepssl.c > src/c-client/osdep.c
+
+        if [ -L "c-client" ]; then
+            echo "  c-client 是软链接，指向 $(readlink c-client)"
+        else
+            cp src/c-client/osdep.c c-client/osdep.c
+        fi
 
         # 验证 osdep.c
         echo "[ * ] 验证 osdep.c 是否包含 OpenSSL 4.x 代码..."
-        if [ -f "c-client/osdep.c" ]; then
-            if grep -q "OPENSSL_VERSION_NUMBER" c-client/osdep.c; then
+        if [ -f "src/c-client/osdep.c" ]; then
+            if grep -q "OPENSSL_VERSION_NUMBER" src/c-client/osdep.c; then
                 echo "  ✅ osdep.c 包含 OPENSSL_VERSION_NUMBER"
             else
                 echo "  ⚠️  osdep.c 不包含 OPENSSL_VERSION_NUMBER，可能有问题"
             fi
 
-            if grep -q "0x40000000L" c-client/osdep.c; then
+            if grep -q "0x40000000L" src/c-client/osdep.c; then
                 echo "  ✅ osdep.c 包含 OpenSSL 4.x (0x40000000L) 代码"
                 echo "  ✅ ssl_unix.c 已正确集成到 osdep.c"
             else
