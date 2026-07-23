@@ -2525,7 +2525,10 @@ build_php() {
         echo "========================================"
         echo "[ DEBUG ] 继续编译..."
         echo "========================================"
-
+        echo "[ * ] 强制设置 OpenSSL 4.x 版本宏..."
+        export CFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
+        export CXXFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
+        echo "  ✅ OPENSSL_VERSION_NUMBER=0x40000000L 已设置"
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
         gmake bsf \
             SSLTYPE=unix.nopwd \
