@@ -2524,38 +2524,75 @@ build_php() {
         fi
 
         # ============================================================
+        # 确保 c-client 目录下的 ssl_unix.c 是 OpenSSL 4.x 版本
+        # ============================================================
+        echo "[ * ] 确保 c-client 使用正确的 ssl_unix.c..."
+
+        # 进入 c-client 目录（支持软链接）
+        cd c-client || exit 1
+
+        # 复制 OpenSSL 4.x 版本的 ssl_unix.c
+        cp "$SSL_SRC" ssl_unix.c
+        echo "  ✅ 已更新 c-client/ssl_unix.c"
+
+        # 确保 osdepssl.c 软链接指向正确的 ssl_unix.c
+        rm -f osdepssl.c
+        ln -sf ssl_unix.c osdepssl.c
+        echo "  ✅ c-client/osdepssl.c -> ssl_unix.c"
+
+        # 验证 c-client 目录下的 ssl_unix.c
+        if grep -q "0x40000000L" ssl_unix.c 2>/dev/null; then
+            echo "  ✅ c-client/ssl_unix.c 包含 OpenSSL 4.x 代码"
+        else
+            echo "  ❌ c-client/ssl_unix.c 不包含 OpenSSL 4.x 代码"
+            exit 1
+        fi
+
+        cd ..
+
+        # ============================================================
         # 验证并修复 osdep.c
         # ============================================================
         echo "[ * ] 验证 osdep.c..."
 
-        if [ ! -f "src/c-client/osdep.c" ]; then
-            echo "  ❌ osdep.c 不存在"
+        if [ ! -f "c-client/osdep.c" ]; then
+            echo "  ❌ c-client/osdep.c 不存在"
             exit 1
         fi
 
         # 1. 备份当前的 osdep.c
-        cp src/c-client/osdep.c src/c-client/osdep.c.bak 2>/dev/null || true
+        cp c-client/osdep.c c-client/osdep.c.bak 2>/dev/null || true
         echo "  ✅ 已备份 osdep.c -> osdep.c.bak"
 
         # 2. 查看差异（调试用）
         echo "  [ * ] 比较 osdep.c 和 ssl_unix.c 的差异..."
-        diff src/c-client/osdep.c src/osdep/unix/ssl_unix.c | head -20 || true
+        diff c-client/osdep.c c-client/ssl_unix.c | head -20 || true
 
-        # 3. 检查并修复
-        if ! grep -q "EVP_RSA_gen" src/c-client/osdep.c 2>/dev/null; then
-            echo "  ⚠️  osdep.c 不包含 EVP_RSA_gen，使用 ssl_unix.c 替代..."
-            cp src/osdep/unix/ssl_unix.c src/c-client/osdep.c
-            echo "  ✅ 已替换为 ssl_unix.c"
+        # 3. 检查 osdep.c 是否包含 EVP_RSA_gen
+        if ! grep -q "EVP_RSA_gen" c-client/osdep.c 2>/dev/null; then
+            echo "  ⚠️  osdep.c 不包含 EVP_RSA_gen，重新拼接..."
+            # 重新拼接 osdep.c
+            cat c-client/osdepbas.c \
+                c-client/osdepckp.c \
+                c-client/osdeplog.c \
+                c-client/osdepssl.c > c-client/osdep.c
+            echo "  ✅ 已重新拼接 osdep.c"
         else
             echo "  ✅ osdep.c 包含 EVP_RSA_gen"
         fi
 
         # 4. 最终验证
-        if grep -q "EVP_RSA_gen" src/c-client/osdep.c 2>/dev/null; then
+        if grep -q "EVP_RSA_gen" c-client/osdep.c 2>/dev/null; then
             echo "  ✅ osdep.c 最终验证通过"
         else
             echo "  ❌ osdep.c 验证失败，请检查"
             exit 1
+        fi
+
+        if grep -q "0x40000000L" c-client/osdep.c 2>/dev/null; then
+            echo "  ✅ osdep.c 包含 OpenSSL 4.x 宏 (0x40000000L)"
+        else
+            echo "  ⚠️  osdep.c 不包含 OpenSSL 4.x 宏"
         fi
 
         echo "[ * ] Patching Makefile to auto-answer 'y'..."
