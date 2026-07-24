@@ -53,10 +53,10 @@ jobs:
             export HESTIA_DEBUG=true
             export PYTHONUNBUFFERED=1
             export SHELLOPTS=verbose
-
+            
             chmod +x src/hst_autocompile.sh
 
-            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1
+            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
             echo "=== Autocompile Exit code: $EXIT_CODE ==="
