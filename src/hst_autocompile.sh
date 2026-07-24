@@ -2363,9 +2363,9 @@ build_php() {
         cd /tmp
         extract_archive cyrus-sasl-2.1.28.tar.gz
         cd cyrus-sasl-2.1.28
-        export LIBS="-lgssapi"
-        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi"
-        export CPPFLAGS="-I/usr/local/include"
+        export LIBS="-lgssapi_krb5"
+        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi_krb5"
+        export CPPFLAGS="-I/usr/local/include -I/usr/local/include/krb5"
         echo "[ * ] 配置 cyrus-sasl2..."
         ./configure --prefix=/usr/local \
             --with-openssl=/usr/local \
@@ -2380,7 +2380,7 @@ build_php() {
             --disable-otp \
             --disable-srp \
             CPPFLAGS="-I/usr/local/include -I/usr/local/include/krb5" \
-            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi -lkrb5"
+            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi_krb5 -lkrb5"
 
         if [ $? -ne 0 ]; then
             echo "❌ cyrus-sasl2 配置失败"
