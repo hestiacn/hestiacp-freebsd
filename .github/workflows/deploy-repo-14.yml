@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14, 15]
+        freebsd_version: [14]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -52,9 +52,9 @@ jobs:
             fi
             export HESTIA_DEBUG=true
 
-            chmod +x src/hst_autocompile-open4.sh
+            chmod +x src/hst_autocompile.sh
 
-            bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
 
             echo "=== Autocompile Exit code: $EXIT_CODE ==="
