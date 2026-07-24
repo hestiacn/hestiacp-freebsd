@@ -18,9 +18,6 @@ LOG_FILE="build.log"
 # 创建日志文件
 touch "$LOG_FILE"
 
-# 将 stdout 和 stderr 重定向到 tee，同时输出到终端和日志文件
-exec > >(tee -a "$LOG_FILE") 2>&1
-
 # 设置日志开始时间
 echo "========================================"
 echo "HestiaCP FreeBSD Build Log"
