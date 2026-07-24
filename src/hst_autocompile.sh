@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # set -e
 # Autocompile Script for HestiaCP package Files.
 # For building from local source folder use "~localsrc" keyword as hesia branch name,
@@ -3909,7 +3908,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
 
 	cd "$PKG_DIR" || exit 1
 
-	cat > meta.conf << EOF
+	cat > meta.conf << 'EOF'
 packing_format: ucl
 version: 2
 EOF
@@ -3981,13 +3980,9 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "========================================================================"
     echo "Copying artifacts to host workspace for copyback..."
     echo "========================================================================"
-    
-    # 宿主机工作目录路径
     HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
     ARTIFACTS_DIR="${HOST_WORKSPACE}/artifacts"
     mkdir -p "$HOST_WORKSPACE"
-
-    # 使用 cp 复制
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
@@ -4021,6 +4016,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
         echo "  pkg install $PKG_DIR/hestia-nginx-${NGINX_V}.pkg"
         echo "  pkg install $PKG_DIR/hestia-php-${PHP_V}.pkg"
         echo "  pkg install $PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg"
+        exit 0
     else
         echo "❌ Failed to copy artifacts to host workspace!"
         echo "Source: $PKG_DIR"
@@ -4031,3 +4027,4 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "========================================================================"
 fi
 echo "========================================================================"
+exit 0

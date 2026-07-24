@@ -50,9 +50,6 @@ jobs:
                 ln -sf /usr/local/bin/bash /bin/bash
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
-            export HESTIA_DEBUG=true
-            export PYTHONUNBUFFERED=1
-            export SHELLOPTS=verbose
             
             chmod +x src/hst_autocompile.sh
 
