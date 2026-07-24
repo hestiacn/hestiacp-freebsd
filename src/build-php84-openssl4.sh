@@ -279,23 +279,54 @@ install_imap_pecl() {
         echo "❌ PHP binary not found: $php_bin"
         return 1
     fi
-    
-    # 检查 PECL 是否存在
+
+    # 确保 PATH 包含必要目录
+    export PATH="$install_dir/usr/local/bin:/usr/local/bin:$PATH"
+    echo "[ * ] PATH set to: $PATH"
+
     if [ ! -f "$pecl" ]; then
         echo "⚠️  PECL not found, installing PEAR..."
-        # 安装 PEAR
         cd "$build_dir" || return 1
+        
         if [ -f "phpize" ]; then
+            echo "[ * ] Running phpize..."
             ./phpize
         fi
-        # 下载并安装 PEAR
+        
+        echo "[ * ] Downloading PEAR installer..."
         fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar
-        "$php_bin" /tmp/go-pear.phar
-        export PATH="$install_dir/usr/local/bin:$PATH"
+        
+        echo "[ * ] Installing PEAR (auto-answering all prompts)..."
+        yes '' | "$php_bin" /tmp/go-pear.phar
+        
+        # 再次设置 PATH
+        export PATH="$install_dir/usr/local/bin:/usr/local/bin:$PATH"
+        
+        # 创建软链接让 pecl 能找到 php
+        if [ ! -f "/usr/local/bin/php" ]; then
+            echo "[ * ] Creating symlink for PHP..."
+            ln -sf "$install_dir/usr/local/bin/php" /usr/local/bin/php
+        fi
+        
+        echo "  ✅ PEAR installed successfully"
     fi
     
-    # 设置环境变量
-    export PATH="$install_dir/usr/local/bin:$PATH"
+    # 验证 pecl 命令
+    if ! command -v pecl > /dev/null 2>&1; then
+        echo "❌ pecl command still not found"
+        echo "   Looking in: $PATH"
+        
+        # 尝试直接使用完整路径
+        if [ -f "/usr/local/bin/pecl" ]; then
+            echo "   Found pecl at: /usr/local/bin/pecl"
+            export PATH="/usr/local/bin:$PATH"
+        else
+            echo "❌ pecl not found in /usr/local/bin either"
+            return 1
+        fi
+    fi
+    
+    # 设置编译环境变量
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     export CFLAGS="-I/usr/local/include $CFLAGS"
     export LDFLAGS="-L/usr/local/lib $LDFLAGS"
@@ -308,8 +339,9 @@ install_imap_pecl() {
     echo "[ * ] Installing imap extension via PECL..."
     echo "  Using PHP: $php_bin"
     echo "  Extension dir: $ext_dir"
+    echo "  PATH: $PATH"
     
-    # 尝试通过 PECL 安装
+    # 尝试通过 PECL 安装 IMAP
     if pecl install imap <<< "yes" 2>&1 | tee -a "$LOG_DIR/imap-pecl.log"; then
         echo "  ✅ IMAP extension installed via PECL"
         
@@ -320,6 +352,7 @@ install_imap_pecl() {
                 found=$(find "$path" -name "imap.so" | head -1)
                 if [ -n "$found" ] && [ -f "$found" ]; then
                     imap_so="$found"
+                    echo "  Found imap.so at: $found"
                     break
                 fi
             fi
@@ -334,19 +367,25 @@ install_imap_pecl() {
             local php_ini="$install_dir/usr/local/etc/php.ini"
             mkdir -p "$(dirname "$php_ini")"
             if [ -f "$php_ini" ]; then
-                if ! grep -q "^extension=imap.so" "$php_ini"; then
+                if ! grep -q "^extension=imap.so" "$php_ini" 2>/dev/null; then
                     echo "extension=imap.so" >> "$php_ini"
+                    echo "  ✅ imap.so added to php.ini"
+                else
+                    echo "  ℹ️  imap.so already in php.ini"
                 fi
             else
                 echo "extension=imap.so" > "$php_ini"
+                echo "  ✅ php.ini created with imap.so"
             fi
-            echo "  ✅ imap.so added to php.ini"
             return 0
+        else
+            echo "⚠️  imap.so not found after PECL installation"
+            return 1
         fi
+    else
+        echo "⚠️  PECL installation failed, trying manual build..."
+        return 1
     fi
-    
-    echo "⚠️  PECL installation failed, trying manual build..."
-    return 1
 }
 
 # ============================================================

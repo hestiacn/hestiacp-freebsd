@@ -1204,23 +1204,54 @@ install_imap_pecl() {
         echo "❌ PHP binary not found: $php_bin"
         return 1
     fi
-    
-    # 检查 PECL 是否存在
+
+    # 确保 PATH 包含必要目录
+    export PATH="$install_dir/usr/local/bin:/usr/local/bin:$PATH"
+    echo "[ * ] PATH set to: $PATH"
+
     if [ ! -f "$pecl" ]; then
         echo "⚠️  PECL not found, installing PEAR..."
-        # 安装 PEAR
         cd "$build_dir" || return 1
+        
         if [ -f "phpize" ]; then
+            echo "[ * ] Running phpize..."
             ./phpize
         fi
-        # 下载并安装 PEAR
+        
+        echo "[ * ] Downloading PEAR installer..."
         fetch -o /tmp/go-pear.phar https://pear.php.net/go-pear.phar
-        "$php_bin" /tmp/go-pear.phar
-        export PATH="$install_dir/usr/local/bin:$PATH"
+        
+        echo "[ * ] Installing PEAR (auto-answering all prompts)..."
+        yes '' | "$php_bin" /tmp/go-pear.phar
+        
+        # 再次设置 PATH
+        export PATH="$install_dir/usr/local/bin:/usr/local/bin:$PATH"
+        
+        # 创建软链接让 pecl 能找到 php
+        if [ ! -f "/usr/local/bin/php" ]; then
+            echo "[ * ] Creating symlink for PHP..."
+            ln -sf "$install_dir/usr/local/bin/php" /usr/local/bin/php
+        fi
+        
+        echo "  ✅ PEAR installed successfully"
     fi
     
-    # 设置环境变量
-    export PATH="$install_dir/usr/local/bin:$PATH"
+    # 验证 pecl 命令
+    if ! command -v pecl > /dev/null 2>&1; then
+        echo "❌ pecl command still not found"
+        echo "   Looking in: $PATH"
+        
+        # 尝试直接使用完整路径
+        if [ -f "/usr/local/bin/pecl" ]; then
+            echo "   Found pecl at: /usr/local/bin/pecl"
+            export PATH="/usr/local/bin:$PATH"
+        else
+            echo "❌ pecl not found in /usr/local/bin either"
+            return 1
+        fi
+    fi
+    
+    # 设置编译环境变量
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
     export CFLAGS="-I/usr/local/include $CFLAGS"
     export LDFLAGS="-L/usr/local/lib $LDFLAGS"
@@ -1233,8 +1264,9 @@ install_imap_pecl() {
     echo "[ * ] Installing imap extension via PECL..."
     echo "  Using PHP: $php_bin"
     echo "  Extension dir: $ext_dir"
+    echo "  PATH: $PATH"
     
-    # 尝试通过 PECL 安装
+    # 尝试通过 PECL 安装 IMAP
     if pecl install imap <<< "yes" 2>&1 | tee -a "$LOG_DIR/imap-pecl.log"; then
         echo "  ✅ IMAP extension installed via PECL"
         
@@ -1245,6 +1277,7 @@ install_imap_pecl() {
                 found=$(find "$path" -name "imap.so" | head -1)
                 if [ -n "$found" ] && [ -f "$found" ]; then
                     imap_so="$found"
+                    echo "  Found imap.so at: $found"
                     break
                 fi
             fi
@@ -1259,19 +1292,25 @@ install_imap_pecl() {
             local php_ini="$install_dir/usr/local/etc/php.ini"
             mkdir -p "$(dirname "$php_ini")"
             if [ -f "$php_ini" ]; then
-                if ! grep -q "^extension=imap.so" "$php_ini"; then
+                if ! grep -q "^extension=imap.so" "$php_ini" 2>/dev/null; then
                     echo "extension=imap.so" >> "$php_ini"
+                    echo "  ✅ imap.so added to php.ini"
+                else
+                    echo "  ℹ️  imap.so already in php.ini"
                 fi
             else
                 echo "extension=imap.so" > "$php_ini"
+                echo "  ✅ php.ini created with imap.so"
             fi
-            echo "  ✅ imap.so added to php.ini"
             return 0
+        else
+            echo "⚠️  imap.so not found after PECL installation"
+            return 1
         fi
+    else
+        echo "⚠️  PECL installation failed, trying manual build..."
+        return 1
     fi
-    
-    echo "⚠️  PECL installation failed, trying manual build..."
-    return 1
 }
 
 # ============================================================
@@ -3451,92 +3490,68 @@ if [ "$PHP_B" = "true" ]; then
         fi
         
         # ============================================================
-        # 复制到 Hestia 包目录
+        # 复制到 Hestia 包目录（包含完整文件，和Debian一致）
         # ============================================================
         echo "[ * ] Copying to Hestia package directory..."
         
-        # 从 build_php 的安装目录复制
-        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/hestia/php" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia"
-            mv "$BUILD_DIR/php-${PHP_V}/usr/local/hestia/php" "$BUILD_DIR_HESTIAPHP/usr/local/hestia/"
-        elif [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/hestia" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local"
-            mv "$BUILD_DIR/php-${PHP_V}/usr/local/hestia" "$BUILD_DIR_HESTIAPHP/usr/local/"
+        # 创建 Hestia PHP 目录
+        mkdir -p "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php"
+        
+        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local" ]; then
+            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/"* "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/"
         fi
         
-        # 复制二进制文件
-        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/bin" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/bin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/bin/"* "$BUILD_DIR_HESTIAPHP/usr/local/bin/"
-        fi
-        
-        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/sbin" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/sbin"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/sbin/"* "$BUILD_DIR_HESTIAPHP/usr/local/sbin/"
-        fi
-        
-        # 复制扩展文件
-        if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/lib/php"
-            cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/lib/php/extensions" "$BUILD_DIR_HESTIAPHP/usr/local/lib/php/"
-        fi
-        
-        # 复制配置文件
-        if [ -f "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" ]; then
-            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc"
-            cp "$BUILD_DIR/php-${PHP_V}/usr/local/etc/php.ini" "$BUILD_DIR_HESTIAPHP/usr/local/etc/"
-        fi
         # 创建 hestia-php 软链接
         if [ -f "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" ]; then
             ln -sf php-fpm "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
         fi
 
-		cd "$BUILD_DIR" || exit 1
+        cd "$BUILD_DIR" || exit 1
 
-		if [ "$OSTYPE" = 'freebsd' ]; then
-			chown -R root:wheel "$BUILD_DIR_HESTIAPHP"
-		else
-			chown -R root:root "$BUILD_DIR_HESTIAPHP"
-		fi
+        if [ "$OSTYPE" = 'freebsd' ]; then
+            chown -R root:wheel "$BUILD_DIR_HESTIAPHP"
+        else
+            chown -R root:root "$BUILD_DIR_HESTIAPHP"
+        fi
 
-		# Debian 打包保持原汁原味
-		if [ "$BUILD_DEB" = true ]; then
-			mkdir -p "$BUILD_DIR_HESTIAPHP/DEBIAN"
-			get_branch_file 'src/deb/php/control' "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-			[ "$BUILD_ARCH" != "amd64" ] && sed -i "s/amd64/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+        # Debian 打包保持原汁原味
+        if [ "$BUILD_DEB" = true ]; then
+            mkdir -p "$BUILD_DIR_HESTIAPHP/DEBIAN"
+            get_branch_file 'src/deb/php/control' "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+            [ "$BUILD_ARCH" != "amd64" ] && sed -i "s/amd64/${BUILD_ARCH}/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
 
-			os=$(lsb_release -is)
-			release=$(lsb_release -rs)
-			if [ "$os" = "Ubuntu" ] && [ "$release" = "20.04" ]; then
-				sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-				sed -i "s/libzip4/libzip5/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-			fi
-			if [ "$os" = "Ubuntu" ] && [ "$release" = "24.04" ]; then
-				sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-				sed -i "s/libzip4/libzip4t64/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
-			fi
+            os=$(lsb_release -is)
+            release=$(lsb_release -rs)
+            if [ "$os" = "Ubuntu" ] && [ "$release" = "20.04" ]; then
+                sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+                sed -i "s/libzip4/libzip5/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+            fi
+            if [ "$os" = "Ubuntu" ] && [ "$release" = "24.04" ]; then
+                sed -i "/Conflicts: libzip5/d" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+                sed -i "s/libzip4/libzip4t64/g" "$BUILD_DIR_HESTIAPHP/DEBIAN/control"
+            fi
 
-			get_branch_file 'src/deb/php/copyright' "$BUILD_DIR_HESTIAPHP/DEBIAN/copyright"
-			get_branch_file 'src/deb/php/postinst' "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
-			chmod +x "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
-			get_branch_file 'src/deb/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
-			get_branch_file 'src/deb/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
+            get_branch_file 'src/deb/php/copyright' "$BUILD_DIR_HESTIAPHP/DEBIAN/copyright"
+            get_branch_file 'src/deb/php/postinst' "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
+            chmod +x "$BUILD_DIR_HESTIAPHP/DEBIAN/postinst"
+            get_branch_file 'src/deb/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
+            get_branch_file 'src/deb/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
 
-			echo "Building PHP DEB"
-			dpkg-deb -Zxz --build "$BUILD_DIR_HESTIAPHP" "$DEB_DIR"
-		fi
+            echo "Building PHP DEB"
+            dpkg-deb -Zxz --build "$BUILD_DIR_HESTIAPHP" "$DEB_DIR"
+        fi
 
-		if [ "$BUILD_PKG" = "true" ]; then
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/rc.d"
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/php"
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/etc"
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
-			mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
+        if [ "$BUILD_PKG" = "true" ]; then
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/rc.d"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/etc/php"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/etc"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/lib"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin"
+            mkdir -p "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/logs"
             get_branch_file 'src/pkg/php/php-fpm.conf' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf"
-			get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2> /dev/null || get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
-			generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
-			if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
+            get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/etc/php/php.ini" 2> /dev/null || get_branch_file 'src/pkg/php/php.ini' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/lib/php.ini"
+            generate_plist "$BUILD_DIR_HESTIAPHP" "hestia-php"
+            if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" ]; then
                 sed -i '' 's/epoll/kqueue/g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
                 sed -i '' 's|/run/|/var/run/|g' "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/etc/php-fpm.conf" 2>/dev/null
             fi
@@ -3558,40 +3573,40 @@ if [ "$PHP_B" = "true" ]; then
             pkg create -m "$BUILD_DIR_HESTIAPHP/+METADATA" -p "$BUILD_DIR_HESTIAPHP/+PLIST" -r "$BUILD_DIR_HESTIAPHP" -o "$PKG_DIR"
             mv -f $PKG_DIR/hestia-php-*.pkg "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" 2>/dev/null
 
-			echo "[ * ] Verifying php package integrity..."
-			if pkg info -F "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" > /dev/null 2>&1; then
-				echo "✅ PHP package is valid."
-			else
-				echo "❌ ERROR: PHP package validation failed!"
-				exit 1
-			fi
-			cd "$PKG_DIR" || exit 1
-		fi
+            echo "[ * ] Verifying php package integrity..."
+            if pkg info -F "$PKG_DIR/hestia-php-${CLEAN_PHP_VER_FINAL}.pkg" > /dev/null 2>&1; then
+                echo "✅ PHP package is valid."
+            else
+                echo "❌ ERROR: PHP package validation failed!"
+                exit 1
+            fi
+            cd "$PKG_DIR" || exit 1
+        fi
 
-		#rm -rf "$BUILD_DIR/usr"
+        #rm -rf "$BUILD_DIR/usr"
 
-		if [ "$KEEPBUILD" != 'true' ]; then
+        if [ "$KEEPBUILD" != 'true' ]; then
             rm -rf "$BUILD_DIR/php-${CLEAN_PHP_VER}" 2>/dev/null
-            rm -rf "$BUILD_DIR_HESTIAPHP" 2>/dev/null
-			if [ "$use_src_folder" = 'true' ] && [ -d "$BUILD_DIR/hestiacp-$branch_dash" ]; then
-				rm -rf "$BUILD_DIR/hestiacp-$branch_dash"
-			fi
-		fi
-	fi
+            rm -rf "$BUILD_DIR_HESTIAPHP"
+            if [ "$use_src_folder" = 'true' ] && [ -d "$BUILD_DIR/hestiacp-$branch_dash" ]; then
+                rm -rf "$BUILD_DIR/hestiacp-$branch_dash"
+            fi
+        fi
+    fi
 
-	# RPM 打包保持原汁原味
-	if [ "$BUILD_RPM" = true ]; then
-		get_branch_file 'src/rpm/php/php-fpm.conf' "$HOME/rpmbuild/SOURCES/php-fpm.conf"
-		get_branch_file 'src/rpm/php/php.ini' "$HOME/rpmbuild/SOURCES/php.ini"
-		get_branch_file 'src/rpm/php/hestia-php.spec' "$HOME/rpmbuild/SPECS/hestia-php.spec"
-		get_branch_file 'src/rpm/php/hestia-php.service' "$HOME/rpmbuild/SOURCES/hestia-php.service"
-		download_file "$PHP" "$HOME/rpmbuild/SOURCES/"
-		echo "Building PHP RPM"
-		rpmbuild -bs ~/rpmbuild/SPECS/hestia-php.spec
-		mock -r rocky+epel-9-$(arch) ~/rpmbuild/SRPMS/hestia-php-$PHP_V-1.el9.src.rpm
-		cp /var/lib/mock/rocky+epel-9-$(arch)/result/*.rpm $RPM_DIR
-		rm -rf ~/rpmbuild/SPECS/* ~/rpmbuild/SOURCES/* ~/rpmbuild/SRPMS/*
-	fi
+    # RPM 打包保持原汁原味
+    if [ "$BUILD_RPM" = true ]; then
+        get_branch_file 'src/rpm/php/php-fpm.conf' "$HOME/rpmbuild/SOURCES/php-fpm.conf"
+        get_branch_file 'src/rpm/php/php.ini' "$HOME/rpmbuild/SOURCES/php.ini"
+        get_branch_file 'src/rpm/php/hestia-php.spec' "$HOME/rpmbuild/SPECS/hestia-php.spec"
+        get_branch_file 'src/rpm/php/hestia-php.service' "$HOME/rpmbuild/SOURCES/hestia-php.service"
+        download_file "$PHP" "$HOME/rpmbuild/SOURCES/"
+        echo "Building PHP RPM"
+        rpmbuild -bs ~/rpmbuild/SPECS/hestia-php.spec
+        mock -r rocky+epel-9-$(arch) ~/rpmbuild/SRPMS/hestia-php-$PHP_V-1.el9.src.rpm
+        cp /var/lib/mock/rocky+epel-9-$(arch)/result/*.rpm $RPM_DIR
+        rm -rf ~/rpmbuild/SPECS/* ~/rpmbuild/SOURCES/* ~/rpmbuild/SRPMS/*
+    fi
 fi
 
 # =================================================================================
@@ -3783,7 +3798,7 @@ if [ "$HESTIA_B" = "true" ]; then
 
 			if [ ! -f "package-lock.json" ]; then
 				echo "[ ! ] package-lock.json not found, generating with npm install..."
-				npm install
+				npm install --yes
 				if [ $? -ne 0 ]; then
 					echo "ERROR: npm install failed to generate package-lock.json"
 					exit 1

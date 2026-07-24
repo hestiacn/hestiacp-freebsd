@@ -51,10 +51,12 @@ jobs:
                 echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
             fi
             export HESTIA_DEBUG=true
+            export PYTHONUNBUFFERED=1
+            export SHELLOPTS=verbose
 
             chmod +x src/hst_autocompile.sh
 
-            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1
             EXIT_CODE=$?
 
             echo "=== Autocompile Exit code: $EXIT_CODE ==="
@@ -103,6 +105,8 @@ jobs:
           FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
           REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
           mkdir -p "artifacts/$REAL_NAME"
+          
+          # 移动文件到版本子目录，排除自身
           mv artifacts/* "artifacts/$REAL_NAME/" || true
           [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
           [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
@@ -187,7 +191,6 @@ jobs:
                   }
                 });
               }
-
               let path = url.pathname;
               if (path === "/" || path === "") {
                 path = "index.html";
@@ -255,18 +258,15 @@ jobs:
             }
           };
           WORKER_EOF
-
           cat > wrangler.toml << 'TOML_EOF'
           name = "hestiacp-repo"
           main = "worker.js"
           compatibility_date = "2024-12-18"
           workers_dev = false
-
           [[r2_buckets]]
           binding = "FBSD_REPO"
           bucket_name = "fbsd-repo"
           TOML_EOF
-
           npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
