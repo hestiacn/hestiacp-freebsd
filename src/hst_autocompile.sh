@@ -2363,11 +2363,13 @@ build_php() {
         cd /tmp
         extract_archive cyrus-sasl-2.1.28.tar.gz
         cd cyrus-sasl-2.1.28
-
+        export LIBS="-lgssapi"
+        export LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi"
+        export CPPFLAGS="-I/usr/local/include"
         echo "[ * ] 配置 cyrus-sasl2..."
         ./configure --prefix=/usr/local \
             --with-openssl=/usr/local \
-            --with-gssapi=no \
+            --with-gssapi=yes \
             --with-ldap=no \
             --with-saslauthd=/var/run/saslauthd \
             --enable-login \
@@ -2377,8 +2379,8 @@ build_php() {
             --enable-ntlm \
             --disable-otp \
             --disable-srp \
-            CPPFLAGS="-I/usr/local/include" \
-            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib"
+            CPPFLAGS="-I/usr/local/include -I/usr/local/include/krb5" \
+            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib -lgssapi -lkrb5"
 
         if [ $? -ne 0 ]; then
             echo "❌ cyrus-sasl2 配置失败"
@@ -3980,9 +3982,11 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "========================================================================"
     echo "Copying artifacts to host workspace for copyback..."
     echo "========================================================================"
+    
     HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
     ARTIFACTS_DIR="${HOST_WORKSPACE}/artifacts"
     mkdir -p "$HOST_WORKSPACE"
+
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
@@ -3999,7 +4003,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
         echo "✅ Public key is available at: $PKG_DIR/hestia.pub"
         echo ""
         echo "Clients can install with repository configuration:"
-        echo "  cat > /usr/local/etc/pkg/repos/hestia.conf << EOF"
+        echo '  cat > /usr/local/etc/pkg/repos/hestia.conf << EOF'
         echo "hestia: {"
         echo "  url: \"https://your-repo-url.com/pkg\","
         echo "  signature_type: \"pubkey\","
