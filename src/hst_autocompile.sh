@@ -3585,7 +3585,7 @@ if [ "$PHP_B" = "true" ]; then
         BUILD_DIR_HESTIAPHP="$BUILD_DIR/hestia-php_${CLEAN_PHP_VER_FINAL}"
         
         # ============================================================
-        # 调用 build_php 函数（包含所有编译逻辑）
+        # 调用 build_php 函数
         # ============================================================
         echo "[ * ] Building PHP with build_php()..."
         if ! build_php; then
@@ -3594,18 +3594,47 @@ if [ "$PHP_B" = "true" ]; then
         fi
         
         # ============================================================
-        # 复制到 Hestia 包目录（包含完整文件，和Debian一致）
+        # 复制到 Hestia 包目录
         # ============================================================
         echo "[ * ] Copying to Hestia package directory..."
         
-        # 创建 Hestia PHP 目录
         mkdir -p "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php"
         
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local" ]; then
             cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/"* "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/"
         fi
         
+        # ============================================================
+        # 修复路径嵌套问题
+        # ============================================================
+        # 1. 修复 include 路径
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php" ]; then
+            echo "[ * ] Fixing include path..."
+            mv "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php/"*  "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/"
+            rmdir "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php"
+            echo "  ✅ include path fixed"
+        fi
+        
+        # 2. 修复 fpm status 路径
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm" ]; then
+            echo "[ * ] Fixing fpm status path..."
+            mkdir -p "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/fpm"
+            if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm/status.html" ]; then
+                mv "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm/status.html" \
+                   "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/fpm/"
+            fi
+            rm -rf "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php"
+            echo "  ✅ fpm status path fixed"
+        fi
+        
+        # 3. 删除空的 php 目录
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" ] && [ -z "$(ls -A "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" 2>/dev/null)" ]; then
+            rmdir "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" || true
+        fi
+        
+        # ============================================================
         # 创建 hestia-php 软链接
+        # ============================================================
         if [ -f "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" ]; then
             ln -sf php-fpm "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
         fi
@@ -4086,13 +4115,21 @@ echo "========================================================================"
 if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo ""
     echo "========================================================================"
+    echo "Package Contents:"
+    echo "========================================================================"
+    
+    echo ""
+    echo "--- hestia-php package contents ---"
+    pkg info -l -F "$PKG_DIR/hestia-php-${PHP_V}.pkg"
+    
+    echo ""
+    echo "========================================================================"
     echo "Copying artifacts to host workspace for copyback..."
     echo "========================================================================"
     
     HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
     ARTIFACTS_DIR="${HOST_WORKSPACE}/artifacts"
     mkdir -p "$HOST_WORKSPACE"
-
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
