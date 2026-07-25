@@ -6,7 +6,7 @@
 # https://www.hestiacp.com/
 #
 # Currently Supported Versions:
-# FreeBSD 13, 14, 15
+# FreeBSD 14, 15
 #
 # ======================================================== #
 
@@ -16,7 +16,7 @@
 export PATH=$PATH:/sbin:/usr/sbin:/usr/local/bin:/usr/local/sbin
 
 # 仓库地址
-RHOST='pkg.hestiacp.com'
+RHOST='pkg.hestiamb.org'
 VERSION='freebsd'
 HESTIA='/usr/local/hestia'
 LOG="/root/hst_install_backups/hst_install-$(date +%d%m%Y%H%M).log"
@@ -41,26 +41,21 @@ multiphp_v=("56" "70" "71" "72" "73" "74" "80" "81" "82" "83" "84" "85")
 # Roundcube / phpmyadmin 需要的 PHP 版本
 multiphp_required=("73" "74" "80" "81" "82" "83")
 # 默认 PHP 版本
-fpm_v="83"
+fpm_v="84"
 # MariaDB 版本
 mariadb_v="1011"
 # Node.js 版本
 node_v="24"
 psql_v="18"
-bind_v="918"
-
+bind_v="920"
+mysql_v="97"
 # FreeBSD 软件包列表
-software="acl apache24 apache24-suexec bc bind$bind_v bsdutils
-  clamav curl bind-tools dovecot e2fsprogs exim expect fail2ban py311-b2
-  flex ftp git hestia=${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal
-  idn2 ImageMagick7 ipset jq libidn2 lsb_release lsof mariadb$mariadb_v-client
-  mariadb$mariadb_v-server mc net-tools nginx node openssh-portable
-  postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool mysql-client mysql-common mysql-server
-  spamassassin sysstat unrar unzip util-linux vim vsftpd-ssl xxd whois zip zstd php$fpm_v-pecl-mcrypt
-  bubblewrap restic ap24-mod_php$fpm_v ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM
-  php$fpm_v php$fpm_v-bz2 php$fpm_v-curl php$fpm_v-gd php$fpm_v-intl php$fpm_v-ldap php$fpm_v-mbstring
-  php$fpm_v php$fpm_v-mysqli php$fpm_v-pgsql php$fpm_v-readline php$fpm_v-xml php$fpm_v-zip
-  php$fpm_v-pecl-APCu php$fpm_v-pecl-imagick php$fpm_v-pecl-imap php$fpm_v-pecl-pspell"
+software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs exim expect
+  git hestia-${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal ImageMagick7
+  lsof mariadb$mariadb_v-client mariadb$mariadb_v-server mc nginx node openssh-portable zstd
+  postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool jq libidn2 unrar unzip 
+  mysql$mysql_v-client mysql$mysql_v-server spamassassin vim nano vsftpd-ssl xxd whois zip
+  restic ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM"
 
 installer_dependencies="ca_root_nss curl gnupg openssl wget sudo"
 
@@ -163,7 +158,7 @@ set_default_lang() {
 		eval lang=$1
 	fi
 	lang_list="ar az bg bn bs ca cs da de el en es fa fi fr hr hu id it ja ka ku ko nl no pl pt pt-br ro ru sk sq sr sv th tr uk ur vi zh-cn zh-tw"
-	if ! (echo $lang_list | grep -w $lang > /dev/null 2>&1); then
+	if ! (echo $lang_list | grep -w $lang); then
 		eval lang=$1
 	fi
 }
@@ -251,46 +246,42 @@ version_ge() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1" -o -n 
 tmpfile=$(mktemp -t /tmp)
 
 # 参数解析
-for arg; do
-	delim=""
-	case "$arg" in
-		--apache24) args="${args}-a " ;;
-		--phpfpm) args="${args}-w " ;;
-		--vsftpd) args="${args}-v " ;;
-		--proftpd) args="${args}-j " ;;
-		--bind${BIND_VER}) args="${args}-k " ;;
-		--mysql) args="${args}-m " ;;
-		--mariadb$mariadb_v-server) args="${args}-m " ;;
-		--mysql-classic) args="${args}-M " ;;
-		--mysql8) args="${args}-M " ;;
-		--postgresql${POSTGRES_VER}-server) args="${args}-g " ;;
-		--exim) args="${args}-x " ;;
-		--dovecot) args="${args}-z " ;;
-		--sieve) args="${args}-Z " ;;
-		--clamav) args="${args}-c " ;;
-		--spamassassin) args="${args}-t " ;;
-		--pf) args="${args}-i " ;;
-		--fail2ban) args="${args}-b " ;;
-		--multiphp) args="${args}-o " ;;
-		--quota) args="${args}-q " ;;
-		--resourcelimit) args="${args}-L " ;;
-		--webterminal) args="${args}-W " ;;
-		--port) args="${args}-r " ;;
-		--lang) args="${args}-l " ;;
-		--interactive) args="${args}-y " ;;
-		--api) args="${args}-d " ;;
-		--hostname) args="${args}-s " ;;
-		--email) args="${args}-e " ;;
-		--username) args="${args}-u " ;;
-		--password) args="${args}-p " ;;
-		--force) args="${args}-f " ;;
-		--with-pkgs) args="${args}-D " ;;
-		--help) args="${args}-h " ;;
-		*)
-			[[ "${arg:0:1}" == "-" ]] || delim="\""
-			args="${args}${delim}${arg}${delim} "
-			;;
-	esac
+args=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --apache24) args="$args -a" ;;
+        --phpfpm) args="$args -w" ;;
+        --vsftpd) args="$args -v" ;;
+        --proftpd) args="$args -j" ;;
+        --named) args="$args -k" ;;
+        --mysql) args="$args -m" ;;
+        --mysql8) args="$args -M" ;;
+        --postgresql) args="$args -g" ;;
+        --exim) args="$args -x" ;;
+        --dovecot) args="$args -z" ;;
+        --sieve) args="$args -Z" ;;
+        --clamav) args="$args -c" ;;
+        --spamassassin) args="$args -t" ;;
+        --pf) args="$args -i" ;;
+        --fail2ban) args="$args -b" ;;
+        --multiphp) args="$args -o" ;;
+        --quota) args="$args -q" ;;
+        --resourcelimit) args="$args -L" ;;
+        --webterminal) args="$args -W $2"; shift ;;
+        --api) args="$args -d" ;;
+        --interactive) args="$args -y" ;;
+        --force) args="$args -f" ;;
+        --help) args="$args -h" ;;
+        --port) args="$args -r $2"; shift ;;
+        --lang) args="$args -l $2"; shift ;;
+        --hostname) args="$args -s $2"; shift ;;
+        --email) args="$args -e $2"; shift ;;
+        --username) args="$args -u $2"; shift ;;
+        --password) args="$args -p $2"; shift ;;
+        --with-pkgs) args="$args -D $2"; shift ;;
+        *) ;;
+    esac
+    shift
 done
 eval set -- "$args"
 
@@ -441,11 +432,19 @@ if [ -d "$HESTIA" ]; then
 fi
 
 # Check OS
-type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
-if [ "$type" = "ubuntu" ]; then
-	check_result 1 "You are running the wrong installer for Ubuntu. Please run hst-install.sh or hst-install-ubuntu.sh instead."
-elif [ "$type" != "debian" ]; then
-	check_result 1 "You are running an unsupported OS."
+if [ "$(uname -s)" = "FreeBSD" ]; then
+	# 这是 FreeBSD 系统，继续安装
+	echo "FreeBSD system detected, continuing..."
+elif [ -f /etc/os-release ]; then
+	type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
+	if [ "$type" = "ubuntu" ]; then
+		check_result 1 "You are running the wrong installer for Ubuntu. Please run hst-install.sh or hst-install-ubuntu.sh instead."
+	elif [ "$type" != "debian" ]; then
+		check_result 1 "You are running an unsupported OS."
+	fi
+else
+	# 如果既不是 FreeBSD 也没有 /etc/os-release，报错
+	check_result 1 "Unable to detect OS. This installer is for FreeBSD only."
 fi
 
 # Clear the screen
@@ -469,7 +468,7 @@ echo "Please wait, the installer is now checking for missing dependencies..."
 echo
 
 # Update pkg repository
-pkg update -f
+pkg upgrade -y pkg
 
 # Creating backup directory
 mkdir -p "$hst_backups"
@@ -478,6 +477,12 @@ mkdir -p "$hst_backups"
 echo "[ * ] Installing dependencies..."
 pkg install -y $installer_dependencies >> $LOG
 check_result $? "Package installation failed, check log file for more details."
+
+# Create sudo symlink for compatibility
+if [ -f /usr/local/bin/sudo ] && [ ! -f /usr/bin/sudo ]; then
+    ln -s /usr/local/bin/sudo /usr/bin/sudo
+    echo "[ * ] Created sudo symlink: /usr/bin/sudo -> /usr/local/bin/sudo"
+fi
 
 # Check if apparmor is installed
 if [ $(dpkg-query -W -f='${Status}' apparmor 2> /dev/null | grep -c "ok installed") -eq 0 ]; then
@@ -493,7 +498,7 @@ fi
 
 # Check installed packages
 tmpfile=$(mktemp -p /tmp)
-pkg --get-selections > $tmpfile
+pkg info > $tmpfile
 conflicts_pkg="exim4 mariadb-server apache2 nginx hestia postfix"
 
 # Drop postfix from the list if exim should not be installed
@@ -521,7 +526,7 @@ if [ -n "$conflicts" ] && [ -z "$force" ]; then
 	read -p 'Would you like to remove the conflicting packages? [y/N] ' answer
 	if [ "$answer" = 'y' ] || [ "$answer" = 'Y' ]; then
 		pkg_delete_force=$(echo $conflicts | tr ' ' '\n' | cut -d'*' -f1 | xargs)
-		pkg_remove $pkg_delete_force
+		pkg delete -y $pkg_delete_force
 		unset answer
 	else
 		check_result 1 "Hestia Control Panel should be installed on a clean server."
@@ -557,7 +562,7 @@ fi
 
 # Validate whether installation script matches release version before continuing with install
 if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
-	release_branch_ver=$(curl -s https://raw.githubusercontent.com/hestiacp/hestiacp/release/src/deb/hestia/control | grep "Version:" | awk '{print $2}')
+	release_branch_ver=$(curl -s https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/src/pkg/hestia/+MANIFEST | grep "^version:" | awk '{print $2}' | tr -d '"')
 	if [ "$HESTIA_INSTALL_VER" != "$release_branch_ver" ]; then
 		echo
 		echo -e "\e[91mInstallation aborted\e[0m"
@@ -565,7 +570,7 @@ if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
 		echo -e "\e[33mERROR: Install script version does not match package version!\e[0m"
 		echo -e "\e[33mPlease download the installer from the release branch in order to continue:\e[0m"
 		echo ""
-		echo -e "\e[33mhttps://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install.sh\e[0m"
+		echo -e "\e[33mhttps://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install.sh\e[0m"
 		echo ""
 		echo -e "\e[33mTo test pre-release versions, build the .deb packages and re-run the installer:\e[0m"
 		echo -e "  \e[33m./hst_autocompile.sh \e[1m--hestia branchname no\e[21m\e[0m"
@@ -575,25 +580,40 @@ if [ -z "$withdebs" ] || [ ! -d "$withdebs" ]; then
 	fi
 fi
 
-case $architecture in
-	x86_64)
-		ARCH="amd64"
-		;;
-	aarch64)
-		ARCH="arm64"
-		;;
-	*)
-		echo
-		echo -e "\e[91mInstallation aborted\e[0m"
-		echo "===================================================================="
-		echo -e "\e[33mERROR: $architecture is currently not supported!\e[0m"
-		echo -e "\e[33mPlease verify the achitecture used is currenlty supported\e[0m"
-		echo ""
-		echo -e "\e[33mhttps://github.com/hestiacp/hestiacp/blob/main/README.md\e[0m"
-		echo ""
-		check_result 1 "Installation aborted"
-		;;
-esac
+if [ "$(uname -s)" = "FreeBSD" ]; then
+    case $architecture in
+        x86_64|amd64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            echo "ERROR: $architecture is not supported on FreeBSD!"
+            check_result 1 "Installation aborted"
+            ;;
+    esac
+else
+    case $architecture in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64)
+            ARCH="arm64"
+            ;;
+        *)
+            echo
+            echo -e "\e[91mInstallation aborted\e[0m"
+            echo "===================================================================="
+            echo -e "\e[33mERROR: $architecture is currently not supported!\e[0m"
+            echo -e "\e[33mPlease verify the achitecture used is currenlty supported\e[0m"
+            echo ""
+            echo -e "\e[33mhttps://github.com/hestiacp/hestiacp/blob/main/README.md\e[0m"
+            echo ""
+            check_result 1 "Installation aborted"
+            ;;
+    esac
+fi
 
 #----------------------------------------------------------#
 #                       Brief Info                         #
@@ -602,11 +622,11 @@ esac
 install_welcome_message() {
 	DISPLAY_VER=$(echo $HESTIA_INSTALL_VER | sed "s|~alpha||g" | sed "s|~beta||g")
 	echo
-	echo '                _   _           _   _        ____ ____                  '
-	echo '               | | | | ___  ___| |_(_) __ _ / ___|  _ \                 '
-	echo '               | |_| |/ _ \/ __| __| |/ _` | |   | |_) |                '
-	echo '               |  _  |  __/\__ \ |_| | (_| | |___|  __/                 '
-	echo '               |_| |_|\___||___/\__|_|\__,_|\____|_|                    '
+	echo '          _   _                _     _           _____   ____           '
+	echo '         | | | |  ___   ___  _| |_  (_)   __ _  /  ___| |  _ \          '
+	echo '         | |_| | / _ \ / __||_  __| | |  / _  | | |     | |_) |         '
+	echo '         |  _  ||  __/ \__ \  | |_  | | | (_| | | |___  |  __/          '
+	echo '         |_| |_| \___| |___/  \___| |_|  \____| \_____| |_|             '
 	echo "                                                                        "
 	echo "                          Hestia Control Panel                          "
 	if [[ "$HESTIA_INSTALL_VER" =~ "beta" ]]; then
@@ -868,12 +888,18 @@ fi
 
 # Installing HestiaCP repo
 echo "[ * ] Hestia $HESTIA_INSTALL_VER"
-mkdir -p /usr/local/etc/pkg/repos
+mkdir -p /usr/local/etc/pkg/keys /usr/local/etc/pkg/repos
+
+ABI="FreeBSD:$(uname -r | cut -d'-' -f1 | cut -d'.' -f1):$(uname -m)"
+export ABI
+fetch -o /usr/local/etc/pkg/keys/hestia.pub "https://$RHOST/$ABI/latest/hestia.pub"
 cat << EOF > /usr/local/etc/pkg/repos/hestia.conf
 hestia: {
-  url: "https://$RHOST/freebsd/\${ABI}/latest",
+  url: "pkg+https://$RHOST/\${ABI}/latest",
   mirror_type: "srv",
-  enabled: yes
+  enabled: yes,
+  signature_type: "pubkey",
+  pubkey: "/usr/local/etc/pkg/keys/hestia.pub"
 }
 EOF
 
@@ -892,7 +918,7 @@ fi
 
 # 统一刷新 FreeBSD 本地仓库缓存 (相当于 apt-get update)
 echo "[ * ] Updating FreeBSD Package Repository Catalogue..."
-pkg update -f >> $LOG 2>&1
+IGNORE_OSVERSION=yes pkg update -f >> $LOG 2>&1
 
 # 本地包安装
 if [ -n "$withpkgs" ] && [ -d "$withpkgs" ]; then
@@ -905,17 +931,16 @@ if [ -n "$withpkgs" ] && [ -d "$withpkgs" ]; then
 fi
 
 # 安装软件包
-echo "[ * ] Installing packages: $final_software"
+echo "[ * ] Installing packages: $software"
 echo "NOTE: This process may take 10 to 15 minutes to complete..."
 
-# 请确保您的 pkg_install 函数内部调用的是标准的 `pkg install -y`
-pkg_install $final_software & # 修正：既然您后面要捕获 $!，这里必须保留 & 异步符号
+pkg install -y $software &
 
 BACK_PID=$!
 
 # Check if package installation is done, print a spinner
 spin_i=1
-while kill -0 $BACK_PID > /dev/null 2>&1; do
+while kill -0 $BACK_PID; do
 	printf "\b${spinner:spin_i++%${#spinner}:1}"
 	sleep 0.5
 done
@@ -937,63 +962,63 @@ cd $hst_backups
 mkdir nginx apache2 php vsftpd proftpd bind exim dovecot clamd
 mkdir spamassassin mysql postgresql openssl hestia
 
-# Backup OpenSSL configuration (FreeBSD 自带 OpenSSL 位于 /etc)
-cp /etc/ssl/openssl.cnf $hst_backups/openssl > /dev/null 2>&1
+# Backup OpenSSL configuration
+cp /etc/ssl/openssl.cnf $hst_backups/openssl
 
 # Backup nginx configuration
-service nginx stop > /dev/null 2>&1
-cp -r /usr/local/etc/nginx/* $hst_backups/nginx > /dev/null 2>&1
+service nginx stop
+cp -r /usr/local/etc/nginx/* $hst_backups/nginx
 
 # Backup Apache configuration
-service apache24 stop > /dev/null 2>&1
-cp -r /usr/local/etc/apache24/* $hst_backups/apache2 > /dev/null 2>&1
-rm -f /usr/local/etc/apache24/Includes/* > /dev/null 2>&1
+service apache24 stop
+cp -r /usr/local/etc/apache24/* $hst_backups/apache2
+rm -f /usr/local/etc/apache24/Includes/*
 
 # Backup PHP-FPM configuration
-service php-fpm stop > /dev/null 2>&1
-cp -r /usr/local/etc/php/* $hst_backups/php > /dev/null 2>&1
+service php-fpm stop
+cp -r /usr/local/etc/php/* $hst_backups/php
 
 # Backup Bind configuration
-service named stop > /dev/null 2>&1
-cp -r /usr/local/etc/namedb/* $hst_backups/bind > /dev/null 2>&1
+service named stop
+cp -r /usr/local/etc/namedb/* $hst_backups/bind
 
 # Backup Vsftpd configuration
-service vsftpd stop > /dev/null 2>&1
-cp /usr/local/etc/vsftpd.conf $hst_backups/vsftpd > /dev/null 2>&1
+service vsftpd stop
+cp /usr/local/etc/vsftpd.conf $hst_backups/vsftpd
 
 # Backup ProFTPD configuration
-service proftpd stop > /dev/null 2>&1
-cp -r /usr/local/etc/proftpd/* $hst_backups/proftpd > /dev/null 2>&1
+service proftpd stop
+cp -r /usr/local/etc/proftpd/* $hst_backups/proftpd
 
 # Backup Exim configuration
-service exim stop > /dev/null 2>&1
-cp -r /usr/local/etc/exim/* $hst_backups/exim > /dev/null 2>&1
+service exim stop
+cp -r /usr/local/etc/exim/* $hst_backups/exim
 
 # Backup ClamAV configuration
-service clamav-clamd stop > /dev/null 2>&1
-cp -r /usr/local/etc/clamav/* $hst_backups/clamav > /dev/null 2>&1
+service clamav-clamd stop
+cp -r /usr/local/etc/clamav/* $hst_backups/clamav
 
 # Backup SpamAssassin configuration
-service sa-spamd stop > /dev/null 2>&1
-cp -r /usr/local/etc/mail/spamassassin/* $hst_backups/spamassassin > /dev/null 2>&1
+service sa-spamd stop
+cp -r /usr/local/etc/mail/spamassassin/* $hst_backups/spamassassin
 
 # Backup Dovecot configuration
-service dovecot stop > /dev/null 2>&1
-cp /usr/local/etc/dovecot/dovecot.conf $hst_backups/dovecot > /dev/null 2>&1
-cp -r /usr/local/etc/dovecot/* $hst_backups/dovecot > /dev/null 2>&1
+service dovecot stop
+cp /usr/local/etc/dovecot/dovecot.conf $hst_backups/dovecot
+cp -r /usr/local/etc/dovecot/* $hst_backups/dovecot
 
 # Backup MySQL/MariaDB configuration and data
-service mysql-server stop > /dev/null 2>&1
-killall -9 mysqld > /dev/null 2>&1
-mv /var/lib/mysql $hst_backups/mysql/mysql_datadir > /dev/null 2>&1
-cp -r /usr/local/etc/mysql/* $hst_backups/mysql > /dev/null 2>&1
-mv -f /root/.my.cnf $hst_backups/mysql > /dev/null 2>&1
+service mysql-server stop
+killall -9 mysqld
+mv /var/lib/mysql $hst_backups/mysql/mysql_datadir
+cp -r /usr/local/etc/mysql/* $hst_backups/mysql
+mv -f /root/.my.cnf $hst_backups/mysql
 
 # Backup Hestia
-service hestia stop > /dev/null 2>&1
-cp -r $HESTIA/* $hst_backups/hestia > /dev/null 2>&1
-pkg delete -y hestia hestia-nginx hestia-php > /dev/null 2>&1
-rm -rf $HESTIA > /dev/null 2>&1
+service hestia stop
+cp -r $HESTIA/* $hst_backups/hestia
+pkg delete -y hestia hestia-nginx hestia-php
+rm -rf $HESTIA
 
 #----------------------------------------------------------#
 #                     Package Includes                     #
@@ -1103,7 +1128,7 @@ BACK_PID=$!
 
 # Check if package installation is done, print a spinner
 spin_i=1
-while kill -0 $BACK_PID > /dev/null 2>&1; do
+while kill -0 $BACK_PID; do
 	printf "\b${spinner:spin_i++%${#spinner}:1}"
 	sleep 0.5
 done
@@ -1123,31 +1148,31 @@ echo
 if [ -n "$withpkgs" ] && [ -d "$withpkgs" ]; then
 	echo "[ * ] Installing local package files..."
 	echo "    - hestia core package"
-	pkg add $withpkgs/hestia_*.pkg > /dev/null 2>&1
+	pkg add $withpkgs/hestia_*.pkg
 
 	if [ -z $(ls $withpkgs/hestia-php_*.pkg 2> /dev/null) ]; then
 		echo "    - hestia-php backend package (from pkg repo)"
-		pkg install -y hestia-php > /dev/null 2>&1
+		pkg install -y hestia-php
 	else
 		echo "    - hestia-php backend package"
-		pkg add $withpkgs/hestia-php_*.pkg > /dev/null 2>&1
+		pkg add $withpkgs/hestia-php_*.pkg
 	fi
 
 	if [ -z $(ls $withpkgs/hestia-nginx_*.pkg 2> /dev/null) ]; then
 		echo "    - hestia-nginx backend package (from pkg repo)"
-		pkg install -y hestia-nginx > /dev/null 2>&1
+		pkg install -y hestia-nginx
 	else
 		echo "    - hestia-nginx backend package"
-		pkg add $withpkgs/hestia-nginx_*.pkg > /dev/null 2>&1
+		pkg add $withpkgs/hestia-nginx_*.pkg
 	fi
 
 	if [ "$webterminal" = "yes" ]; then
 		if [ -z $(ls $withpkgs/hestia-web-terminal_*.pkg 2> /dev/null) ]; then
 			echo "    - hestia-web-terminal package (from pkg repo)"
-			pkg install -y hestia-web-terminal > /dev/null 2>&1
+			pkg install -y hestia-web-terminal
 		else
 			echo "    - hestia-web-terminal"
-			pkg add $withpkgs/hestia-web-terminal_*.pkg > /dev/null 2>&1
+			pkg add $withpkgs/hestia-web-terminal_*.pkg
 		fi
 	fi
 fi
@@ -1252,17 +1277,17 @@ if [ ! -f "/etc/default/ntpsec-ntpdate" ]; then
 			echo "server pool.ntp.org iburst" >> /etc/ntp.conf
 		fi
 
-		sysrc ntpd_enable="YES" > /dev/null 2>&1
-		sysrc ntpd_sync_on_start="YES" > /dev/null 2>&1
-		service ntpd start > /dev/null 2>&1
+		sysrc ntpd_enable="YES"
+		sysrc ntpd_sync_on_start="YES"
+		service ntpd start
 	fi
 fi
 
 # Restrict access to /proc fs
 # Prevent unpriv users from seeing each other running processes
 echo "[ * ] Securing process visibility..."
-sysctl security.bsd.see_other_processes=0 > /dev/null 2>&1
-sysctl security.bsd.see_other_uids=0 > /dev/null 2>&1
+sysctl security.bsd.see_other_processes=0
+sysctl security.bsd.see_other_uids=0
 if [ -z "$(grep "security.bsd.see_other_processes" /etc/sysctl.conf)" ]; then
 	echo "security.bsd.see_other_processes=0" >> /etc/sysctl.conf
 	echo "security.bsd.see_other_uids=0" >> /etc/sysctl.conf
@@ -1320,7 +1345,7 @@ chmod 660 /var/log/hestia/*
 chmod 770 $HESTIA/data/sessions
 
 # Generating Hestia configuration
-rm -f $HESTIA/conf/hestia.conf > /dev/null 2>&1
+rm -f $HESTIA/conf/hestia.conf
 touch $HESTIA/conf/hestia.conf
 chmod 660 $HESTIA/conf/hestia.conf
 
@@ -1501,7 +1526,7 @@ fi
 cp -rf $HESTIA_COMMON_DIR/api $HESTIA/data/
 
 # Configuring server hostname
-$HESTIA/bin/v-change-sys-hostname $servername > /dev/null 2>&1
+$HESTIA/bin/v-change-sys-hostname $servername
 
 # Configuring global OpenSSL options
 echo "[ * ] Configuring OpenSSL to improve TLS performance..."
@@ -1552,12 +1577,12 @@ cp -f $HESTIA_INSTALL_DIR/ssl/dhparam.pem /etc/ssl/
 
 # Enable SFTP jail
 echo "[ * ] Enabling SFTP jail..."
-$HESTIA/bin/v-add-sys-sftp-jail > /dev/null 2>&1
+$HESTIA/bin/v-add-sys-sftp-jail
 check_result $? "can't enable sftp jail"
 
 # Enable SSH jail
 echo "[ * ] Enabling SSH jail..."
-$HESTIA/bin/v-add-sys-ssh-jail > /dev/null 2>&1
+$HESTIA/bin/v-add-sys-ssh-jail
 check_result $? "can't enable ssh jail"
 
 # Adding Hestia admin account
@@ -1624,7 +1649,7 @@ if [ -n "$cf_ips" ] && [ "$(echo "$cf_ips" | jq -r '.success//""')" = "true" ]; 
 fi
 
 # 修正：将 Linux 的 update-rc.d 与 systemctl 替换为 FreeBSD 标准的标准配置与服务激活
-sysrc nginx_enable="YES" > /dev/null 2>&1
+sysrc nginx_enable="YES"
 service nginx start >> $LOG
 check_result $? "nginx start failed"
 
@@ -1681,12 +1706,12 @@ if [ "$apache" = 'yes' ]; then
 	sed -i "" '/Allow from all/d' /usr/local/etc/apache24/conf.d/hestia-status.conf
 
 	# 修正：激活并启动 FreeBSD 的 Apache 2.4 服务（FreeBSD 的服务名叫 apache24）
-	sysrc apache24_enable="YES" > /dev/null 2>&1
+	sysrc apache24_enable="YES"
 	service apache24 start >> $LOG
 	check_result $? "apache24 start failed"
 else
-	sysrc apache24_enable="NO" > /dev/null 2>&1
-	service apache24 stop > /dev/null 2>&1
+	sysrc apache24_enable="NO"
+	service apache24 stop
 fi
 
 #----------------------------------------------------------#
@@ -1697,11 +1722,11 @@ if [ "$phpfpm" = "yes" ]; then
 	if [ "$multiphp" = 'yes' ]; then
 		for v in "${multiphp_v[@]}"; do
 			echo "[ * ] Installing PHP $v..."
-			$HESTIA/bin/v-add-web-php "$v" > /dev/null 2>&1
+			$HESTIA/bin/v-add-web-php "$v"
 		done
 	else
 		echo "[ * ] Installing PHP $fpm_v..."
-		$HESTIA/bin/v-add-web-php "$fpm_v" > /dev/null 2>&1
+		$HESTIA/bin/v-add-web-php "$fpm_v"
 	fi
 
 	echo "[ * ] Configuring PHP-FPM $fpm_v..."
@@ -1710,12 +1735,12 @@ if [ "$phpfpm" = "yes" ]; then
 	cp -f $HESTIA_INSTALL_DIR/php-fpm/www.conf /usr/local/etc/php/fpm/pool.d/www.conf
 
 	# 修正：FreeBSD 的 php-fpm 服务名为 php-fpm
-	sysrc php_fpm_enable="YES" > /dev/null 2>&1
+	sysrc php_fpm_enable="YES"
 	service php-fpm start >> $LOG
 	check_result $? "php-fpm start failed"
 
 	# 修正：FreeBSD 不使用 Linux 专有的 update-alternatives 机制，直接通过强行创建系统软链接来锁定主 php 命令
-	ln -sf /usr/local/bin/php$fpm_v /usr/local/bin/php > /dev/null 2>&1
+	ln -sf /usr/local/bin/php$fpm_v /usr/local/bin/php
 fi
 
 #----------------------------------------------------------#
@@ -1739,8 +1764,8 @@ done
 
 # Cleanup php session files not changed in the last 7 days (60*24*7 minutes)
 echo '#!/bin/sh' > /etc/periodic/daily/php-session-cleanup
-echo "find -O3 /home/*/tmp/ -ignore_readdir_race -depth -mindepth 1 -name 'sess_*' -type f -cmin '+10080' -delete > /dev/null 2>&1" >> /etc/periodic/daily/php-session-cleanup
-echo "find -O3 $HESTIA/data/sessions/ -ignore_readdir_race -depth -mindepth 1 -name 'sess_*' -type f -cmin '+10080' -delete > /dev/null 2>&1" >> /etc/periodic/daily/php-session-cleanup
+echo "find -O3 /home/*/tmp/ -ignore_readdir_race -depth -mindepth 1 -name 'sess_*' -type f -cmin '+10080' -delete" >> /etc/periodic/daily/php-session-cleanup
+echo "find -O3 $HESTIA/data/sessions/ -ignore_readdir_race -depth -mindepth 1 -name 'sess_*' -type f -cmin '+10080' -delete" >> /etc/periodic/daily/php-session-cleanup
 chmod 755 /etc/periodic/daily/php-session-cleanup
 
 #----------------------------------------------------------#
@@ -1780,7 +1805,7 @@ if [ "$vsftpd" = 'yes' ]; then
 	if [ -s /usr/local/etc/logrotate.d/vsftpd ] && ! grep -Fq "/var/log/xferlog" /usr/local/etc/logrotate.d/vsftpd; then
 		sed -i "" 's|/var/log/vsftpd.log|/var/log/vsftpd.log /var/log/xferlog|g' /usr/local/etc/logrotate.d/vsftpd
 	fi
-	sysrc vsftpd_enable="YES" > /dev/null 2>&1
+	sysrc vsftpd_enable="YES"
 	service vsftpd start >> $LOG
 	check_result $? "vsftpd start failed"
 fi
@@ -1796,7 +1821,7 @@ if [ "$proftpd" = 'yes' ]; then
 	cp -f $HESTIA_INSTALL_DIR/proftpd/proftpd.conf /usr/local/etc/proftpd/
 	cp -f $HESTIA_INSTALL_DIR/proftpd/tls.conf /usr/local/etc/proftpd/
 
-	sysrc proftpd_enable="YES" > /dev/null 2>&1
+	sysrc proftpd_enable="YES"
 	service proftpd start >> $LOG
 	check_result $? "proftpd start failed"
 
@@ -1833,13 +1858,13 @@ if [ "$mysql" = 'yes' ] || [ "$mysql8" = 'yes' ]; then
 
 	if [ "$mysql_type" = 'MariaDB' ]; then
 		sed -i "" 's|/usr/share/mysql|/usr/local/share/mysql|g' /usr/local/etc/mysql/my.cnf
-		sysrc mysql_enable="YES" > /dev/null 2>&1
+		sysrc mysql_enable="YES"
 		service mysql-server start >> $LOG
 		check_result $? "${mysql_type,,} start failed"
 	fi
 
 	if [ "$mysql_type" = 'MySQL' ]; then
-		sysrc mysql_enable="YES" > /dev/null 2>&1
+		sysrc mysql_enable="YES"
 		service mysql-server start >> $LOG
 		check_result $? "${mysql_type,,} start failed"
 	fi
@@ -1934,7 +1959,7 @@ if [ "$mysql" = 'yes' ] || [ "$mysql8" = 'yes' ]; then
 	# Special thanks to Pavel Galkin (https://skurudo.ru)
 	# https://github.com/skurudo/phpmyadmin-fixer
 	# shellcheck source=/usr/local/hestia/install/deb/phpmyadmin/pma.sh
-	source $HESTIA_INSTALL_DIR/phpmyadmin/pma.sh > /dev/null 2>&1
+	source $HESTIA_INSTALL_DIR/phpmyadmin/pma.sh
 
 	# Limit access to /usr/local/etc/phpmyadmin/
     chown -R root:www /usr/local/etc/phpmyadmin/
@@ -1951,10 +1976,10 @@ if [ "$postgresql" = 'yes' ]; then
 	ppass=$(gen_pass)
 	cp -f $HESTIA_INSTALL_DIR/postgresql/pg_hba.conf /var/db/postgres/data*/ 2> /dev/null || cp -f $HESTIA_INSTALL_DIR/postgresql/pg_hba.conf /usr/local/share/postgresql/
 
-	sysrc postgresql_enable="YES" > /dev/null 2>&1
+	sysrc postgresql_enable="YES"
 	service postgresql restart >> $LOG 2>&1
 
-	su - postgres -c "psql -c \"ALTER USER postgres WITH PASSWORD '$ppass'\"" > /dev/null 2>&1
+	su - postgres -c "psql -c \"ALTER USER postgres WITH PASSWORD '$ppass'\""
 
 	mkdir -p /usr/local/etc/phppgadmin/
 	mkdir -p /usr/local/www/phppgadmin/
@@ -2001,7 +2026,7 @@ if [ "$named" = 'yes' ]; then
 	aa-complain /usr/local/sbin/named 2> /dev/null || true
 
 	# 修正：激活并启动 FreeBSD 的 BIND DNS 服务（FreeBSD 对应的原生服务名称叫 named） [INDEX]
-	sysrc named_enable="YES" > /dev/null 2>&1
+	sysrc named_enable="YES"
 	service named start >> $LOG
 	check_result $? "named start failed"
 
@@ -2015,7 +2040,7 @@ fi
 if [ "$exim" = 'yes' ]; then
 	echo "[ * ] Configuring Exim mail server..."
 	# 修正：将 Linux 的 gpasswd 替换为 FreeBSD 标准的 pw groupmod [INDEX]
-	pw groupmod mail -m mailnull > /dev/null 2>&1
+	pw groupmod mail -m mailnull
 
 	# 修正：FreeBSD 的 exim 二进制程序名直接叫 exim，而不是 exim4 [INDEX]
 	exim_version=$(exim --version | head -1 | awk '{print $3}' | cut -f -2 -d .)
@@ -2056,14 +2081,14 @@ if [ "$exim" = 'yes' ]; then
 
 	# FreeBSD 无 /etc/alternatives 软路由机制，直接跳过软链接，执行系统内置 sendmail 覆盖阻断
 	# 修正：在 FreeBSD 中彻底阻断并关闭自带的 sendmail 服务 [INDEX]
-	sysrc sendmail_enable="NONE" > /dev/null 2>&1
-	sysrc sendmail_submit_enable="NO" > /dev/null 2>&1
-	sysrc sendmail_outbound_enable="NO" > /dev/null 2>&1
-	sysrc sendmail_msp_queue_enable="NO" > /dev/null 2>&1
-	service sendmail stop > /dev/null 2>&1
+	sysrc sendmail_enable="NONE"
+	sysrc sendmail_submit_enable="NO"
+	sysrc sendmail_outbound_enable="NO"
+	sysrc sendmail_msp_queue_enable="NO"
+	service sendmail stop
 
 	# 修正：激活并启动 FreeBSD 的 Exim 邮件系统（FreeBSD 的服务名叫 exim） [INDEX]
-	sysrc exim_enable="YES" > /dev/null 2>&1
+	sysrc exim_enable="YES"
 	service exim start >> $LOG
 	check_result $? "exim start failed"
 fi
@@ -2074,7 +2099,7 @@ fi
 
 if [ "$dovecot" = 'yes' ]; then
 	echo "[ * ] Configuring Dovecot POP/IMAP mail server..."
-	pw groupmod mail -m dovecot > /dev/null 2>&1
+	pw groupmod mail -m dovecot
 
 	# 修正：更改所有 Dovecot 配置文件保存路径至 FreeBSD 标准路径 /usr/local/etc/ [INDEX]
 	cp -rf $HESTIA_COMMON_DIR/dovecot /usr/local/etc/
@@ -2096,7 +2121,7 @@ if [ "$dovecot" = 'yes' ]; then
 	fi
 
 	# 修正：激活并启动 FreeBSD 的 Dovecot 服务 [INDEX]
-	sysrc dovecot_enable="YES" > /dev/null 2>&1
+	sysrc dovecot_enable="YES"
 	service dovecot start >> $LOG
 	check_result $? "dovecot start failed"
 fi
@@ -2106,8 +2131,8 @@ fi
 #----------------------------------------------------------#
 
 if [ "$clamd" = 'yes' ]; then
-	pw groupmod mail -m clamav > /dev/null 2>&1
-	pw groupmod mailnull -m clamav > /dev/null 2>&1
+	pw groupmod mail -m clamav
+	pw groupmod mailnull -m clamav
 
 	# 修正：将 Linux 的 /etc/clamav/ 替换为 FreeBSD 标准的 /usr/local/etc/clamav/ [INDEX]
 	cp -f $HESTIA_INSTALL_DIR/clamav/clamd.conf /usr/local/etc/clamav/
@@ -2121,17 +2146,17 @@ if [ "$clamd" = 'yes' ]; then
 	# Linux 专有的 systemd 动态服务单元篡改逻辑直接安全清除
 
 	# 修正：激活并拉起 FreeBSD 的 ClamAV 防病毒组件（FreeBSD 中的服务名称统一叫 clamav-clamd） [INDEX]
-	sysrc clamav_clamd_enable="YES" > /dev/null 2>&1
-	service clamav-clamd start > /dev/null 2>&1
+	sysrc clamav_clamd_enable="YES"
+	service clamav-clamd start
 	sleep 1
-	service clamav-clamd status > /dev/null 2>&1
+	service clamav-clamd status
 
 	echo -ne "[ * ] Installing ClamAV anti-virus definitions... "
 	# 修正：FreeBSD 官方源安装的 freshclam 工具直接落地在 /usr/local/bin/ [INDEX]
-	/usr/local/bin/freshclam >> $LOG > /dev/null 2>&1 &
+	/usr/local/bin/freshclam >> $LOG &
 	BACK_PID=$!
 	spin_i=1
-	while kill -0 $BACK_PID > /dev/null 2>&1; do
+	while kill -0 $BACK_PID; do
 		printf "\b${spinner:spin_i++%${#spinner}:1}"
 		sleep 0.5
 	done
@@ -2147,7 +2172,7 @@ fi
 if [ "$spamd" = 'yes' ]; then
 	echo "[ * ] Configuring SpamAssassin..."
 	# 修正：激活并拉起 FreeBSD 官方的 SpamAssassin 服务（FreeBSD 对应的服务名称叫 sa-spamd） [INDEX]
-	sysrc sa_spamd_enable="YES" > /dev/null 2>&1
+	sysrc sa_spamd_enable="YES"
 	service sa-spamd start >> $LOG
 	check_result $? "sa-spamd start failed"
 fi
@@ -2191,7 +2216,7 @@ if [ "$fail2ban" = 'yes' ]; then
 	fi
 
 	# 修正：激活并启动 FreeBSD 的 Fail2ban 安全监控服务 [INDEX]
-	sysrc fail2ban_enable="YES" > /dev/null 2>&1
+	sysrc fail2ban_enable="YES"
 	service fail2ban start >> $LOG
 	check_result $? "fail2ban start failed"
 fi
@@ -2278,8 +2303,8 @@ if [ "$sieve" = 'yes' ]; then
 
 	# Restart Dovecot and Exim
 	# 修正：转换服务控制指令，并将 exim4 纠正为 FreeBSD 本地服务名 exim [INDEX]
-	service dovecot restart > /dev/null 2>&1
-	service exim restart > /dev/null 2>&1
+	service dovecot restart
+	service exim restart
 fi
 
 #----------------------------------------------------------#
@@ -2305,8 +2330,8 @@ fi
 # Web terminal
 if [ "$webterminal" = 'yes' ]; then
 	write_config_value "WEB_TERMINAL" "true"
-	sysrc hestia_web_terminal_enable="YES" > /dev/null 2>&1
-	service hestia-web-terminal restart > /dev/null 2>&1
+	sysrc hestia_web_terminal_enable="YES"
+	service hestia-web-terminal restart
 else
 	write_config_value "WEB_TERMINAL" "false"
 fi
@@ -2331,8 +2356,8 @@ if [ "$phpfpm" = 'yes' ]; then
 fi
 
 echo "[ * ] Installing Rclone & Update Restic ..."
-pkg install -y rclone > /dev/null 2>&1
-restic self-update > /dev/null 2>&1
+pkg install -y rclone
+restic self-update
 
 #----------------------------------------------------------#
 #                   Configure IP                           #
@@ -2340,7 +2365,7 @@ restic self-update > /dev/null 2>&1
 
 # Configuring system IPs
 echo "[ * ] Configuring System IP..."
-$HESTIA/bin/v-update-sys-ip > /dev/null 2>&1
+$HESTIA/bin/v-update-sys-ip
 # Get primary IP
 # 完美保持：FreeBSD 原生 route 精准抽取出当前系统的默认网卡
 default_nic="$(route -n get default 2> /dev/null | awk '/interface:/ {print $2}')"
@@ -2386,7 +2411,7 @@ if [ -n "$pub_ipv4" ] && [ "$pub_ipv4" != "$ip" ]; then
 	chmod +x /etc/rc.local
 
 	# 健全性保护：当前处于裸机开局，由于 v-change-sys-ip-nat 尚未被 pkg add 释出，此处通过 || true 阻断非正常熔断
-	$HESTIA/bin/v-change-sys-ip-nat "$ip" "$pub_ipv4" > /dev/null 2>&1 || true
+	$HESTIA/bin/v-change-sys-ip-nat "$ip" "$pub_ipv4" || true
 	ip="$pub_ipv4"
 fi
 
@@ -2466,20 +2491,20 @@ if [ "$quota" = 'yes' ]; then
 fi
 
 # 设置后端端口
-$HESTIA/bin/v-change-sys-port $port > /dev/null 2>&1
+$HESTIA/bin/v-change-sys-port $port
 
 # 创建默认配置
 $HESTIA/bin/v-update-sys-defaults
 
 # Update remaining packages since repositories have changed
 echo "[ * ] Installing remaining software updates..."
-pkg update -f > /dev/null 2>&1
+pkg update -f
 pkg upgrade -y >> $LOG &
 BACK_PID=$!
 echo
 
 # 启动 Hestia 服务
-sysrc hestia_enable="YES" > /dev/null 2>&1
+sysrc hestia_enable="YES"
 service hestia start
 check_result $? "hestia start failed"
 chown hestiaweb:hestiaweb $HESTIA/data/sessions

@@ -1,0 +1,272 @@
+name: Build and Deploy FreeBSD pkg Repository
+
+# 触发时机：当发布新 Release、往 main/release 分支推送代码，或者手动点击运行
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+      - release
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+jobs:
+  build-and-deploy:
+    name: Build pkg repository and deploy to Cloudflare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: [14]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Build HestiaCP packages
+        uses: vmactions/freebsd-vm@v1.4.9
+        continue-on-error: false #true
+        env:
+          PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
+        with:
+          release: "${{ matrix.freebsd_version }}.0"
+          usesh: false
+          sync: rsync
+          copyback: true
+          run: |
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
+            
+            # 定义工作空间路径
+            WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+            cd "$WORKSPACE"
+
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2 krb5 
+
+            if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
+                ln -sf /usr/local/bin/bash /bin/bash
+                echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
+            fi
+            
+            export HESTIA_DEBUG=true
+            
+            chmod +x src/hst_autocompile.sh
+
+            set -o pipefail
+            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            EXIT_CODE=$?
+            set +o pipefail
+            
+            echo "=== Autocompile Exit code: $EXIT_CODE ==="
+            echo "=== Last 200 lines of build.log ==="
+            tail -200 build.log
+            
+            if [ $EXIT_CODE -ne 0 ]; then
+              echo "[ ✗ ] Compilation failed!"
+              exit 1
+            fi
+            echo "[ ✓ ] Compilation completed successfully!"
+
+            # 准备签名密钥
+            cd /tmp/hestiacp-src
+            mkdir -p keys
+            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
+
+            echo "[ ✓ ] Private key imported for signing"
+            ls -la keys/
+
+            cd pkg
+            echo "=== Package files ==="
+            ls -la
+
+            IGNORE_OSVERSION=yes pkg update -f
+            pkg upgrade -y pkg
+
+            echo "[ * ] Signing repository with private key..."
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            ls -la /tmp/hestiacp-src/keys/
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              exit 1
+            fi
+            echo "[ ✓ ] Repository signed successfully!"
+
+      # 验证 artifacts
+      - name: Verify and prepare artifacts on host
+        run: |
+          echo "=== Current workspace contents ==="
+          echo "[ ✓ ] Packages found in artifacts/"
+          ls -la artifacts/
+          
+          FREEBSD_MAJOR="${{ matrix.freebsd_version }}"
+          REAL_NAME="FreeBSD:${FREEBSD_MAJOR}:amd64/latest"
+          mkdir -p "artifacts/$REAL_NAME"
+          
+          # 移动文件到版本子目录，排除自身
+          mv artifacts/* "artifacts/$REAL_NAME/" || true
+          [ -f "src/pkg/index.html" ] && cp src/pkg/index.html artifacts/
+          [ -f "src/pkg/404.html" ] && cp src/pkg/404.html artifacts/
+          ls -la "artifacts/$REAL_NAME"
+          printf "%s" "${{ secrets.PKG_SIGNING_KEY_PUB }}" > "artifacts/$REAL_NAME/hestia.pub"
+
+      # 3. 上传到 Cloudflare R2
+      - name: Sync Packages to Cloudflare R2
+        run: |
+          if [ ! -d "artifacts" ]; then
+            echo "Error: Base artifacts directory not found!"
+            exit 1
+          fi
+
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+          ARTIFACT_PATH="artifacts/$VERSION_PATH"
+          if [ ! -d "$ARTIFACT_PATH" ]; then
+            echo "Error: Matrix sub-path $ARTIFACT_PATH not found!"
+            exit 1
+          fi
+
+          ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
+          if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
+            ENDPOINT="https://$ENDPOINT"
+          fi
+
+          echo "Syncing specific matrix binaries from $ARTIFACT_PATH/ to s3://fbsd-repo/$VERSION_PATH/"
+          aws s3 sync "$ARTIFACT_PATH/" "s3://fbsd-repo/$VERSION_PATH/" \
+            --endpoint-url "$ENDPOINT" \
+            --follow-symlinks \
+            --region auto
+          echo "Deploying edge node html headers to bucket root..."
+          aws s3 cp artifacts/index.html "s3://fbsd-repo/index.html" --endpoint-url "$ENDPOINT" --region auto
+          aws s3 cp artifacts/404.html "s3://fbsd-repo/404.html" --endpoint-url "$ENDPOINT" --region auto
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      - name: Verify upload
+        run: |
+          ENDPOINT="${{ secrets.R2_ACCOUNT_ENDPOINT }}"
+          if [[ ! "$ENDPOINT" =~ ^https?:// ]]; then
+            ENDPOINT="https://$ENDPOINT"
+          fi
+
+          VERSION_PATH="FreeBSD:${{ matrix.freebsd_version }}:amd64/latest"
+          echo "=== Verifying uploaded files for $VERSION_PATH on Cloudflare R2 ==="
+          aws s3 ls "s3://fbsd-repo/$VERSION_PATH/" --endpoint-url "$ENDPOINT" --recursive --human-readable
+          echo "=== Verifying Global HTML on Cloudflare R2 ==="
+          aws s3 ls "s3://fbsd-repo/" --endpoint-url "$ENDPOINT" --human-readable | grep -E "(index|404)"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      # 4. 云端部署边缘计算 Worker 脚本
+      - name: Deploy Cloudflare Worker
+        run: |
+          mkdir -p /tmp/worker-deploy
+          cd /tmp/worker-deploy
+          cat > worker.js << 'WORKER_EOF'
+          export default {
+            async fetch(request, env) {
+              const url = new URL(request.url);
+              let needsRedirect = false;
+              const targetUrl = new URL(url.toString());
+              
+              if (url.protocol === "http:" || url.hostname !== "pkg.hestiamb.org") {
+                needsRedirect = true;
+                targetUrl.protocol = "https:";
+                targetUrl.hostname = "pkg.hestiamb.org";
+              }
+              
+              if (needsRedirect) {
+                return new Response(null, {
+                  status: 301,
+                  headers: {
+                    "Location": targetUrl.toString(),
+                    "Cache-Control": "public, max-age=31536000",
+                    "Alt-Svc": 'h3=":443"; ma=86400; persist=1',
+                    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload"
+                  }
+                });
+              }
+              let path = url.pathname;
+              if (path === "/" || path === "") {
+                path = "index.html";
+              } else {
+                path = path.startsWith("/") ? path.slice(1) : path;
+              }
+              
+              const object = await env.FBSD_REPO.get(path);
+              
+              if (!object) {
+                const notFound = await env.FBSD_REPO.get("404.html");
+                if (notFound) {
+                  return new Response(notFound.body, {
+                    status: 404,
+                    headers: { 
+                      "Content-Type": "text/html; charset=utf-8",
+                      "Alt-Svc": 'h3=":443"; ma=86400; persist=1'
+                    }
+                  });
+                }
+                return new Response("404 - Not Found", { 
+                  status: 404,
+                  headers: {
+                    "Alt-Svc": 'h3=":443"; ma=86400; persist=1'
+                  }
+                });
+              }
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set("Alt-Svc", 'h3=":443"; ma=86400; persist=1');
+              headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+              if (path.endsWith(".pkg")) {
+                headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+              } else if (path.endsWith(".html")) {
+                headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
+              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
+                headers.set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+              } else if (path.endsWith(".txz") || path.endsWith(".tzst")) {
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              } else {
+                headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+              }
+              headers.set("X-Content-Type-Options", "nosniff");
+              headers.set("X-Frame-Options", "DENY");
+              headers.set("X-XSS-Protection", "1; mode=block");
+              headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+              headers.set("Accept-Ranges", "bytes");
+              
+              if (path.endsWith(".html")) {
+                headers.set("content-type", "text/html; charset=utf-8");
+              } else if (path.endsWith(".sh") || path.endsWith(".pub")) {
+                headers.set("content-type", "text/plain; charset=utf-8");
+              } else if (path.endsWith(".pkg")) {
+                headers.set("content-type", "application/octet-stream");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              } else if (path.endsWith(".txz")) {
+                headers.set("content-type", "application/x-xz");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              } else if (path.endsWith(".tzst")) {
+                headers.set("content-type", "application/zstd");
+                headers.set("Cache-Control", "public, max-age=86400, immutable");
+              }
+              
+              return new Response(object.body, { headers });
+            }
+          };
+          WORKER_EOF
+          cat > wrangler.toml << 'TOML_EOF'
+          name = "hestiacp-repo"
+          main = "worker.js"
+          compatibility_date = "2024-12-18"
+          workers_dev = false
+          [[r2_buckets]]
+          binding = "FBSD_REPO"
+          bucket_name = "fbsd-repo"
+          TOML_EOF
+          npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}

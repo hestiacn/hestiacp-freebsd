@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 # ======================================================== #
 #
@@ -89,10 +89,6 @@ elif command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]
 	VERSION='freebsd'
 	
 	case "$release" in
-		13)
-			echo "FreeBSD 13 detected (version: $full_release)"
-			echo "Note: FreeBSD 13.2 or higher is recommended"
-			;;
 		14)
 			echo "FreeBSD 14 detected (version: $full_release)"
 			;;
@@ -102,7 +98,7 @@ elif command -v freebsd-version >/dev/null 2>&1 || [ "$(uname -s)" = "FreeBSD" ]
 			;;
 		*)
 			echo "Error: FreeBSD $release is not supported"
-			echo "Supported versions: FreeBSD 13, 14, 15"
+			echo "Supported versions: FreeBSD 14, 15"
 			exit 1
 			;;
 	esac
@@ -117,7 +113,7 @@ no_support_message() {
 	echo "****************************************************"
 	echo "  Debian 11, 12"
 	echo "  Ubuntu 22.04, 24.04 LTS"
-	echo "  FreeBSD 13, 14, 15"
+	echo "  FreeBSD 14, 15"
 	echo ""
 	exit 1
 }
@@ -154,6 +150,17 @@ ensure_utf8_locale() {
 ensure_utf8_locale
 
 check_wget_curl() {
+	# FreeBSD: 使用 fetch
+	if [ -f /etc/freebsd-version ] || [ -e '/usr/bin/fetch' ]; then
+		fetch -o "hst-install-$type.sh" "https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/main/install/hst-install-$type.sh"
+		if [ "$?" -eq '0' ]; then
+			bash hst-install-$type.sh "$@"
+			exit
+		else
+			echo "Error: hst-install-$type.sh download failed fetch."
+			exit 1
+		fi
+	fi
 	# Check wget
 	if [ -e '/usr/bin/wget' ] || [ -e '/usr/local/bin/wget' ]; then
 		wget -q https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-$type.sh -O hst-install-$type.sh
@@ -161,7 +168,7 @@ check_wget_curl() {
 			bash hst-install-$type.sh "$@"
 			exit
 		else
-			echo "Error: hst-install-$type.sh download failed."
+			echo "Error: hst-install-$type.sh download failed wget."
 			exit 1
 		fi
 	fi
@@ -173,28 +180,17 @@ check_wget_curl() {
 			bash hst-install-$type.sh "$@"
 			exit
 		else
-			echo "Error: hst-install-$type.sh download failed."
+			echo "Error: hst-install-$type.sh download failed curl."
 			exit 1
 		fi
 	fi
 	
-	# FreeBSD: 使用 fetch
-	if [ "$type" = "freebsd" ]; then
-		fetch -o hst-install-$type.sh https://raw.githubusercontent.com/hestiacn/hestiacp-freebsd/release/install/hst-install-$type.sh
-		if [ "$?" -eq '0' ]; then
-			bash hst-install-$type.sh "$@"
-			exit
-		else
-			echo "Error: hst-install-$type.sh download failed."
-			exit 1
-		fi
-	fi
 }
 
 # Check for supported operating system
 if [ "$type" = "freebsd" ]; then
 	case "$release" in
-		13|14|15) check_wget_curl "$@" ;;
+		14|15) check_wget_curl "$@" ;;
 		*)        no_support_message ;;
 	esac
 else

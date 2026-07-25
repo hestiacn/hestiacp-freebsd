@@ -1,0 +1,122 @@
+name: Build FreeBSD pkg Repository
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - mains
+      - release
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build"
+        required: true
+        default: "main"
+
+jobs:
+  build-and-deploy:
+    name: Build pkg repository
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        freebsd_version: [14]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Build PHP 8.4.23 with OpenSSL 4.x
+        uses: vmactions/freebsd-vm@v1
+        env:
+          PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
+        with:
+          release: "${{ matrix.freebsd_version }}.0"
+          usesh: true
+          sync: rsync
+          copyback: true
+          run: |
+            export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
+            export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
+            
+            WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
+            cd "$WORKSPACE"
+            echo "========================================"
+            echo "Installing build dependencies..."
+            echo "========================================"
+            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt
+            if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
+                ln -sf /usr/local/bin/bash /bin/bash
+                echo "[ ✓ ] Created symlink: /bin/bash -> /usr/local/bin/bash"
+            fi
+            export HESTIA_DEBUG=true
+            chmod +x src/hst_autocompile-open4.sh
+            echo ""
+            echo "========================================"
+            echo "Starting HestiaCP build..."
+            echo "FreeBSD version: ${{ matrix.freebsd_version }}"
+            echo "========================================"
+            
+            bash src/hst_autocompile-open4.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            EXIT_CODE=$?
+            echo ""
+            echo "=== Autocompile Exit code: $EXIT_CODE ==="
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "✅ Compilation completed successfully!"
+            else
+              echo "❌ Error: Compilation failed with exit code $EXIT_CODE"
+              echo ""
+              echo "=== Last 200 lines of build.log ==="
+              tail -200 build.log
+              exit 1
+            fi
+            echo ""
+            echo "========================================"
+            echo "Signing repository..."
+            echo "========================================"
+            
+            cd /tmp/hestiacp-src
+            mkdir -p keys
+            
+            printf "%s" "$PKG_SIGNING_KEY" > keys/hestiacp.key
+            chmod 600 keys/hestiacp.key
+            echo "[ ✓ ] Private key imported for signing"
+            ls -la keys/
+            cd pkg
+            echo ""
+            echo "=== Package files ==="
+            ls -la
+            # 更新 pkg
+            IGNORE_OSVERSION=yes pkg update -f
+            pkg upgrade -y pkg
+            echo ""
+            echo "Signing repository..."
+            pkg repo . /tmp/hestiacp-src/keys/hestiacp.key
+            ls -la /tmp/hestiacp-src/keys/
+            if [ $? -ne 0 ]; then
+              echo "[ ✗ ] Failed to sign repository!"
+              exit 1
+            fi
+            echo "[ ✓ ] Repository signed successfully!"
+            echo ""
+            echo "========================================"
+            echo "Build artifacts:"
+            echo "========================================"
+            ls -la /tmp/hestiacp-src/pkg/
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: hestia-pkgs-freebsd-${{ matrix.freebsd_version }}
+          path: |
+            /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts/
+            /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
+          retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-freebsd-${{ matrix.freebsd_version }}
+          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
+          retention-days: 7
