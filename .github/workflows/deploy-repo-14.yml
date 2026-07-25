@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14]
+        freebsd_version: [15]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
 
       - name: Build HestiaCP packages
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@v1.5.1
         continue-on-error: false #true
         env:
           PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
