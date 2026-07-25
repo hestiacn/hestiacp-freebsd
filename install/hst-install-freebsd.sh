@@ -427,6 +427,10 @@ if [ "$postgresql" = 'yes' ]; then
     software="$software postgresql${psql_v}-server postgresql${psql_v}-contrib"
 fi
 
+if [ "$mysql" = 'yes' ] || [ "$mysql8" = 'yes' ]; then
+    software="$software p5-DBD-mysql"
+fi
+
 if [ "$mysql8" = 'yes' ] && [ "$architecture" = 'aarch64' ]; then
 	check_result 1 "MySQL 8 does not support ARM64 on FreeBSD yet. Please use MariaDB or MySQL 5.7. Unable to continue."
 fi
