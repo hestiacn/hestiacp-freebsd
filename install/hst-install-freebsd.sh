@@ -52,10 +52,8 @@ mysql_v="97"
 # FreeBSD 软件包列表
 software="apache24 gh-bc bind$bind_v clamav curl bind-tools dovecot e2fsprogs exim expect
   git hestia-${HESTIA_INSTALL_VER} hestia-nginx hestia-php hestia-web-terminal ImageMagick7
-  lsof mariadb$mariadb_v-client mariadb$mariadb_v-server mc nginx node openssh-portable zstd
-  postgresql$psql_v-server postgresql$psql_v-contrib proftpd rrdtool jq libidn2 unrar unzip 
-  mysql$mysql_v-client mysql$mysql_v-server spamassassin vim nano vsftpd-ssl xxd whois zip
-  restic ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM"
+  lsof mc nginx node openssh-portable zstd proftpd rrdtool libidn2 unrar unzip vim nano zip
+  jq vsftpd-ssl xxd whois restic ap24-mod_mpm_itk ap24-mod_fcgid p5-Mail-DKIM"
 
 installer_dependencies="ca_root_nss curl gnupg openssl wget sudo"
 
@@ -415,6 +413,18 @@ fi
 
 if [ "$mysql" = 'yes' ] && [ "$mysql8" = 'yes' ]; then
 	mysql='no'
+fi
+
+if [ "$mysql" = 'yes' ]; then
+    software="$software mariadb${mariadb_v}-client mariadb${mariadb_v}-server"
+fi
+
+if [ "$mysql8" = 'yes' ]; then
+    software="$software mysql${mysql_v}-client mysql${mysql_v}-server"
+fi
+
+if [ "$postgresql" = 'yes' ]; then
+    software="$software postgresql${psql_v}-server postgresql${psql_v}-contrib"
 fi
 
 if [ "$mysql8" = 'yes' ] && [ "$architecture" = 'aarch64' ]; then
