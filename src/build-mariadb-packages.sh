@@ -18,7 +18,8 @@ WORKDIR="/usr/local/src/mariadb-build"
 PKGDIR="/usr/local/pkg/mariadb-custom"
 LOG_FILE="${WORKDIR}/build.log"
 MAKE_JOBS=$(sysctl -n hw.ncpu)
-
+architecture="$(uname -m)"
+release="$(uname -r | cut -d'.' -f1)"
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -180,6 +181,28 @@ fi
 
 cd mariadb-${MARIADB_VERSION}
 log "Source ready at: $(pwd)"
+
+# ============================================================
+# 3.5 修复 GSSAPI 编译问题（FreeBSD 的 krb5 兼容性）
+# ============================================================
+print_header "Step 3.5: Fixing GSSAPI for FreeBSD"
+
+GSSAPI_FILE="$WORKDIR/mariadb-${MARIADB_VERSION}/plugin/auth_gssapi/gssapi_server.cc"
+
+if [ -f "$GSSAPI_FILE" ]; then
+    log "Fixing GSSAPI: enabling krb5_xfree for FreeBSD..."
+    
+    # 在 #include <krb5.h> 后面添加宏定义
+    sed -i '' '/#include <krb5.h>/a\
+#ifndef HAVE_KRB5_XFREE
+#define HAVE_KRB5_XFREE 1
+#endif
+' "$GSSAPI_FILE"
+    
+    log "✅ GSSAPI fix applied"
+else
+    log "⚠ GSSAPI file not found, skipping fix"
+fi
 
 # ============================================================
 # 4. 配置编译选项（完整编译：服务端 + 客户端）
