@@ -44,8 +44,7 @@ jobs:
             # 安装编译依赖
             echo "[ * ] Installing build dependencies..."
             IGNORE_OSVERSION=yes pkg update -f
-            pkg install -y cmake gmake gcc14 openssl40 libedit zlib ncurses perl5 pkgconf git wget curl bison flex libxml2 lz4 liblz4 libunwind icu groff cyrus-sasl hidapi libaio jemalloc
-
+            pkg install -y bash
             # 创建 bash 软链接
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
@@ -83,7 +82,7 @@ jobs:
             echo ""
 
             # 运行构建脚本
-            /usr/local/bin/bash src/build-mariadb-packages.sh 2>&1 | tee build-php84-openssl4.log
+            /usr/local/bin/bash src/build-mariadb-packages.sh
             EXIT_CODE=$?
 
             echo "=== Exit code: $EXIT_CODE ==="

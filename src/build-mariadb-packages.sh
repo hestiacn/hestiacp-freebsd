@@ -48,9 +48,85 @@ print_header "Step 1: Installing build dependencies"
 
 log "Installing required packages for compilation..."
 
-pkg install -y cmake gmake gcc14 openssl40 libedit zlib ncurses perl5 pkgconf git wget curl bison flex libxml2 lz4 liblz4 libunwind icu groff cyrus-sasl hidapi libaio jemalloc 2>&1 | tee -a "$LOG_FILE"
-
+pkg install -y cmake gmake gcc14 openssl40 libedit ncurses perl5 pkgconf git wget curl bison flex libxml2 liblz4 libunwind icu groff cyrus-sasl hidapi snappy autoconf automake libtool 2>&1 | tee -a "$LOG_FILE"
 log "Build dependencies installed successfully"
+
+# ============================================================
+# 1.5 编译 Judy 库（FreeBSD 仓库中没有）
+# ============================================================
+print_header "Step 1.5: Building Judy library from source"
+
+JUDY_VERSION="1.0.5"
+JUDY_DIR="/usr/local/src/judy-build"
+
+# 检查 Judy 是否已安装
+if [ -f /usr/local/lib/libJudy.so ] && [ -f /usr/local/include/Judy.h ]; then
+    log "✅ Judy already installed, skipping build"
+else
+    log "Judy not found, building from source..."
+    
+    mkdir -p "$JUDY_DIR"
+    cd "$JUDY_DIR"
+    
+    # 下载 netdata 版本
+    if [ ! -f "v${JUDY_VERSION}-netdata2.tar.gz" ]; then
+        log "Downloading Judy ${JUDY_VERSION} from GitHub (netdata version)..."
+        fetch "https://github.com/netdata/libjudy/archive/refs/tags/v${JUDY_VERSION}-netdata2.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+    fi
+    
+    # 解压
+    if [ ! -d "libjudy-${JUDY_VERSION}-netdata2" ]; then
+        log "Extracting Judy..."
+        tar -xzf "v${JUDY_VERSION}-netdata2.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+    fi
+    
+    cd "libjudy-${JUDY_VERSION}-netdata2/src"
+    
+    # 修改 sh_build 脚本
+    log "Fixing sh_build script..."
+    sed -i '' 's/^CC=.*/CC="gcc"/' sh_build
+    sed -i '' 's/^CPIC=.*/CPIC="-fPIC"/' sh_build
+    sed -i '' 's/^COPT=.*/COPT="-O2"/' sh_build
+    sed -i '' 's/^#ld -shared -o libJudy.so Judy\*\/\*.o/ld -shared -o libJudy.so Judy*\/\*.o/' sh_build
+
+    # 直接运行 sh_build 编译
+    log "Compiling Judy with sh_build..."
+    ./sh_build 2>&1 | tee -a "$LOG_FILE"
+    
+    # 安装
+    log "Installing Judy..."
+    cp libJudy.a /usr/local/lib/
+    cp libJudy.so /usr/local/lib/
+    cp Judy.h /usr/local/include/
+    log "Creating Judy pkg-config file..."
+    mkdir -p /usr/local/lib/pkgconfig
+    cat > /usr/local/lib/pkgconfig/judy.pc << 'EOF'
+prefix=/usr/local
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Judy
+Description: Judy dynamic array library
+Version: 1.0.5
+Libs: -L${libdir} -lJudy
+Cflags: -I${includedir}
+EOF
+    ln -sf /usr/local/lib/libJudy.so /usr/local/lib/libjudy.so 2>/dev/null || true
+    ln -sf /usr/local/lib/libJudy.a /usr/local/lib/libjudy.a 2>/dev/null || true
+    
+    ldconfig -m /usr/local/lib
+    
+    # 验证
+    if [ -f /usr/local/lib/libJudy.so ] && [ -f /usr/local/include/Judy.h ]; then
+        log "✅ Judy installed successfully"
+    else
+        log "ERROR: Judy installation failed"
+        exit 1
+    fi
+    
+    cd "$WORKDIR"
+fi
 
 # ============================================================
 # 2. 下载 MariaDB 源码
@@ -58,39 +134,52 @@ log "Build dependencies installed successfully"
 print_header "Step 2: Downloading MariaDB source code"
 
 cd "$WORKDIR"
-rm -rf mariadb-${MARIADB_VERSION} mariadb-${MARIADB_VERSION}.tar.gz
 
-log "Downloading MariaDB ${MARIADB_VERSION} source code..."
+# 检查源码文件是否已存在
+if [ -f "mariadb-${MARIADB_VERSION}.tar.gz" ]; then
+    log "✅ Source file mariadb-${MARIADB_VERSION}.tar.gz already exists"
+    log "   Size: $(ls -lh mariadb-${MARIADB_VERSION}.tar.gz | awk '{print $5}')"
+    log "   Skipping download..."
+else
+    log "Downloading MariaDB ${MARIADB_VERSION} source code..."
+    
+    if ! fetch -o mariadb-${MARIADB_VERSION}.tar.gz \
+        "https://downloads.mariadb.org/interstitial/mariadb-${MARIADB_VERSION}/source/mariadb-${MARIADB_VERSION}.tar.gz" 2>&1; then
+        log "Official source failed, trying mirror..."
+        fetch -o mariadb-${MARIADB_VERSION}.tar.gz \
+            "https://archive.mariadb.org/mariadb-${MARIADB_VERSION}/source/mariadb-${MARIADB_VERSION}.tar.gz"
+    fi
 
-if ! fetch -o mariadb-${MARIADB_VERSION}.tar.gz \
-    "https://downloads.mariadb.org/interstitial/mariadb-${MARIADB_VERSION}/source/mariadb-${MARIADB_VERSION}.tar.gz" 2>&1; then
-    log "Official source failed, trying mirror..."
-    fetch -o mariadb-${MARIADB_VERSION}.tar.gz \
-        "https://archive.mariadb.org/mariadb-${MARIADB_VERSION}/source/mariadb-${MARIADB_VERSION}.tar.gz"
+    if [ ! -f "mariadb-${MARIADB_VERSION}.tar.gz" ]; then
+        log "ERROR: Failed to download MariaDB source code"
+        exit 1
+    fi
+    
+    log "✅ Download completed: $(ls -lh mariadb-${MARIADB_VERSION}.tar.gz | awk '{print $5}')"
 fi
-
-if [ ! -f "mariadb-${MARIADB_VERSION}.tar.gz" ]; then
-    log "ERROR: Failed to download MariaDB source code"
-    exit 1
-fi
-
-log "Download completed: $(ls -lh mariadb-${MARIADB_VERSION}.tar.gz | awk '{print $5}')"
 
 # ============================================================
 # 3. 解压源码
 # ============================================================
 print_header "Step 3: Extracting source code"
 
-log "Extracting mariadb-${MARIADB_VERSION}.tar.gz..."
-tar -xzf mariadb-${MARIADB_VERSION}.tar.gz 2>&1 | tee -a "$LOG_FILE"
-
-if [ ! -d "mariadb-${MARIADB_VERSION}" ]; then
-    log "ERROR: Extraction failed"
-    exit 1
+# 检查是否已解压
+if [ -d "mariadb-${MARIADB_VERSION}" ]; then
+    log "Source directory mariadb-${MARIADB_VERSION} already exists"
+    log "Skipping extraction..."
+else
+    log "Extracting mariadb-${MARIADB_VERSION}.tar.gz..."
+    tar -xzf mariadb-${MARIADB_VERSION}.tar.gz 2>&1 | tee -a "$LOG_FILE"
+    
+    if [ ! -d "mariadb-${MARIADB_VERSION}" ]; then
+        log "ERROR: Extraction failed"
+        exit 1
+    fi
+    log "Extraction completed"
 fi
 
 cd mariadb-${MARIADB_VERSION}
-log "Source extracted to: $(pwd)"
+log "Source ready at: $(pwd)"
 
 # ============================================================
 # 4. 配置编译选项（完整编译：服务端 + 客户端）
@@ -101,6 +190,8 @@ log "Creating build directory..."
 mkdir -p build
 cd build
 
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+export PKG_CONFIG_PATH=/usr/local/libdata/pkgconfig:$PKG_CONFIG_PATH
 log "Running CMake configuration..."
 log "Build type: Release"
 log "Install prefix: /usr/local"
@@ -109,6 +200,9 @@ log "Jobs: ${MAKE_JOBS}"
 cmake .. \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DCMAKE_BUILD_TYPE=Release \
+    -DFEATURE_SET=large \
+    -DJudy_INCLUDE_DIR=/usr/local/include \
+    -DJudy_LIBRARY=/usr/local/lib/libJudy.so \
     -DWITH_READLINE=ON \
     -DWITH_SSL=system \
     -DWITH_ZLIB=system \
@@ -117,7 +211,7 @@ cmake .. \
     -DPLUGIN_INNOBASE=YES \
     -DPLUGIN_MYISAM=YES \
     -DPLUGIN_MYISAMMRG=YES \
-    -DPLUGIN_PARTITION=YES \
+    -DPLUGIN_PARTITION=NO \
     -DPLUGIN_PERFSCHEMA=YES \
     -DPLUGIN_ARCHIVE=YES \
     -DPLUGIN_BLACKHOLE=YES \
@@ -186,7 +280,6 @@ cd "$WORKDIR"
 # ============================================================
 print_header "Step 7: Creating package structures"
 
-rm -rf "$PKGDIR"/*
 mkdir -p "$PKGDIR"
 
 # ============================================================
@@ -579,7 +672,7 @@ log "✓ mariadb${PKG_VERSION}-server package created"
 print_header "Step 8: Creating modified p5-DBD-MariaDB package"
 
 log "Downloading original p5-DBD-MariaDB package..."
-pkg fetch -o "$PKGDIR" p5-DBD-MariaDB 2>&1 | tee -a "$LOG_FILE"
+pkg fetch -y -o "$PKGDIR" p5-DBD-MariaDB 2>&1 | tee -a "$LOG_FILE"
 
 DBD_PKG=$(ls "$PKGDIR"/p5-DBD-MariaDB-*.pkg 2>/dev/null | head -1)
 
