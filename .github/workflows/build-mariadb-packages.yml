@@ -44,7 +44,7 @@ jobs:
             # 安装编译依赖
             echo "[ * ] Installing build dependencies..."
             IGNORE_OSVERSION=yes pkg update -f
-            pkg install -y bash
+            pkg install -y bash openssl40
             # 创建 bash 软链接
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
