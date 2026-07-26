@@ -44,7 +44,7 @@ jobs:
             # 安装编译依赖
             echo "[ * ] Installing build dependencies..."
             IGNORE_OSVERSION=yes pkg update -f
-            pkg install -y bash openssl40
+            pkg install -y bash cmake gmake gcc14 openssl40 libedit ncurses perl5 pkgconf git wget curl bison flex libxml2 liblz4 libunwind icu groff cyrus-sasl hidapi snappy autoconf automake libtool 2>&1 | tee -a "$LOG_FILE"
             # 创建 bash 软链接
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
