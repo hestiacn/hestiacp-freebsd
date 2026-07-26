@@ -200,6 +200,7 @@ log "Jobs: ${MAKE_JOBS}"
 cmake .. \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DFEATURE_SET=large \
     -DJudy_INCLUDE_DIR=/usr/local/include \
     -DJudy_LIBRARY=/usr/local/lib/libJudy.so \
@@ -305,6 +306,12 @@ if [ -d "$INSTALL_DIR/usr/local/include/mariadb" ]; then
     cp -r "$INSTALL_DIR/usr/local/include/mariadb"/* "$LIBDIR/usr/local/include/mariadb/" 2>/dev/null || true
 fi
 
+# 复制 MySQL 兼容头文件到 include/mysql
+if [ -d "$INSTALL_DIR/usr/local/include/mysql" ]; then
+    mkdir -p "$LIBDIR/usr/local/include/mysql"
+    cp -r "$INSTALL_DIR/usr/local/include/mysql"/* "$LIBDIR/usr/local/include/mysql/" 2>/dev/null || true
+fi
+
 # 复制 pkgconfig
 if [ -f "$INSTALL_DIR/usr/local/lib/pkgconfig/mariadb.pc" ]; then
     cp "$INSTALL_DIR/usr/local/lib/pkgconfig/mariadb.pc" "$LIBDIR/usr/local/lib/pkgconfig/"
@@ -326,8 +333,8 @@ cat > "$LIBDIR/+MANIFEST" << EOF
   "comment": "MariaDB client shared libraries (compatibility layer)",
   "desc": "MariaDB client shared libraries\nProvides libmysqlclient.so compatibility symlink\nDoes NOT conflict with other MariaDB/MySQL packages",
   "maintainer": "custom@localhost",
-  "abi": "FreeBSD:14:amd64",
-  "arch": "FreeBSD:14:amd64",
+  "abi": "FreeBSD:${release}:${architecture}",
+  "arch": "FreeBSD:${release}:${architecture}",
   "prefix": "/usr/local",
   "deps": {
     "openssl": {
@@ -397,6 +404,13 @@ include/mariadb/mysqld_error.h
 include/mariadb/mysql_version.h
 include/mariadb/mariadb_com.h
 include/mariadb/mariadb_version.h
+@dir include/mysql
+include/mysql/mysql.h
+include/mysql/mysql_com.h
+include/mysql/mysql_version.h
+include/mysql/mariadb_version.h
+include/mysql/mysqld_error.h
+include/mysql/errmsg.h
 @dir lib
 lib/libmysqlclient.so
 @dir lib/pkgconfig
@@ -445,8 +459,8 @@ cat > "$COREDIR/+MANIFEST" << EOF
   "comment": "MariaDB client core tools (compatibility layer)",
   "desc": "Core MariaDB client tools\nProvides /usr/local/bin/mysql as compatibility symlink\nDoes NOT conflict with other MariaDB/MySQL packages",
   "maintainer": "custom@localhost",
-  "abi": "FreeBSD:14:amd64",
-  "arch": "FreeBSD:14:amd64",
+  "abi": "FreeBSD:${release}:${architecture}",
+  "arch": "FreeBSD:${release}:${architecture}",
   "prefix": "/usr/local",
   "deps": {
     "libmariadb": {
@@ -534,6 +548,22 @@ if [ -d "$INSTALL_DIR/usr/local" ]; then
     cd "$WORKDIR"
 fi
 
+# 创建客户端配置文件模板
+mkdir -p "$CLIENTDIR/usr/local/etc/mysql/conf.d"
+cat > "$CLIENTDIR/usr/local/etc/mysql/my.cnf.sample" << 'EOF'
+[client]
+port = 3306
+socket = /tmp/mysql.sock
+default-character-set = utf8mb4
+EOF
+
+cat > "$CLIENTDIR/usr/local/etc/mysql/conf.d/client.cnf.sample" << 'EOF'
+[client]
+port = 3306
+socket = /tmp/mysql.sock
+default-character-set = utf8mb4
+EOF
+
 cat > "$CLIENTDIR/+MANIFEST" << EOF
 {
   "name": "mariadb${PKG_VERSION}-client",
@@ -542,8 +572,8 @@ cat > "$CLIENTDIR/+MANIFEST" << EOF
   "comment": "MariaDB ${MARIADB_MAJOR} client (complete package)",
   "desc": "Complete MariaDB client package\nDepends on mariadb-client-core for binaries and libmariadb for libraries",
   "maintainer": "custom@localhost",
-  "abi": "FreeBSD:14:amd64",
-  "arch": "FreeBSD:14:amd64",
+  "abi": "FreeBSD:${release}:${architecture}",
+  "arch": "FreeBSD:${release}:${architecture}",
   "prefix": "/usr/local",
   "deps": {
     "libmariadb": {
@@ -589,6 +619,18 @@ if [ -d "$INSTALL_DIR/usr/local/etc/mysql" ]; then
     cp -r "$INSTALL_DIR/usr/local/etc/mysql" "$SERVERDIR/usr/local/etc/" 2>/dev/null || true
 fi
 
+# 创建服务端配置文件模板
+mkdir -p "$SERVERDIR/usr/local/etc/mysql/conf.d"
+cat > "$SERVERDIR/usr/local/etc/mysql/conf.d/server.cnf.sample" << 'EOF'
+[mysqld]
+port = 3306
+socket = /tmp/mysql.sock
+datadir = /var/db/mysql
+pid-file = /var/run/mysqld/mysqld.pid
+user = mysql
+bind-address = 127.0.0.1
+EOF
+
 # 复制数据目录
 if [ -d "$INSTALL_DIR/usr/local/share/mysql" ]; then
     mkdir -p "$SERVERDIR/usr/local/share"
@@ -609,8 +651,8 @@ cat > "$SERVERDIR/+MANIFEST" << EOF
   "comment": "MariaDB ${MARIADB_MAJOR} server",
   "desc": "MariaDB server package\nDepends on mariadb${PKG_VERSION}-client for tools",
   "maintainer": "custom@localhost",
-  "abi": "FreeBSD:14:amd64",
-  "arch": "FreeBSD:14:amd64",
+  "abi": "FreeBSD:${release}:${architecture}",
+  "arch": "FreeBSD:${release}:${architecture}",
   "prefix": "/usr/local",
   "deps": {
     "mariadb${PKG_VERSION}-client": {
