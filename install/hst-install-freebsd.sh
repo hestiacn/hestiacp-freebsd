@@ -427,7 +427,9 @@ if [ "$postgresql" = 'yes' ]; then
     software="$software postgresql${psql_v}-server postgresql${psql_v}-contrib"
 fi
 
-if [ "$mysql8" = 'yes' ]; then
+if [ "$mysql" = 'yes' ]; then
+    software="$software p5-DBD-MariaDB"
+elif [ "$mysql8" = 'yes' ]; then
     software="$software p5-DBD-mysql"
 fi
 
