@@ -719,9 +719,14 @@ echo
 if [ "$mysql" = 'yes' ]; then
 	echo '   - MariaDB Database Server'
 fi
+
+echo "DEBUG: mysql8 = $mysql8"
+
 if [ "$mysql8" = 'yes' ]; then
-	echo '   - MySQL8 Database Server'
+    echo "DEBUG: Adding p5-DBD-mysql"
+    software="$software p5-DBD-mysql"
 fi
+
 if [ "$postgresql" = 'yes' ]; then
 	echo '   - PostgreSQL Database Server'
 fi
@@ -956,7 +961,7 @@ BACK_PID=$!
 
 # Check if package installation is done, print a spinner
 spin_i=1
-while kill -0 $BACK_PID; do
+while kill -0 $BACK_PID > /dev/null 2>&1; do
 	printf "\b${spinner:spin_i++%${#spinner}:1}"
 	sleep 0.5
 done
