@@ -190,14 +190,11 @@ print_header "Step 3.5: Fixing GSSAPI for FreeBSD"
 GSSAPI_FILE="$WORKDIR/mariadb-${MARIADB_VERSION}/plugin/auth_gssapi/gssapi_server.cc"
 
 if [ -f "$GSSAPI_FILE" ]; then
-    log "Fixing GSSAPI: enabling krb5_xfree for FreeBSD..."
+    log "Fixing GSSAPI: removing #ifdef HAVE_KRB5_XFREE for FreeBSD..."
     
-    # 在 #include <krb5.h> 后面添加宏定义
-    sed -i '' '/#include <krb5.h>/a\
-#ifndef HAVE_KRB5_XFREE
-#define HAVE_KRB5_XFREE 1
-#endif
-' "$GSSAPI_FILE"
+    # 删除 #ifdef 和 #endif 行，只保留 #define
+    sed -i '' '/#ifdef HAVE_KRB5_XFREE/d' "$GSSAPI_FILE"
+    sed -i '' '/#endif/d' "$GSSAPI_FILE"
     
     log "✅ GSSAPI fix applied"
 else
@@ -771,178 +768,10 @@ else
     log "✓ p5-DBD-MariaDB-custom package created"
 fi
 
-# ============================================================
-# 9. 创建 pkg 仓库
-# ============================================================
-print_header "Step 9: Creating pkg repository"
-
-cd "$PKGDIR"
-log "Creating repository metadata..."
-pkg repo . 2>&1 | tee -a "$LOG_FILE"
-
-if [ $? -ne 0 ]; then
-    log "ERROR: Failed to create repository"
-    exit 1
-fi
-
-log "Repository created successfully"
-
-# ============================================================
-# 10. 配置 pkg 仓库
-# ============================================================
-print_header "Step 10: Configuring pkg repository"
-
-cat > "/usr/local/etc/pkg/repos/mariadb-custom.conf" << 'EOF'
-mariadb-custom: {
-  url: "file:///usr/local/pkg/mariadb-custom",
-  enabled: yes,
-  priority: 100
-}
-EOF
-
-log "Repository configuration created: /usr/local/etc/pkg/repos/mariadb-custom.conf"
-
-# ============================================================
-# 11. 生成安装脚本
-# ============================================================
-print_header "Step 11: Generating installation scripts"
-
-cat > "$PKGDIR/install.sh" << 'EOF'
-#!/bin/bash
-# ============================================================
-# 安装脚本：安装自定义 MariaDB 包（像 Debian 一样）
-# ============================================================
-
-set -e
-
-echo "=========================================="
-echo "Installing MariaDB packages (like Debian)"
-echo "=========================================="
-echo ""
-
-# 配置仓库
-if [ ! -f /usr/local/etc/pkg/repos/mariadb-custom.conf ]; then
-    echo "Configuring repository..."
-    cat > /usr/local/etc/pkg/repos/mariadb-custom.conf << 'REPO'
-mariadb-custom: {
-  url: "file:///usr/local/pkg/mariadb-custom",
-  enabled: yes,
-  priority: 100
-}
-REPO
-fi
-
-# 更新仓库
-echo "Updating repository..."
-pkg update -r mariadb-custom
-
-echo ""
-echo "Available packages:"
-pkg search -r mariadb-custom
-
-echo ""
-echo "Installing packages (order matters)..."
-echo ""
-
-# 1. 共享库
-echo "1. Installing libmariadb..."
-pkg install -r mariadb-custom -y libmariadb
-
-# 2. 客户端核心工具
-echo ""
-echo "2. Installing mariadb-client-core..."
-pkg install -r mariadb-custom -y mariadb-client-core
-
-# 3. 完整客户端
-echo ""
-echo "3. Installing mariadb${PKG_VERSION}-client..."
-pkg install -r mariadb-custom -y mariadb${PKG_VERSION}-client
-
-# 4. 服务端
-echo ""
-echo "4. Installing mariadb${PKG_VERSION}-server..."
-pkg install -r mariadb-custom -y mariadb${PKG_VERSION}-server
-
-# 5. Perl DBD（如果存在）
-if pkg search -r mariadb-custom p5-DBD-MariaDB-custom 2>/dev/null | grep -q p5-DBD-MariaDB; then
-    echo ""
-    echo "5. Installing p5-DBD-MariaDB-custom..."
-    pkg install -r mariadb-custom -y p5-DBD-MariaDB-custom
-fi
-
-echo ""
-echo "=========================================="
-echo "✓ Installation complete!"
-echo "=========================================="
-echo ""
-echo "Verification:"
-echo "  Shared libraries: $(ls -la /usr/local/lib/libmysqlclient* 2>/dev/null | wc -l)"
-echo "  MariaDB tools: $(ls -la /usr/local/bin/mariadb* 2>/dev/null | wc -l)"
-echo "  MySQL compatibility: $(ls -la /usr/local/bin/mysql* 2>/dev/null | wc -l)"
-echo ""
-echo "Testing:"
-mysql --version
-echo ""
-perl -MDBD::MariaDB -e 'print "DBD::MariaDB loaded\n"' 2>/dev/null || echo "DBD::MariaDB not loaded"
-
-echo ""
-echo "Starting MariaDB server..."
-sysrc mariadb_enable=YES
-service mariadb start
-
-echo ""
-echo "Testing connection..."
-mysql -e "SELECT VERSION();"
-
-echo ""
-echo "✓ MariaDB is ready!"
-EOF
-
-chmod +x "$PKGDIR/install.sh"
-
-# ============================================================
-# 12. 生成卸载脚本
-# ============================================================
-cat > "$PKGDIR/uninstall.sh" << 'EOF'
-#!/bin/bash
-# ============================================================
-# 卸载脚本：卸载自定义 MariaDB 包
-# ============================================================
-
-echo "=========================================="
-echo "Uninstalling MariaDB packages"
-echo "=========================================="
-
-service mariadb stop 2>/dev/null || true
-
-pkg remove -y p5-DBD-MariaDB-custom 2>/dev/null || true
-pkg remove -y mariadb${PKG_VERSION}-server 2>/dev/null || true
-pkg remove -y mariadb${PKG_VERSION}-client 2>/dev/null || true
-pkg remove -y mariadb-client-core 2>/dev/null || true
-pkg remove -y libmariadb 2>/dev/null || true
-
-# 清理符号链接
-rm -f /usr/local/bin/mysql
-rm -f /usr/local/bin/mysqladmin
-rm -f /usr/local/bin/mysqldump
-rm -f /usr/local/bin/mysqlcheck
-rm -f /usr/local/bin/mysqlimport
-rm -f /usr/local/bin/mysqlshow
-rm -f /usr/local/lib/libmysqlclient.so
-rm -f /usr/local/lib/pkgconfig/mysqlclient.pc
-
-echo "✓ Uninstall completed"
-EOF
-
-chmod +x "$PKGDIR/uninstall.sh"
-
-# ============================================================
-# 13. 清理临时目录
-# ============================================================
 rm -rf "$INSTALL_DIR"
 
 # ============================================================
-# 14. 总结
+# 9. 总结
 # ============================================================
 print_header "Build Complete!"
 
@@ -967,16 +796,13 @@ echo "=========================================="
 echo "Installation:"
 echo "=========================================="
 echo ""
-echo "  cd $PKGDIR && ./install.sh"
+echo "  pkg install -r mariadb-custom mariadb${PKG_VERSION}-server"
 echo ""
-echo "Or manually:"
+echo "  Or individually:"
 echo "  pkg install -r mariadb-custom libmariadb"
 echo "  pkg install -r mariadb-custom mariadb-client-core"
 echo "  pkg install -r mariadb-custom mariadb${PKG_VERSION}-client"
 echo "  pkg install -r mariadb-custom mariadb${PKG_VERSION}-server"
 echo "  pkg install -r mariadb-custom p5-DBD-MariaDB-custom"
-echo ""
-echo "To use as default repository:"
-echo "  pkg update -r mariadb-custom"
 echo ""
 echo -e "${GREEN}✓ Done!${NC}"
