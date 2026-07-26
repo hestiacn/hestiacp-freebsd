@@ -14,8 +14,8 @@ set -e
 MARIADB_VERSION="12.3.2"
 MARIADB_MAJOR="12.3"
 PKG_VERSION="123"
-WORKDIR="/usr/local/src/mariadb-build"
-PKGDIR="/usr/local/pkg/mariadb-custom"
+WORKDIR="/tmp/hestiacp-src/mariadb-build"
+PKGDIR="/tmp/hestiacp-src/pkg"
 LOG_FILE="${WORKDIR}/build.log"
 MAKE_JOBS=$(sysctl -n hw.ncpu)
 architecture="$(uname -m)"
@@ -58,7 +58,7 @@ log "Build dependencies installed successfully"
 print_header "Step 1.5: Building Judy library from source"
 
 JUDY_VERSION="1.0.5"
-JUDY_DIR="/usr/local/src/judy-build"
+JUDY_DIR="/tmp/hestiacp-src/judy-build"
 
 # 检查 Judy 是否已安装
 if [ -f /usr/local/lib/libJudy.so ] && [ -f /usr/local/include/Judy.h ]; then
@@ -113,8 +113,8 @@ Version: 1.0.5
 Libs: -L${libdir} -lJudy
 Cflags: -I${includedir}
 EOF
-    ln -sf /usr/local/lib/libJudy.so /usr/local/lib/libjudy.so 2>/dev/null || true
-    ln -sf /usr/local/lib/libJudy.a /usr/local/lib/libjudy.a 2>/dev/null || true
+    ln -sf /usr/local/lib/libJudy.so /usr/local/lib/libjudy.so || true
+    ln -sf /usr/local/lib/libJudy.a /usr/local/lib/libjudy.a || true
     
     ldconfig -m /usr/local/lib
     
@@ -297,6 +297,31 @@ log "Files installed: $(find "$INSTALL_DIR" -type f | wc -l) files"
 cd "$WORKDIR"
 
 # ============================================================
+# 6.5 查看安装目录结构（调试用）
+# ============================================================
+print_header "Step 6.5: Checking installed files"
+
+log "INSTALL_DIR: $INSTALL_DIR"
+log "Files in INSTALL_DIR/usr/local:"
+ls -la "$INSTALL_DIR/usr/local" | tee -a "$LOG_FILE"
+
+log ""
+log "Files in INSTALL_DIR/usr/local/bin:"
+ls -la "$INSTALL_DIR/usr/local/bin" | tee -a "$LOG_FILE"
+
+log ""
+log "Files in INSTALL_DIR/usr/local/lib:"
+ls -la "$INSTALL_DIR/usr/local/lib" | tee -a "$LOG_FILE"
+
+log ""
+log "Files in INSTALL_DIR/usr/local/sbin:"
+ls -la "$INSTALL_DIR/usr/local/sbin" | tee -a "$LOG_FILE"
+
+log ""
+log "Total files: $(find "$INSTALL_DIR" -type f | wc -l)"
+log "Total directories: $(find "$INSTALL_DIR" -type d | wc -l)"
+
+# ============================================================
 # 7. 创建分离的包结构（像 Debian 一样）
 # ============================================================
 print_header "Step 7: Creating package structures"
@@ -314,22 +339,20 @@ mkdir -p "$LIBDIR/usr/local/lib" \
          "$LIBDIR/usr/local/lib/pkgconfig"
 
 # 复制共享库
-if [ -d "$INSTALL_DIR/usr/local/lib/mariadb" ]; then
-    cp -r "$INSTALL_DIR/usr/local/lib/mariadb"/* "$LIBDIR/usr/local/lib/" 2>/dev/null || true
-fi
 if [ -d "$INSTALL_DIR/usr/local/lib" ]; then
-    cp "$INSTALL_DIR/usr/local/lib/libmariadb"* "$LIBDIR/usr/local/lib/" 2>/dev/null || true
+    cp "$INSTALL_DIR/usr/local/lib/libmariadb"* "$LIBDIR/usr/local/lib/" || true
+    cp "$INSTALL_DIR/usr/local/lib/libmysqlclient"* "$LIBDIR/usr/local/lib/" || true
 fi
 
 # 复制头文件
 if [ -d "$INSTALL_DIR/usr/local/include/mariadb" ]; then
-    cp -r "$INSTALL_DIR/usr/local/include/mariadb"/* "$LIBDIR/usr/local/include/mariadb/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/include/mariadb"/* "$LIBDIR/usr/local/include/mariadb/" || true
 fi
 
 # 复制 MySQL 兼容头文件到 include/mysql
 if [ -d "$INSTALL_DIR/usr/local/include/mysql" ]; then
     mkdir -p "$LIBDIR/usr/local/include/mysql"
-    cp -r "$INSTALL_DIR/usr/local/include/mysql"/* "$LIBDIR/usr/local/include/mysql/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/include/mysql"/* "$LIBDIR/usr/local/include/mysql/" || true
 fi
 
 # 复制 pkgconfig
@@ -339,9 +362,9 @@ fi
 
 # 创建 MySQL 兼容符号链接
 cd "$LIBDIR/usr/local/lib"
-[ -f libmariadb.so ] && ln -sf libmariadb.so libmysqlclient.so 2>/dev/null || true
+[ -f libmariadb.so ] && ln -sf libmariadb.so libmysqlclient.so || true
 cd "$LIBDIR/usr/local/lib/pkgconfig"
-[ -f mariadb.pc ] && ln -sf mariadb.pc mysqlclient.pc 2>/dev/null || true
+[ -f mariadb.pc ] && ln -sf mariadb.pc mysqlclient.pc || true
 cd "$WORKDIR"
 
 # 创建 MANIFEST（版本用 12.3.2）
@@ -455,19 +478,18 @@ mkdir -p "$COREDIR/usr/local/bin"
 
 # 复制核心工具
 if [ -d "$INSTALL_DIR/usr/local/bin" ]; then
-    for cmd in mariadb mariadbadmin mariadbdump mariadbcheck mariadbimport mariadbshow mariadb-mysql mariadb-mysqladmin; do
-        [ -f "$INSTALL_DIR/usr/local/bin/$cmd" ] && cp "$INSTALL_DIR/usr/local/bin/$cmd" "$COREDIR/usr/local/bin/"
-    done
+    cp "$INSTALL_DIR/usr/local/bin/mariadb"* "$COREDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mysql"* "$COREDIR/usr/local/bin/" || true
 fi
 
 # 创建 MySQL 兼容符号链接
 cd "$COREDIR/usr/local/bin"
-[ -f mariadb ] && ln -sf mariadb mysql 2>/dev/null || true
-[ -f mariadbadmin ] && ln -sf mariadbadmin mysqladmin 2>/dev/null || true
-[ -f mariadbdump ] && ln -sf mariadbdump mysqldump 2>/dev/null || true
-[ -f mariadbcheck ] && ln -sf mariadbcheck mysqlcheck 2>/dev/null || true
-[ -f mariadbimport ] && ln -sf mariadbimport mysqlimport 2>/dev/null || true
-[ -f mariadbshow ] && ln -sf mariadbshow mysqlshow 2>/dev/null || true
+[ -f mariadb ] && ln -sf mariadb mysql || true
+[ -f mariadbadmin ] && ln -sf mariadbadmin mysqladmin || true
+[ -f mariadbdump ] && ln -sf mariadbdump mysqldump || true
+[ -f mariadbcheck ] && ln -sf mariadbcheck mysqlcheck || true
+[ -f mariadbimport ] && ln -sf mariadbimport mysqlimport || true
+[ -f mariadbshow ] && ln -sf mariadbshow mysqlshow || true
 cd "$WORKDIR"
 
 # 创建 MANIFEST
@@ -561,8 +583,8 @@ mkdir -p "$CLIENTDIR"
 if [ -d "$INSTALL_DIR/usr/local" ]; then
     cd "$INSTALL_DIR/usr/local"
     for item in *; do
-        if [ "$item" != "bin" ] && [ "$item" != "lib" ] && [ "$item" != "include" ] && [ "$item" != "sbin" ]; then
-            [ -e "$item" ] && cp -r "$item" "$CLIENTDIR/usr/local/" 2>/dev/null || true
+        if [ "$item" != "mariadb-test" ]; then
+            [ -e "$item" ] && cp -r "$item" "$CLIENTDIR/usr/local/" || true
         fi
     done
     cd "$WORKDIR"
@@ -624,19 +646,19 @@ mkdir -p "$SERVERDIR"
 # 复制服务端二进制文件
 if [ -d "$INSTALL_DIR/usr/local/sbin" ]; then
     mkdir -p "$SERVERDIR/usr/local/sbin"
-    cp "$INSTALL_DIR/usr/local/sbin/"* "$SERVERDIR/usr/local/sbin/" 2>/dev/null || true
+    cp "$INSTALL_DIR/usr/local/sbin/"* "$SERVERDIR/usr/local/sbin/" || true
 fi
 
 # 复制服务端插件
 if [ -d "$INSTALL_DIR/usr/local/lib/mariadb/plugin" ]; then
     mkdir -p "$SERVERDIR/usr/local/lib/mariadb"
-    cp -r "$INSTALL_DIR/usr/local/lib/mariadb/plugin" "$SERVERDIR/usr/local/lib/mariadb/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/lib/mariadb/plugin" "$SERVERDIR/usr/local/lib/mariadb/" || true
 fi
 
 # 复制配置文件
 if [ -d "$INSTALL_DIR/usr/local/etc/mysql" ]; then
     mkdir -p "$SERVERDIR/usr/local/etc"
-    cp -r "$INSTALL_DIR/usr/local/etc/mysql" "$SERVERDIR/usr/local/etc/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/etc/mysql" "$SERVERDIR/usr/local/etc/" || true
 fi
 
 # 创建服务端配置文件模板
@@ -654,13 +676,13 @@ EOF
 # 复制数据目录
 if [ -d "$INSTALL_DIR/usr/local/share/mysql" ]; then
     mkdir -p "$SERVERDIR/usr/local/share"
-    cp -r "$INSTALL_DIR/usr/local/share/mysql" "$SERVERDIR/usr/local/share/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/share/mysql" "$SERVERDIR/usr/local/share/" || true
 fi
 
 # 复制 man 手册
 if [ -d "$INSTALL_DIR/usr/local/man" ]; then
     mkdir -p "$SERVERDIR/usr/local"
-    cp -r "$INSTALL_DIR/usr/local/man" "$SERVERDIR/usr/local/" 2>/dev/null || true
+    cp -r "$INSTALL_DIR/usr/local/man" "$SERVERDIR/usr/local/" || true
 fi
 
 cat > "$SERVERDIR/+MANIFEST" << EOF
@@ -736,7 +758,7 @@ print_header "Step 8: Creating modified p5-DBD-MariaDB package"
 log "Downloading original p5-DBD-MariaDB package..."
 pkg fetch -y -o "$PKGDIR" p5-DBD-MariaDB 2>&1 | tee -a "$LOG_FILE"
 
-DBD_PKG=$(ls "$PKGDIR"/p5-DBD-MariaDB-*.pkg 2>/dev/null | head -1)
+DBD_PKG=$(ls "$PKGDIR"/p5-DBD-MariaDB-*.pkg | head -1)
 
 if [ -z "$DBD_PKG" ]; then
     log "WARNING: Could not download p5-DBD-MariaDB, skipping..."
@@ -780,7 +802,7 @@ echo ""
 echo "Packages location: $PKGDIR"
 echo ""
 echo "Package list:"
-ls -la "$PKGDIR"/*.pkg 2>/dev/null || echo "No packages found"
+ls -la "$PKGDIR"/*.pkg || echo "No packages found"
 echo ""
 echo "=========================================="
 echo "Package structure (like Debian):"
