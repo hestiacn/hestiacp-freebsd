@@ -49,7 +49,6 @@ jobs:
             # 设置日志文件路径（FreeBSD VM 内部）
             BUILD_LOG="/tmp/hestiacp-src/mariadb-build/build.log"
             mkdir -p "$(dirname "$BUILD_LOG")"
-            exec > >(tee -a "$BUILD_LOG") 2>&1
 
             echo "[ * ] Installing build dependencies..."
             IGNORE_OSVERSION=yes pkg update -f
