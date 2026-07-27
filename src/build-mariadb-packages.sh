@@ -647,15 +647,40 @@ log "Creating mariadb${PKG_VERSION}-client package..."
 CLIENTDIR="$PKGDIR/mariadb${PKG_VERSION}-client"
 mkdir -p "$CLIENTDIR/usr/local"
 
-# 复制除 bin、lib、include、sbin 外的所有文件
+# 复制所有非 bin/lib/include/mariadb-test 的内容
 if [ -d "$INSTALL_DIR/usr/local" ]; then
-    cd "$INSTALL_DIR/usr/local"
-    for item in *; do
-        if [ "$item" != "mariadb-test" ]; then
-            [ -e "$item" ] && cp -r "$item" "$CLIENTDIR/usr/local/" || true
-        fi
-    done
-    cd "$WORKDIR"
+    # 复制 share
+    if [ -d "$INSTALL_DIR/usr/local/share" ]; then
+        mkdir -p "$CLIENTDIR/usr/local/share"
+        cp -r "$INSTALL_DIR/usr/local/share"/* "$CLIENTDIR/usr/local/share/" || true
+    fi
+    
+    # 复制 man
+    if [ -d "$INSTALL_DIR/usr/local/man" ]; then
+        mkdir -p "$CLIENTDIR/usr/local/man"
+        cp -r "$INSTALL_DIR/usr/local/man"/* "$CLIENTDIR/usr/local/man/" || true
+    fi
+    
+    # 复制 support-files
+    if [ -d "$INSTALL_DIR/usr/local/support-files" ]; then
+        mkdir -p "$CLIENTDIR/usr/local/support-files"
+        cp -r "$INSTALL_DIR/usr/local/support-files"/* "$CLIENTDIR/usr/local/support-files/" || true
+    fi
+    
+    # 复制 scripts
+    if [ -d "$INSTALL_DIR/usr/local/scripts" ]; then
+        mkdir -p "$CLIENTDIR/usr/local/scripts"
+        cp -r "$INSTALL_DIR/usr/local/scripts"/* "$CLIENTDIR/usr/local/scripts/" || true
+    fi
+    
+    # 复制 docs
+    if [ -d "$INSTALL_DIR/usr/local/docs" ]; then
+        mkdir -p "$CLIENTDIR/usr/local/docs"
+        cp -r "$INSTALL_DIR/usr/local/docs"/* "$CLIENTDIR/usr/local/docs/" || true
+    fi
+    
+    # 复制根目录的文件（README, COPYING 等）
+    cp "$INSTALL_DIR/usr/local/"*.md "$INSTALL_DIR/usr/local/"*.txt "$INSTALL_DIR/usr/local/COPYING" "$INSTALL_DIR/usr/local/CREDITS" "$INSTALL_DIR/usr/local/INSTALL-BINARY" "$CLIENTDIR/usr/local/" 2>/dev/null || true
 fi
 
 # 创建客户端配置文件模板
@@ -709,18 +734,32 @@ log "✓ mariadb${PKG_VERSION}-client package created"
 log "Creating mariadb${PKG_VERSION}-server package..."
 
 SERVERDIR="$PKGDIR/mariadb${PKG_VERSION}-server"
-mkdir -p "$SERVERDIR/usr/local"
+mkdir -p "$SERVERDIR/usr/local/bin"
 
 # 复制服务端二进制文件
 if [ -d "$INSTALL_DIR/usr/local/bin" ]; then
-    mkdir -p "$SERVERDIR/usr/local/bin"
-    cp "$INSTALL_DIR/usr/local/bin/"* "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariadbd" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mysqld" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariadb-backup" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariabackup" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mbstream" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/innochecksum" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariadbd-multi" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariadbd-safe" "$SERVERDIR/usr/local/bin/" || true
+    cp "$INSTALL_DIR/usr/local/bin/mariadbd-safe-helper" "$SERVERDIR/usr/local/bin/" || true
 fi
 
 # 复制服务端插件
 if [ -d "$INSTALL_DIR/usr/local/lib/mariadb/plugin" ]; then
     mkdir -p "$SERVERDIR/usr/local/lib/mariadb"
     cp -r "$INSTALL_DIR/usr/local/lib/mariadb/plugin" "$SERVERDIR/usr/local/lib/mariadb/" || true
+fi
+
+# 复制服务端库文件
+if [ -d "$INSTALL_DIR/usr/local/lib" ]; then
+    mkdir -p "$SERVERDIR/usr/local/lib"
+    cp "$INSTALL_DIR/usr/local/lib/libmariadbd"* "$SERVERDIR/usr/local/lib/" || true
+    cp "$INSTALL_DIR/usr/local/lib/libmysqld"* "$SERVERDIR/usr/local/lib/" || true
 fi
 
 # 复制配置文件
