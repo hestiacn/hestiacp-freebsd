@@ -1059,7 +1059,7 @@ else
         sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +COMPACT_MANIFEST
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +COMPACT_MANIFEST
         sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +COMPACT_MANIFEST
-        sed -i '' 's/"version":"8.4.10"/"version":"12.3.2"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"version":"8.4.10_1"/"version":"12.3.2"/g' +COMPACT_MANIFEST
         sed -i '' 's/"libmysqlclient.so.24",//g' +COMPACT_MANIFEST
         sed -i '' 's/, "libmysqlclient.so.24"//g' +COMPACT_MANIFEST
         log "DEBUG: Modified +COMPACT_MANIFEST:"

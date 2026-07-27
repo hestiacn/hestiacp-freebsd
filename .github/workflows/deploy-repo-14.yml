@@ -6,7 +6,7 @@ on:
     types: [published]
   push:
     branches:
-      - mains
+      - main
       - release
   workflow_dispatch:
     inputs:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [15]
+        freebsd_version: [14]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -45,7 +45,7 @@ jobs:
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
 
-            pkg install -y bash gmake perl5 git curl pkgconf autoconf automake libtool ca_root_nss npm node24 libxml2 libxslt bison libzip sqlite3 re2c gmp pcre2 openssl40 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 cyrus-sasl libedit libffi aspell panda-cclient openldap26-client gcc14 gettext libiconv libarchive python3 binutils libmcrypt pcre2 krb5 
+            pkg install -y bash cmake gmake gcc14 openssl40 libedit ncurses perl5 pkgconf git wget curl bison flex libxml2 liblz4 libunwind icu groff cyrus-sasl hidapi snappy autoconf automake libtool ca_root_nss npm node24 libxslt libzip sqlite3 re2c gmp pcre2 postgresql18-client xxhash libargon2 libsodium freetype2 jpeg-turbo webp png oniguruma ImageMagick7 libffi aspell panda-cclient openldap26-client gettext libiconv libarchive python3 binutils libmcrypt krb5
 
             if [ ! -L /bin/bash ] && [ ! -f /bin/bash ]; then
                 ln -sf /usr/local/bin/bash /bin/bash
@@ -57,7 +57,7 @@ jobs:
             chmod +x src/hst_autocompile.sh
 
             set -o pipefail
-            bash src/hst_autocompile.sh --all --noinstall --keepbuild main 2>&1 | tee build.log
+            bash src/hst_autocompile.sh --all --noinstall --mariadb --keepbuild main 2>&1 | tee build.log
             EXIT_CODE=$?
             set +o pipefail
             

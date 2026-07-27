@@ -1006,7 +1006,7 @@ download_apcu() {
     
     [ -d "$apcu_dir" ] && { echo "[ ✓ ] APCu already exists"; return 0; }
     
-    echo "[ * ] Downloading APCu 5.1.24..."
+    echo "[ * ] Downloading APCu 5.1.28..."
     fetch -o "/tmp/apcu.tar.gz" "https://github.com/krakjoe/apcu/archive/refs/tags/v5.1.28.tar.gz" || return 1
     
     echo "[ * ] Extracting..."
@@ -1091,7 +1091,6 @@ get_config_args() {
         "--enable-pcntl"
         "--enable-exif"
         "--enable-ftp"
-        "--enable-static"
         "--enable-static=yes"
         "--enable-shared=yes"
         "--enable-dtrace"
@@ -1100,7 +1099,6 @@ get_config_args() {
         "--enable-xmlreader"
         "--enable-xmlwriter"
         "--enable-simplexml"
-        "--with-xsl"
         "--enable-intl"
         "--enable-soap"
         "--enable-gd"
@@ -1183,7 +1181,7 @@ apply_patches() {
 }
 
 # ============================================================
-# 通过 PECL 安装 IMAP 扩展 (PHP 8.4 使用 PECL)
+# 通过 PECL 安装 IMAP 扩展 (PHP 8.4+ 使用 PECL)
 # ============================================================
 install_imap_pecl() {
     local install_dir="$1"
@@ -1424,6 +1422,101 @@ build_aspell_from_source() {
     
     echo "  ✅ aspell installed successfully"
     return 0
+}
+
+# ============================================================
+# 从源码编译 PSPell（PHP 源码自带）
+# ============================================================
+build_pspell_from_source() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo "  [ * ] Building PSPell from PHP source..."
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    local phpize="$install_dir/usr/local/bin/phpize"
+    local php_config="$install_dir/usr/local/bin/php-config"
+    
+    if [ ! -f "$php_bin" ] || [ ! -f "$phpize" ]; then
+        echo "    ❌ PHP or phpize not found"
+        return 1
+    fi
+    
+    cd "$build_dir/ext/pspell" || return 1
+    
+    echo "    Running phpize..."
+    "$phpize" || return 1
+    
+    echo "    Configuring..."
+    ./configure --with-php-config="$php_config" --with-pspell=/usr/local || return 1
+    
+    echo "    Compiling..."
+    make || return 1
+    
+    echo "    Installing..."
+    make install || return 1
+    
+    # 复制到正确的扩展目录
+    local zend_api_no=$(grep "^#define ZEND_MODULE_API_NO" "$build_dir/Zend/zend_modules.h" | awk '{print $3}')
+    local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
+    
+    local pspell_so=$(find . -name "pspell.so" | head -1)
+    if [ -n "$pspell_so" ] && [ -f "$pspell_so" ]; then
+        mkdir -p "$ext_dir"
+        cp "$pspell_so" "$ext_dir/"
+        echo "    ✅ pspell.so installed to $ext_dir"
+        
+        local php_ini="$install_dir/usr/local/etc/php.ini"
+        if ! grep -q "^extension=pspell.so" "$php_ini" 2>/dev/null; then
+            echo "extension=pspell.so" >> "$php_ini"
+        fi
+        
+        cd "$build_dir"
+        return 0
+    fi
+    
+    cd "$build_dir"
+    echo "    ❌ pspell.so not found after build"
+    return 1
+}
+
+# ============================================================
+# 通过 PECL 安装 PSPell
+# ============================================================
+install_pspell_via_pecl() {
+    local install_dir="$1"
+    local build_dir="$2"
+    
+    echo "  [ * ] Installing PSPell via PECL..."
+    
+    local php_bin="$install_dir/usr/local/bin/php"
+    
+    if [ ! -f "$php_bin" ]; then
+        echo "    ❌ PHP binary not found"
+        return 1
+    fi
+    
+    export PATH="$install_dir/usr/local/bin:/usr/local/bin:$PATH"
+    
+    if ! command -v pecl > /dev/null 2>&1; then
+        echo "    ❌ pecl not found"
+        return 1
+    fi
+    
+    # 设置编译环境
+    export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export CFLAGS="-I/usr/local/include $CFLAGS"
+    export LDFLAGS="-L/usr/local/lib $LDFLAGS"
+    export CPPFLAGS="-I/usr/local/include"
+    
+    # 安装 pspell
+    if pecl install pspell <<< "yes" 2>&1 | tee -a "$LOG_DIR/pspell-pecl.log"; then
+        echo "    ✅ PSPell installed via PECL"
+        return 0
+    else
+        echo "    ❌ PECL installation failed"
+        return 1
+    fi
 }
 
 # ============================================================
@@ -1818,15 +1911,10 @@ build_apcu() {
 }
 
 # ============================================================
-# 构建 PHP（使用 Hestia 路径）
+# 构建 PHP
 # ============================================================
 build_php() {
-    # ============================================================
-    # 确保日志目录存在
-    # ============================================================
-    LOG_DIR="$BUILD_DIR/logs"
     mkdir -p "$LOG_DIR"
-
     local build_dir="$BUILD_DIR/php-src-${PHP_V}"
     local install_dir="$BUILD_DIR/php-${PHP_V}"
     local major=$(echo "$PHP_V" | cut -d. -f1)
@@ -1895,14 +1983,15 @@ build_php() {
     ICU_LIB_DIR="/usr/local/lib"
     ICU_INCLUDE_DIR="/usr/local/include"
     
+    # 检查 ICU 库
     if [ -f "$ICU_LIB_DIR/libicuuc.so.76" ]; then
-        echo "  ✅ Found ICU 76"
+        echo "  ✅ Found ICU 76: $ICU_LIB_DIR/libicuuc.so.76"
         ICU_VERSION="76"
     elif [ -f "$ICU_LIB_DIR/libicuuc.so.75" ]; then
-        echo "  ✅ Found ICU 75"
+        echo "  ✅ Found ICU 75: $ICU_LIB_DIR/libicuuc.so.75"
         ICU_VERSION="75"
     elif [ -f "$ICU_LIB_DIR/libicuuc.so.74" ]; then
-        echo "  ✅ Found ICU 74"
+        echo "  ✅ Found ICU 74: $ICU_LIB_DIR/libicuuc.so.74"
         ICU_VERSION="74"
     else
         echo "  ⚠️  System ICU not found, will use pkg-config"
@@ -1915,6 +2004,7 @@ build_php() {
     export CXXFLAGS="-std=c++17 -Wno-register -Wno-deprecated-declarations"
     export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/libdata/pkgconfig:/usr/lib/pkgconfig"
     
+    # 设置 ICU 环境变量（使用系统 ICU）
     export ICU_CFLAGS="-I$ICU_INCLUDE_DIR"
     export ICU_LIBS="-L$ICU_LIB_DIR -licui18n -licuuc -licudata -licuio"
     export LDFLAGS="-L$ICU_LIB_DIR -Wl,-rpath,$ICU_LIB_DIR"
@@ -1952,6 +2042,7 @@ build_php() {
     # 检测并设置 DTrace
     # ============================================================
     echo "[ * ] Detecting DTrace..."
+
     DT_PATH=""
     for path in /usr/sbin/dtrace /usr/bin/dtrace /sbin/dtrace /usr/local/bin/dtrace; do
         if [ -f "$path" ] && [ -x "$path" ]; then
@@ -2182,12 +2273,12 @@ build_php() {
             echo "[ * ] 删除旧的 curl..."
             rm -f /usr/local/lib/libcurl.so /usr/local/lib/libcurl.so.4
         fi
-
+        
         cp "$SRC_DIR/src/php7.0/curl-8.20.0.tar.gz" /tmp/
         cd /tmp
         extract_archive curl-8.20.0.tar.gz
         cd curl-8.20.0
-
+        
         echo "[ * ] 配置 curl..."
         ./configure --prefix=/usr/local \
             --with-openssl=/usr/local \
@@ -2200,7 +2291,7 @@ build_php() {
             cat config.log | tail -50
             exit 1
         fi
-
+        
         echo "[ * ] 编译 curl..."
         make -j"$NUM_CPUS"
         if [ $? -ne 0 ]; then
@@ -2209,17 +2300,17 @@ build_php() {
             make -j1 | grep -E "error:" | head -20
             exit 1
         fi
-
+        
         echo "[ * ] 安装 curl..."
         make install
         if [ $? -ne 0 ]; then
             echo "❌ curl 安装失败"
             exit 1
         fi
-
+        
         cd /tmp
         rm -rf curl-8.20.0 curl-8.20.0.tar.gz
-
+        
         if [ -f "/usr/local/lib/libcurl.so" ]; then
             echo "✅ curl 编译成功"
             if [ -L "/usr/local/lib/libcurl.so" ]; then
@@ -2356,7 +2447,7 @@ build_php() {
         
         if [ -f "/usr/local/lib/libpq.so.5" ] || [ -f "/usr/local/lib/libpq.so" ]; then
             echo "✅ postgresql 客户端编译成功"
-            ls -lh /usr/local/lib/libpq.so* 2>/dev/null | grep -E "libpq\.so" | head -3
+            ls -lh /usr/local/lib/libpq.so* | grep -E "libpq\.so" | head -3
         else
             echo "❌ postgresql 客户端编译失败"
             exit 1
@@ -2372,10 +2463,6 @@ build_php() {
         cd /tmp
         extract_archive cyrus-sasl-2.1.28.tar.gz
         cd cyrus-sasl-2.1.28
-
-        # ============================================================
-        # 应用 Heimdal 兼容补丁（使 gs2 能在 FreeBSD 上编译）
-        # ============================================================
         echo "[ * ] Applying Heimdal compatibility patch for gs2..."
         cd plugins
         cat > /tmp/gs2_heimdal.h << 'EOF'
@@ -2516,10 +2603,7 @@ build_php() {
         extract_archive imap-imap-2007f_upstream.tar.gz
         cd imap-imap-2007f_upstream
 
-        # ============================================================
-        # 复制 c-client 源文件到 src/osdep/unix/
-        # ============================================================
-        echo "[ * ] 复制 c-client 源文件到 src/osdep/unix/..."
+        echo "[ * ] 复制 c-client 源文件到..."
         mkdir -p src/osdep/unix
 
         # 复制所有 .c 文件到 src/osdep/unix/
@@ -2529,10 +2613,6 @@ build_php() {
         # 复制 mtest.c
         cp -f "$SRC_DIR/src/php7.0/mtest.c" src/mtest/mtest.c || true
         echo "  ✅ 已复制 mtest.c"
-
-        # ============================================================
-        # 确保 ssl_unix.c 是 OpenSSL 4.x 版本（在 src/osdep/unix/）
-        # ============================================================
         SSL_SRC="$SRC_DIR/src/php7.0/c-client/ssl_unix.c"
 
         if [ ! -f "$SSL_SRC" ]; then
@@ -2543,8 +2623,6 @@ build_php() {
         # 强制复制到 src/osdep/unix/（tools/an 会从这里创建软链接）
         cp -f "$SSL_SRC" src/osdep/unix/ssl_unix.c
         echo "  ✅ 已复制 OpenSSL 4.x 版本到 src/osdep/unix/ssl_unix.c"
-
-        # 验证
         if grep -q "EVP_RSA_gen" src/osdep/unix/ssl_unix.c 2>/dev/null; then
             echo "  ✅ src/osdep/unix/ssl_unix.c 包含 EVP_RSA_gen"
         else
@@ -2560,18 +2638,8 @@ build_php() {
         sed -i '' 's|SSLLIB=/usr/lib|SSLLIB=/usr/local/lib|g' Makefile
         echo "  ✅ Makefile patched"
 
-        # ============================================================
-        # 调试：验证 tools/an 创建软链接后的状态
-        # ============================================================
-        echo ""
-        echo "========================================"
-        echo "[ DEBUG ] 验证 c-client/ssl_unix.c 软链接"
-        echo "========================================"
-
         # 先运行 tools/an 创建软链接
         tools/an "ln -s" src/osdep/unix c-client
-
-        # 检查 c-client/ssl_unix.c
         echo "[ * ] 检查 c-client/ssl_unix.c..."
         if [ -L "c-client/ssl_unix.c" ]; then
             echo "  c-client/ssl_unix.c -> $(readlink c-client/ssl_unix.c)"
@@ -2587,26 +2655,12 @@ build_php() {
             exit 1
         fi
 
-        echo ""
-        echo "========================================"
-        echo "[ DEBUG ] 继续编译..."
-        echo "========================================"
-        echo "[ * ] 强制设置 OpenSSL 4.x 版本宏..."
         export CFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
         export CXXFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include"
         echo "  ✅ OPENSSL_VERSION_NUMBER=0x40000000L 已设置"
-
-        # ============================================================
         # 强制使用 OpenSSL 4.x 兼容代码
-        # ============================================================
-        echo "[ * ] 强制使用 OpenSSL 4.x 兼容的 ssl_unix.c..."
-
         cd c-client
-
-        # 删除旧文件，强制重新生成
         rm -f osdep.c osdep.o osdepssl.c
-
-        # 复制新文件
         cp "$SRC_DIR/src/php7.0/c-client/ssl_unix.c" ssl_unix.c
 
         # 同时直接创建 osdepssl.c（以防 make 的 ln 失败）
@@ -2621,15 +2675,13 @@ build_php() {
         fi
 
         cd ..
-
-        echo "  ✅ 强制使用 OpenSSL 4.x 兼容代码完成"
         echo "[ * ] 配置并编译 c-client (bsf port for FreeBSD)..."
 
         gmake bsf \
             SSLTYPE=unix.nopwd \
             SSLINCLUDE=/usr/local/include \
             SSLLIB=/usr/local/lib \
-            EXTRACFLAGS="-DOPENSSL_VERSION_NUMBER=0x40000000L -I/usr/local/include -Wno-deprecated-declarations -Wno-error -fPIC" \
+            EXTRACFLAGS="-I/usr/local/include -DOPENSSL_VERSION_NUMBER=0x40000000L -Wno-deprecated-declarations -Wno-error -fPIC" \
             EXTRALDFLAGS="-L/usr/local/lib -lssl -lcrypto -pthread" \
             INTERACTIVE=no 2>&1 | tee /tmp/c-client-build.log
 
@@ -3061,6 +3113,7 @@ EOF
     fi
 
     echo "[ ✓ ] OpenSSL 4.x environment configured"
+
     # ============================================================
     # 生成 configure 脚本
     # ============================================================
@@ -3081,7 +3134,7 @@ EOF
     echo "  CXXFLAGS=$CXXFLAGS"
 
     # ============================================================
-    # 配置 PHP - 使用 Hestia 路径
+    # 配置 PHP
     # ============================================================
     echo "[ * ] Configuring PHP ${PHP_V} for Hestia..."
     cd "$build_dir" || {
@@ -3184,27 +3237,46 @@ EOF
         EDIT_LIBS="-ledit -lncurses" \
         ac_cv_sizeof_off_t=8 \
         ac_cv_type_off_t=yes \
-        > "$BUILD_DIR/logs/configure-${PHP_V}.log"
+        > "$LOG_DIR/configure-${PHP_V}.log"
 
     CONFIGURE_STATUS=$?
     export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/lib"
 
     if [ $CONFIGURE_STATUS -ne 0 ]; then
         echo "❌ Configure failed"
-        tail -300 "$BUILD_DIR/logs/configure-${PHP_V}.log"
+        tail -300 "$LOG_DIR/configure-${PHP_V}.log"
         return 1
     fi
 
+    echo "[ * ] Checking ICU used:"
+    grep -i "icu" "$LOG_DIR/configure-${PHP_V}.log" | head -20 || true
+
     # ============================================================
-    # 修复 Makefile 中的 ICU 库路径
+    # 修复 Makefile 中的 ICU 库路径（使用系统 ICU）
     # ============================================================
+    echo "[ * ] Fixing ICU link order in Makefile..."
     if [ -f "Makefile" ]; then
+        echo "  📋 BEFORE modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
+        
+        # 移除旧的 ICU 库标志
         sed -i '' -e 's|-licui18n||g' \
                 -e 's|-licuuc||g' \
                 -e 's|-licudata||g' \
                 -e 's|-licuio||g' Makefile
+        echo "  ✅ Removed ICU library flags from Makefile"
+        
+        # 添加系统 ICU 库
         sed -i '' -e "s|^EXTRA_LIBS = \(.*\)$|EXTRA_LIBS = -L/usr/local/lib -licui18n -licuuc -licudata -licuio \1|" Makefile
+        echo "  ✅ ICU libraries added to EXTRA_LIBS"
+        
         sed -i '' -e "s|^LIBS = \(.*\)$|LIBS = -L/usr/local/lib -licui18n -licuuc -licudata -licuio \1|" Makefile
+        echo "  ✅ ICU libraries added to LIBS"
+        
+        echo "  📋 AFTER modification:"
+        grep "^EXTRA_LIBS" Makefile | head -1 | sed 's/^/    EXTRA_LIBS: /'
+        grep "^LIBS" Makefile | head -1 | sed 's/^/    LIBS: /'
     fi
 
     # ============================================================
@@ -3212,44 +3284,36 @@ EOF
     # ============================================================
     echo "[ * ] Compiling PHP ${PHP_V} (using ${NUM_CPUS} cores)..."
     mkdir -p "${BUILD_DIR}/usr/local/hestia"
-    
     CURRENT_LIBS=$(grep "^LIBS" Makefile | head -1 | sed 's/^LIBS = //')
-    
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        gmake -j "$NUM_CPUS" \
-            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
-            LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
-            > "$LOG_DIR/build-${PHP_V}.log"
-    else
-        make -j "$NUM_CPUS" \
-            LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
-            LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
-            > "$LOG_DIR/build-${PHP_V}.log"
-    fi
-    
+    gmake -j "$NUM_CPUS" \
+        LDFLAGS="-L/usr/local/lib -Wl,-rpath,/usr/local/lib" \
+        LIBS="-licui18n -licuuc -licudata -licuio ${CURRENT_LIBS}" \
+        > "$LOG_DIR/build-${PHP_V}.log"
     BUILD_STATUS=$?
+
     if [ -n "$OLD_LD_PRELOAD" ]; then
         export LD_PRELOAD="$OLD_LD_PRELOAD"
     fi
+
     if [ $BUILD_STATUS -ne 0 ]; then
         echo ""
         echo "========================================"
         echo "❌ BUILD FAILED"
         echo "========================================"
+        echo ""
+        echo "=== All errors ==="
         grep -E "error:|Error:|undefined reference|failed" "$LOG_DIR/build-${PHP_V}.log" | head -200
         echo ""
+        echo "========================================"
         echo "Last 200 lines:"
+        echo "========================================"
         tail -200 "$LOG_DIR/build-${PHP_V}.log"
         echo ""
         echo "[ * ] Retrying with single core..."
-        if [ "$OSTYPE" = 'freebsd' ]; then
-            gmake clean
-            gmake -j1 >> "$LOG_DIR/build-${PHP_V}.log"
+        gmake clean
+        if gmake -j1 >> "$LOG_DIR/build-${PHP_V}.log"; then
+            echo "[ ✓ ] Single core build succeeded!"
         else
-            make clean
-            make -j1 >> "$LOG_DIR/build-${PHP_V}.log"
-        fi
-        if [ $? -ne 0 ]; then
             return 1
         fi
     fi
@@ -3259,38 +3323,35 @@ EOF
     # ============================================================
     echo ""
     echo "[*] Generating phar.phar..."
+    
     cd "$build_dir" || return 1
     
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        gmake ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
-    else
-        make ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
+    if [ ! -f "modules/phar.so" ] && [ ! -f "ext/phar/.libs/phar.so" ]; then
+        echo "❌ phar.so not found! phar extension was not built."
+        echo "   Check: configure --enable-phar=shared"
+        return 1
     fi
+    
+    echo "  Attempt 1: make ext/phar/phar.phar"
+    make ext/phar/phar.phar | tee -a "$LOG_DIR/phar-gen.log" || true
     
     if [ ! -f "ext/phar/phar.phar" ] || [ ! -s "ext/phar/phar.phar" ]; then
         echo "❌ phar.phar not generated or empty"
         return 1
     fi
-    echo "  ✅ phar.phar ready"
+    
+    echo "  ✅ phar.phar ready ($(du -h ext/phar/phar.phar | cut -f1))"
 
     # ============================================================
     # 安装 PHP
     # ============================================================
     echo ""
-    echo "[*] Installing PHP ${PHP_V} to Hestia path..."
+    echo "[*] Installing PHP ${PHP_V}..."
     mkdir -p "$install_dir"
-
-    # 确定 make 命令
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        MAKE_CMD="gmake"
-    else
-        MAKE_CMD="make"
-    fi
-
     echo "[ * ] Installing phpize and php-config..."
     if [ -f "Makefile" ]; then
-        if ! $MAKE_CMD install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
-            echo "  ⚠️  $MAKE_CMD install-programs failed, copying from source..."
+        if ! gmake install-programs INSTALL_ROOT="$install_dir" | tee -a "$LOG_DIR/install-programs.log"; then
+            echo "  ⚠️  make install-programs failed, copying from source..."
             if [ -f "$build_dir/phpize" ]; then
                 mkdir -p "$install_dir/usr/local/bin"
                 cp "$build_dir/phpize" "$install_dir/usr/local/bin/"
@@ -3305,18 +3366,26 @@ EOF
         else
             echo "  ✅ phpize and php-config installed"
         fi
+        
+        if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
+            echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
+            echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
+        else
+            echo "  ⚠️  phpize or php-config still missing"
+        fi
     fi
-
-    if [ -f "$install_dir/usr/local/bin/phpize" ] && [ -f "$install_dir/usr/local/bin/php-config" ]; then
-        echo "  ✅ phpize: $(ls -l $install_dir/usr/local/bin/phpize)"
-        echo "  ✅ php-config: $(ls -l $install_dir/usr/local/bin/php-config)"
-    else
-        echo "  ⚠️  phpize or php-config still missing"
-    fi
-
-    # 禁用 PEAR 后安装
+    
+    echo "[ * ] Step 1: Installing PHP (without PEAR)..."
+    
     if [ -f "Makefile" ]; then
+        echo "  Makefile targets (before):"
+        grep -E "^install:|^install-|^pharcmd:" Makefile | head -10 | sed 's/^/    /'
+        
         cp Makefile Makefile.bak
+        
+        echo ""
+        echo "  PEAR lines before:"
+        grep -n "install-pear" Makefile | head -10 || echo "    (none found)"
         sed -i '' 's/ install-pear / /g' Makefile
         sed -i '' 's/ install-pear$/ /g' Makefile
         sed -i '' 's/^install_targets.*install-pear.*$/ /g' Makefile
@@ -3324,18 +3393,21 @@ EOF
         sed -i '' 's/^install-pear-installer:/# install-pear-installer:/g' Makefile
         sed -i '' '/^\t.*install-pear/ s/^/# /' Makefile
         sed -i '' '/^\t.*PEAR_INSTALLER/ s/^/# /' Makefile
+        
+        echo ""
+        echo "  PEAR lines after:"
+        grep -n "install-pear" Makefile | head -10 || echo "    (none found)"
+        
+        echo ""
+        echo "  Makefile targets (after):"
+        grep -E "^install:|^install-|^pharcmd:" Makefile | head -10 | sed 's/^/    /'
+        
+        echo "  ✓ PEAR disabled in Makefile"
     fi
-
+    
     echo ""
-    echo "[*] Installing PHP ${PHP_V}..."
-
-    if [ "$OSTYPE" = 'freebsd' ]; then
-        INSTALL_CMD="gmake"
-    else
-        INSTALL_CMD="make"
-    fi
-
-    if ! $INSTALL_CMD install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_V}.log" 2>&1; then
+    echo "  Running: gmake install INSTALL_ROOT=\"$install_dir\""
+    if ! gmake install INSTALL_ROOT="$install_dir" > "$LOG_DIR/install-${PHP_V}.log" 2>&1; then
         echo "❌ PHP install failed"
         echo ""
         echo "--- Last 50 lines of install log ---"
@@ -3345,7 +3417,7 @@ EOF
         echo "--- Trying component installation ---"
         for target in install-cli install-cgi install-fpm install-build install-pdo-headers; do
             echo "  Installing $target..."
-            $INSTALL_CMD $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_V}.log" || true
+            gmake $target INSTALL_ROOT="$install_dir" 2>> "$LOG_DIR/install-${PHP_V}.log" || true
         done
         
         if [ -d "modules" ]; then
@@ -3371,22 +3443,24 @@ EOF
             chmod 755 "$install_dir/usr/local/bin/php-config"
             echo "  ✅ php-config copied"
         fi
-    fi 
-
-    # 检查二进制文件是否存在
+    fi
+    
     if [ ! -f "$install_dir/usr/local/bin/php" ]; then
         echo "❌ PHP binary not found!"
         echo "Contents of $install_dir/usr/local/bin:"
         ls -la "$install_dir/usr/local/bin/" || echo "  (empty)"
         return 1
     fi
-
-    # 恢复 Makefile
+    
+    echo ""
+    echo "  ✅ PHP installed successfully"
+    echo "  PHP version: $($install_dir/usr/local/bin/php -v | head -1)"
+    
     if [ -f "Makefile.bak" ]; then
         mv Makefile.bak Makefile
+        echo "  ✓ Restored Makefile"
     fi
-
-    # 创建头文件软链接，让 phpize 能找到
+    
     if [ ! -f "$install_dir/usr/local/bin/php-cgi" ] && [ -f "$install_dir/usr/local/bin/php" ]; then
         ln -sf php "$install_dir/usr/local/bin/php-cgi"
         echo "  ✓ Created php-cgi symlink"
@@ -3407,8 +3481,8 @@ EOF
     fi
 
     echo ""
-    echo "✅ PHP ${PHP_V} installed to Hestia path"
-    
+    echo "✅ PHP ${PHP_V} installed successfully"
+
     rm -f /usr/local/include/php || true
     ln -sf "$build_dir" /usr/local/include/php
     if [ -d "/usr/local/include/php" ] && [ ! -L "/usr/local/include/php/php" ]; then
@@ -3418,21 +3492,21 @@ EOF
     fi
 
     # ============================================================
-    # 编译 ImageMagick 扩展
+    # 编译 ImageMagick 扩展（打包前安装）
     # ============================================================
     if ! build_imagick "$build_dir" "$install_dir"; then
         echo "⚠️  ImageMagick extension build failed"
     fi
 
     # ============================================================
-    # 编译 APCu 扩展
+    # 编译 APCu 扩展（打包前安装）
     # ============================================================
     if ! build_apcu "$build_dir" "$install_dir"; then
         echo "⚠️  APCu extension build failed"
     fi
 
     # ============================================================
-    # 编译 PSpell 扩展
+    # 安装 PSPell 扩展（源码优先，PECL 备用）
     # ============================================================
     if ! install_pspell "$install_dir" "$build_dir"; then
         echo "⚠️  PSPell source build failed, trying PECL..."
@@ -3440,8 +3514,9 @@ EOF
             echo "⚠️  PSPell installation failed"
         fi
     fi
+
     # ============================================================
-    # 编译  IMAP 扩展
+    # 安装 IMAP 扩展（PHP 8.4+ 使用 PECL）
     # ============================================================
     IMAP_INSTALLED=0
     if [ "$BUILD_IMAP" = "yes" ]; then
@@ -3461,7 +3536,7 @@ EOF
     fi
 
     # ============================================================
-    # 验证扩展
+    # 验证所有扩展已安装
     # ============================================================
     echo ""
     echo "========================================"
@@ -3473,6 +3548,8 @@ EOF
     local ext_dir="$install_dir/usr/local/lib/php/extensions/no-debug-non-zts-${zend_api_no}"
     
     echo "Extension directory: $ext_dir"
+    echo ""
+    echo "Installed extensions:"
     if [ -d "$ext_dir" ]; then
         ls -la "$ext_dir/" | grep -E "\.so$" | sed 's/^/  /'
     fi
@@ -3508,7 +3585,7 @@ if [ "$PHP_B" = "true" ]; then
         BUILD_DIR_HESTIAPHP="$BUILD_DIR/hestia-php_${CLEAN_PHP_VER_FINAL}"
         
         # ============================================================
-        # 调用 build_php 函数（包含所有编译逻辑）
+        # 调用 build_php 函数
         # ============================================================
         echo "[ * ] Building PHP with build_php()..."
         if ! build_php; then
@@ -3517,18 +3594,47 @@ if [ "$PHP_B" = "true" ]; then
         fi
         
         # ============================================================
-        # 复制到 Hestia 包目录（包含完整文件，和Debian一致）
+        # 复制到 Hestia 包目录
         # ============================================================
         echo "[ * ] Copying to Hestia package directory..."
         
-        # 创建 Hestia PHP 目录
         mkdir -p "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php"
         
         if [ -d "$BUILD_DIR/php-${PHP_V}/usr/local" ]; then
             cp -r "$BUILD_DIR/php-${PHP_V}/usr/local/"* "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/"
         fi
         
+        # ============================================================
+        # 修复路径嵌套问题
+        # ============================================================
+        # 1. 修复 include 路径
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php" ]; then
+            echo "[ * ] Fixing include path..."
+            mv "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php/"*  "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/"
+            rmdir "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/include/php/php"
+            echo "  ✅ include path fixed"
+        fi
+        
+        # 2. 修复 fpm status 路径
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm" ]; then
+            echo "[ * ] Fixing fpm status path..."
+            mkdir -p "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/fpm"
+            if [ -f "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm/status.html" ]; then
+                mv "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php/fpm/status.html" \
+                   "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/fpm/"
+            fi
+            rm -rf "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php/php"
+            echo "  ✅ fpm status path fixed"
+        fi
+        
+        # 3. 删除空的 php 目录
+        if [ -d "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" ] && [ -z "$(ls -A "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" 2>/dev/null)" ]; then
+            rmdir "${BUILD_DIR_HESTIAPHP}/usr/local/hestia/php/php" || true
+        fi
+        
+        # ============================================================
         # 创建 hestia-php 软链接
+        # ============================================================
         if [ -f "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/php-fpm" ]; then
             ln -sf php-fpm "$BUILD_DIR_HESTIAPHP/usr/local/hestia/php/sbin/hestia-php"
         fi
@@ -4009,13 +4115,21 @@ echo "========================================================================"
 if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo ""
     echo "========================================================================"
+    echo "Package Contents:"
+    echo "========================================================================"
+    
+    echo ""
+    echo "--- hestia-php package contents ---"
+    pkg info -l -F "$PKG_DIR/hestia-php-${PHP_V}.pkg"
+    
+    echo ""
+    echo "========================================================================"
     echo "Copying artifacts to host workspace for copyback..."
     echo "========================================================================"
     
     HOST_WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
     ARTIFACTS_DIR="${HOST_WORKSPACE}/artifacts"
     mkdir -p "$HOST_WORKSPACE"
-
     echo "[ * ] Copying from: $PKG_DIR"
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     

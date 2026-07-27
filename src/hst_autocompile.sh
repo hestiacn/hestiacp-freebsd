@@ -392,6 +392,9 @@ for i in "$@"; do
 			WEB_TERMINAL_B='true'
 			HESTIA_B='true'
 			;;
+        --mariadb)
+            MARIADB_B='true'
+            ;;
 		--nginx)
 			NGINX_B='true'
 			;;
@@ -664,6 +667,27 @@ else
 fi
 
 branch_dash=$(echo "$branch" | sed 's/\//-/g')
+
+if [ "$MARIADB_B" = "true" ]; then
+    echo ""
+    echo "========================================"
+    echo "[1/2] Building MariaDB 12.3.2 packages"
+    echo "========================================"
+    echo ""
+    
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/build-mariadb-packages.sh" ]; then
+        bash "$SCRIPT_DIR/build-mariadb-packages.sh"
+        if [ $? -ne 0 ]; then
+            echo "❌ MariaDB build failed!"
+            exit 1
+        fi
+        echo "✅ MariaDB packages built"
+    else
+        echo "❌ build-mariadb-packages.sh not found!"
+        exit 1
+    fi
+fi
 
 # =================================================================================
 # Building hestia-nginx
