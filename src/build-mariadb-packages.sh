@@ -355,10 +355,24 @@ log "Files installed: $(find "$INSTALL_DIR" -type f | wc -l) files"
 
 cd "$WORKDIR"
 
+log "Removing test files to reduce package size..."
+# 删除测试套件（节省 500MB-1GB）
+if [ -d "$INSTALL_DIR/usr/local/mariadb-test" ]; then
+    rm -rf "$INSTALL_DIR/usr/local/mariadb-test"
+    log "✅ Removed mariadb-test"
+fi
+
+if [ -d "$INSTALL_DIR/usr/local/sql-bench" ]; then
+    rm -rf "$INSTALL_DIR/usr/local/sql-bench"
+    log "✅ Removed sql-bench"
+fi
+
 log "Stripping binaries to reduce size..."
 find "$INSTALL_DIR" -name "*.so" -exec strip -s {} \; || true
 find "$INSTALL_DIR" -name "*.a" -exec strip -s {} \; || true
-find "$INSTALL_DIR" -type f -executable -exec strip -s {} \; || true
+find "$INSTALL_DIR" -type f -perm -111 -exec strip -s {} \; || true
+
+log "Final files: $(find "$INSTALL_DIR" -type f | wc -l) files"
 
 # ============================================================
 # 6.5 查看安装目录结构（调试用）
@@ -406,36 +420,60 @@ mkdir -p "$LIBDIR/usr/local/lib" \
          "$LIBDIR/usr/local/include/mariadb" \
          "$LIBDIR/usr/local/lib/pkgconfig"
 
+# === 调试：显示源文件位置 ===
+log "DEBUG: Checking source files..."
+log "  INSTALL_DIR/usr/local/lib contents:"
+ls -la "$INSTALL_DIR/usr/local/lib" | head -20 | tee -a "$LOG_FILE"
+
 # 复制共享库
 if [ -d "$INSTALL_DIR/usr/local/lib" ]; then
-    cp "$INSTALL_DIR/usr/local/lib/libmariadb"* "$LIBDIR/usr/local/lib/" || true
-    cp "$INSTALL_DIR/usr/local/lib/libmysqlclient"* "$LIBDIR/usr/local/lib/" || true
+    log "DEBUG: Copying libmariadb* from $INSTALL_DIR/usr/local/lib"
+    cp -v "$INSTALL_DIR/usr/local/lib/libmariadb"* "$LIBDIR/usr/local/lib/" 2>&1 | tee -a "$LOG_FILE" || true
+    cp -v "$INSTALL_DIR/usr/local/lib/libmysqlclient"* "$LIBDIR/usr/local/lib/" 2>&1 | tee -a "$LOG_FILE" || true
 fi
+
+# === 调试：检查复制结果 ===
+log "DEBUG: LIBDIR/usr/local/lib contents after copy:"
+ls -la "$LIBDIR/usr/local/lib" | tee -a "$LOG_FILE"
 
 # 复制头文件
 if [ -d "$INSTALL_DIR/usr/local/include/mariadb" ]; then
-    cp -r "$INSTALL_DIR/usr/local/include/mariadb"/* "$LIBDIR/usr/local/include/mariadb/" || true
+    log "DEBUG: Copying mariadb headers..."
+    cp -rv "$INSTALL_DIR/usr/local/include/mariadb"/* "$LIBDIR/usr/local/include/mariadb/" 2>&1 | tee -a "$LOG_FILE" || true
 fi
 
 # 复制 MySQL 兼容头文件到 include/mysql
 if [ -d "$INSTALL_DIR/usr/local/include/mysql" ]; then
+    log "DEBUG: Copying mysql headers..."
     mkdir -p "$LIBDIR/usr/local/include/mysql"
-    cp -r "$INSTALL_DIR/usr/local/include/mysql"/* "$LIBDIR/usr/local/include/mysql/" || true
+    cp -rv "$INSTALL_DIR/usr/local/include/mysql"/* "$LIBDIR/usr/local/include/mysql/" 2>&1 | tee -a "$LOG_FILE" || true
 fi
+
+# === 调试：检查头文件 ===
+log "DEBUG: LIBDIR/usr/local/include contents:"
+ls -la "$LIBDIR/usr/local/include" | tee -a "$LOG_FILE"
 
 # 复制 pkgconfig
 if [ -f "$INSTALL_DIR/usr/local/lib/pkgconfig/mariadb.pc" ]; then
-    cp "$INSTALL_DIR/usr/local/lib/pkgconfig/mariadb.pc" "$LIBDIR/usr/local/lib/pkgconfig/"
+    log "DEBUG: Copying mariadb.pc"
+    cp -v "$INSTALL_DIR/usr/local/lib/pkgconfig/mariadb.pc" "$LIBDIR/usr/local/lib/pkgconfig/" 2>&1 | tee -a "$LOG_FILE"
 fi
 
 # 创建 MySQL 兼容符号链接
 cd "$LIBDIR/usr/local/lib"
-[ -f libmariadb.so ] && ln -sf libmariadb.so libmysqlclient.so || true
+log "DEBUG: Creating symlinks in $(pwd)"
+[ -f libmariadb.so ] && ln -sf libmariadb.so libmysqlclient.so && log "  → libmysqlclient.so -> libmariadb.so" || log "  ⚠ libmariadb.so not found, skipping symlink"
 cd "$LIBDIR/usr/local/lib/pkgconfig"
-[ -f mariadb.pc ] && ln -sf mariadb.pc mysqlclient.pc || true
+[ -f mariadb.pc ] && ln -sf mariadb.pc mysqlclient.pc && log "  → mysqlclient.pc -> mariadb.pc" || log "  ⚠ mariadb.pc not found, skipping symlink"
 cd "$WORKDIR"
 
-# 创建 MANIFEST（版本用 12.3.2）
+# === 调试：检查最终的包目录结构 ===
+log "DEBUG: Final LIBDIR structure:"
+find "$LIBDIR" -type f -o -type l | sort | tee -a "$LOG_FILE"
+log "DEBUG: LIBDIR file count: $(find "$LIBDIR" -type f | wc -l)"
+log "DEBUG: LIBDIR symlink count: $(find "$LIBDIR" -type l | wc -l)"
+
+# 创建 MANIFEST
 cat > "$LIBDIR/+MANIFEST" << EOF
 {
   "name": "libmariadb",
@@ -464,24 +502,27 @@ cat > "$LIBDIR/+MANIFEST" << EOF
 }
 EOF
 
+log "DEBUG: +MANIFEST created:"
+cat "$LIBDIR/+MANIFEST" | tee -a "$LOG_FILE"
+
 # 创建 INSTALL 脚本
 cat > "$LIBDIR/+INSTALL" << 'EOF'
-#!/bin/bash
+#!/bin/sh
 # POST-INSTALL script for libmariadb
 
 echo "libmariadb: Creating compatibility symlinks..."
 
 # Create libmysqlclient.so symlink
-if [ -f /usr/local/lib/mariadb/libmariadb.so ] && [ ! -L /usr/local/lib/libmysqlclient.so ]; then
+if [ -f /usr/local/lib/libmariadb.so ] && [ ! -L /usr/local/lib/libmysqlclient.so ]; then
     mkdir -p /usr/local/lib
-    ln -sf /usr/local/lib/mariadb/libmariadb.so /usr/local/lib/libmysqlclient.so
+    ln -sf /usr/local/lib/libmariadb.so /usr/local/lib/libmysqlclient.so
     echo "  → libmysqlclient.so -> libmariadb.so"
 fi
 
 # Create pkgconfig symlink
-if [ -f /usr/local/lib/mariadb/pkgconfig/mariadb.pc ] && [ ! -L /usr/local/lib/pkgconfig/mysqlclient.pc ]; then
+if [ -f /usr/local/lib/pkgconfig/mariadb.pc ] && [ ! -L /usr/local/lib/pkgconfig/mysqlclient.pc ]; then
     mkdir -p /usr/local/lib/pkgconfig
-    ln -sf /usr/local/lib/mariadb/pkgconfig/mariadb.pc /usr/local/lib/pkgconfig/mysqlclient.pc
+    ln -sf /usr/local/lib/pkgconfig/mariadb.pc /usr/local/lib/pkgconfig/mysqlclient.pc
     echo "  → mysqlclient.pc -> mariadb.pc"
 fi
 
@@ -491,7 +532,7 @@ chmod +x "$LIBDIR/+INSTALL"
 
 # 创建 POST_DEINSTALL 脚本
 cat > "$LIBDIR/+POST_DEINSTALL" << 'EOF'
-#!/bin/bash
+#!/bin/sh
 # POST-DEINSTALL script for libmariadb
 
 echo "libmariadb: Removing compatibility symlinks..."
@@ -503,12 +544,13 @@ chmod +x "$LIBDIR/+POST_DEINSTALL"
 
 # 创建 pkg-plist
 cat > "$LIBDIR/pkg-plist" << 'EOF'
-@dir lib/mariadb
-lib/mariadb/libmariadb.so
-lib/mariadb/libmariadb.so.3
-lib/mariadb/libmariadb.so.3.1.18
-lib/mariadb/libmariadbclient.a
-lib/mariadb/libmariadbclient.so
+@dir lib
+lib/libmariadb.so
+lib/libmariadb.so.3
+lib/libmariadb.so.3.1.18
+lib/libmariadbclient.a
+lib/libmariadbclient.so
+lib/libmysqlclient.so
 @dir include/mariadb
 include/mariadb/mysql.h
 include/mariadb/mysqld_error.h
@@ -522,19 +564,28 @@ include/mysql/mysql_version.h
 include/mysql/mariadb_version.h
 include/mysql/mysqld_error.h
 include/mysql/errmsg.h
-@dir lib
-lib/libmysqlclient.so
 @dir lib/pkgconfig
 lib/pkgconfig/mysqlclient.pc
 EOF
+
+log "DEBUG: pkg-plist created:"
+cat "$LIBDIR/pkg-plist" | tee -a "$LOG_FILE"
 
 log "libmariadb package created"
 
 # 打包
 cd "$PKGDIR"
-pkg create -o . -m libmariadb
+log "DEBUG: Running pkg create in $(pwd)"
+log "DEBUG: pkg create -o . -m libmariadb"
+pkg create -o . -m libmariadb 2>&1 | tee -a "$LOG_FILE"
+
+# === 调试：检查打包结果 ===
+log "DEBUG: Package created. Checking results..."
+ls -la "$PKGDIR"/*.pkg 2>&1 | tee -a "$LOG_FILE"
+
 rm -rf libmariadb
 log "✓ libmariadb package created"
+
 
 # ============================================================
 # 7.2 创建 mariadb-client-core 包（核心客户端工具）
@@ -863,41 +914,96 @@ log "✓ mariadb${PKG_VERSION}-server package created"
 print_header "Step 8: Creating modified p5-DBD-MariaDB package"
 
 log "Downloading original p5-DBD-MariaDB package..."
-pkg fetch -y -o "$PKGDIR" p5-DBD-MariaDB 2>&1 | tee -a "$LOG_FILE"
+pkg fetch -y p5-DBD-MariaDB 2>&1 | tee -a "$LOG_FILE"
 
-DBD_PKG=$(ls "$PKGDIR"/p5-DBD-MariaDB-*.pkg | head -1)
+# === 调试：查找下载的包 ===
+log "DEBUG: Looking for p5-DBD-MariaDB package in /var/cache/pkg"
+ls -la /var/cache/pkg/*DBD* 2>&1 | tee -a "$LOG_FILE"
+
+DBD_PKG=$(find /var/cache/pkg -name "p5-DBD-MariaDB-*.pkg" -type f)
 
 if [ -z "$DBD_PKG" ]; then
-    log "WARNING: Could not download p5-DBD-MariaDB, skipping..."
+    log "WARNING: Could not find downloaded p5-DBD-MariaDB package"
+    log "DEBUG: Contents of /var/cache/pkg:"
+    ls -la /var/cache/pkg/ | tee -a "$LOG_FILE"
 else
-    log "Original package: $(basename "$DBD_PKG")"
+    log "✅ Found package: $(basename "$DBD_PKG")"
+    log "DEBUG: Package size: $(ls -lh "$DBD_PKG" | awk '{print $5}')"
     
     DBDDIR="$PKGDIR/p5-DBD-MariaDB-custom"
-    mkdir -p "$DBDDIR/usr/local"
+    mkdir -p "$DBDDIR"
+    
+    log "Extracting original package..."
+    tar -xf "$DBD_PKG" -C "$DBDDIR" 2>&1 | tee -a "$LOG_FILE"
+    
+    # === 调试：检查解压结果 ===
+    log "DEBUG: Extracted files in $DBDDIR:"
+    ls -la "$DBDDIR" | tee -a "$LOG_FILE"
     
     cd "$DBDDIR"
-    log "Extracting original package..."
-    tar -xf "$DBD_PKG" 2>&1 | tee -a "$LOG_FILE"
     
-    log "Modifying dependencies..."
     if [ -f "+MANIFEST" ]; then
-        sed -i '' 's/"mysql80-client"/"libmariadb"/g' +MANIFEST
+        log "DEBUG: Original +MANIFEST:"
+        cat "+MANIFEST" | tee -a "$LOG_FILE"
+        
+        log "Modifying MANIFEST dependencies..."
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +MANIFEST
-        sed -i '' 's/"mysql90-client"/"libmariadb"/g' +MANIFEST
-        sed -i '' 's/"mysql97-client"/"libmariadb"/g' +MANIFEST
+        sed -i '' 's/"mysql[0-9]*-client"/"libmariadb"/g' +MANIFEST
+        sed -i '' 's/"origin": "databases\/mysql[0-9]*-client"/"origin": "databases\/libmariadb"/g' +MANIFEST
         sed -i '' 's/"version": "1.23"/"version": "1.23.custom"/g' +MANIFEST
         sed -i '' 's/"comment": "MariaDB driver for the Perl5 Database Interface (DBI)"/"comment": "MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
+        sed -i '' 's/"libmysqlclient.so.24"/"libmariadb.so"/g' +MANIFEST
+        
+        log "DEBUG: Modified +MANIFEST:"
+        cat "+MANIFEST" | tee -a "$LOG_FILE"
+        
+        log "Modified dependencies:"
+        grep -A 5 '"deps"' +MANIFEST | tee -a "$LOG_FILE"
+    else
+        log "ERROR: +MANIFEST not found in extracted package!"
+        log "DEBUG: Contents of $DBDDIR:"
+        ls -la "$DBDDIR" | tee -a "$LOG_FILE"
     fi
     
-    log "Re-packaging..."
-    tar -cf "../p5-DBD-MariaDB-custom.pkg" *
+    cat > "+POST_INSTALL" << 'EOF'
+#!/bin/sh
+# POST-INSTALL script for p5-DBD-MariaDB-custom
+
+echo "p5-DBD-MariaDB-custom: Creating compatibility symlinks..."
+if [ -f /usr/local/lib/libmariadb.so ] && [ ! -L /usr/local/lib/libmysqlclient.so.24 ]; then
+    ln -sf /usr/local/lib/libmariadb.so /usr/local/lib/libmysqlclient.so.24
+    echo "  → libmysqlclient.so.24 -> libmariadb.so"
+fi
+echo "p5-DBD-MariaDB-custom: Installation complete"
+EOF
+    chmod +x "+POST_INSTALL"
+    
+    cat > "+POST_DEINSTALL" << 'EOF'
+#!/bin/sh
+# POST-DEINSTALL script for p5-DBD-MariaDB-custom
+
+echo "p5-DBD-MariaDB-custom: Removing compatibility symlinks..."
+rm -f /usr/local/lib/libmysqlclient.so.24
+echo "p5-DBD-MariaDB-custom: Cleanup completed"
+EOF
+    chmod +x "+POST_DEINSTALL"
+    
     cd "$PKGDIR"
+    
+    log "Re-packaging using pkg create..."
+    log "DEBUG: pkg create -o . -m \"$DBDDIR\" -r \"$DBDDIR\""
+    pkg create -o . -m "$DBDDIR" -r "$DBDDIR" 2>&1 | tee -a "$LOG_FILE"
+    
+    # === 调试：检查打包结果 ===
+    log "DEBUG: Checking for created package..."
+    ls -la p5-DBD-MariaDB-custom*.pkg 2>&1 | tee -a "$LOG_FILE"
+    
     rm -rf "$DBDDIR"
     
-    log "✓ p5-DBD-MariaDB-custom package created"
+    log "✅ p5-DBD-MariaDB-custom package created"
 fi
 
-rm -rf "$INSTALL_DIR"
+cd "$WORKDIR"
 
 # ============================================================
 # 9. 总结
