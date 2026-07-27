@@ -247,8 +247,7 @@ GSSAPI_FILE="$WORKDIR/mariadb-${MARIADB_VERSION}/plugin/auth_gssapi/gssapi_serve
 
 if [ -f "$GSSAPI_FILE" ]; then
     log "Fixing GSSAPI: removing #ifdef HAVE_KRB5_XFREE for FreeBSD..."
-    
-    # 删除 #ifdef 和 #endif 行，只保留 #define
+    sed -i '' 's/krb5_xfree/free/g' "$GSSAPI_FILE"
     sed -i '' '/#ifdef HAVE_KRB5_XFREE/d' "$GSSAPI_FILE"
     sed -i '' '/#endif/d' "$GSSAPI_FILE"
     
