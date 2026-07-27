@@ -130,6 +130,65 @@ EOF
 fi
 
 # ============================================================
+# 1.6 检查 OpenSSL 版本
+# ============================================================
+print_header "Step 1.6: Checking OpenSSL version"
+
+log "OpenSSL version check:"
+log ""
+
+# 检查 openssl 命令
+if command -v openssl >/dev/null 2>&1; then
+    OPENSSL_VER=$(openssl version 2>/dev/null | head -1)
+    log "  openssl: $OPENSSL_VER"
+else
+    log "  openssl: not found"
+fi
+
+# 检查 openssl40
+if command -v openssl40 >/dev/null 2>&1; then
+    OPENSSL40_VER=$(openssl40 version 2>/dev/null | head -1)
+    log "  openssl40: $OPENSSL40_VER"
+else
+    log "  openssl40: not found"
+fi
+
+# 检查 pkg 中的 openssl40
+if pkg info openssl40 >/dev/null 2>&1; then
+    OPENSSL40_PKG=$(pkg info openssl40 | grep Version | awk '{print $2}')
+    log "  openssl40 pkg: $OPENSSL40_PKG"
+else
+    log "  openssl40 pkg: not installed"
+fi
+
+# 判断当前使用的版本
+if command -v openssl40 >/dev/null 2>&1; then
+    log "✅ Using OpenSSL 4.x (openssl40)"
+elif pkg info openssl40 >/dev/null 2>&1; then
+    log "⚠️ openssl40 installed but not in PATH"
+    log "   Adding /usr/local/bin to PATH..."
+    export PATH=/usr/local/bin:$PATH
+elif command -v openssl >/dev/null 2>&1; then
+    OPENSSL_VER=$(openssl version | awk '{print $2}')
+    OPENSSL_MAJOR=$(echo "$OPENSSL_VER" | cut -d. -f1)
+    if [ "$OPENSSL_MAJOR" -ge 4 ]; then
+        log "✅ Using OpenSSL 4.x (system default)"
+    else
+        log "⚠️ Using OpenSSL $OPENSSL_VER (not 4.x)"
+        log "   MariaDB 12.3.2 is compatible with OpenSSL 3.x and 4.x"
+        log "   Continuing with OpenSSL $OPENSSL_VER"
+    fi
+else
+    log "❌ OpenSSL not found!"
+    log "   Please install openssl40:"
+    log "   pkg install -y openssl40"
+    exit 1
+fi
+
+log ""
+log "✅ OpenSSL check completed"
+
+# ============================================================
 # 2. 下载 MariaDB 源码
 # ============================================================
 print_header "Step 2: Downloading MariaDB source code"
@@ -209,7 +268,7 @@ print_header "Step 4: Configuring build"
 log "Creating build directory..."
 mkdir -p build
 cd build
-
+log "OpenSSL version: $(openssl version || echo 'not found')"
 export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 export PKG_CONFIG_PATH=/usr/local/libdata/pkgconfig:$PKG_CONFIG_PATH
 log "Running CMake configuration..."
@@ -296,6 +355,11 @@ log "Files installed: $(find "$INSTALL_DIR" -type f | wc -l) files"
 
 cd "$WORKDIR"
 
+log "Stripping binaries to reduce size..."
+find "$INSTALL_DIR" -name "*.so" -exec strip -s {} \; || true
+find "$INSTALL_DIR" -name "*.a" -exec strip -s {} \; || true
+find "$INSTALL_DIR" -type f -executable -exec strip -s {} \; || true
+
 # ============================================================
 # 6.5 查看安装目录结构（调试用）
 # ============================================================
@@ -314,8 +378,12 @@ log "Files in INSTALL_DIR/usr/local/lib:"
 ls -la "$INSTALL_DIR/usr/local/lib" | tee -a "$LOG_FILE"
 
 log ""
-log "Files in INSTALL_DIR/usr/local/sbin:"
-ls -la "$INSTALL_DIR/usr/local/sbin" | tee -a "$LOG_FILE"
+log "Files in INSTALL_DIR/usr/local/sbin (if exists):"
+ls -la "$INSTALL_DIR/usr/local/sbin" | tee -a "$LOG_FILE" || echo "  (sbin not found - mariadbd is in bin)"
+
+log ""
+log "Files in INSTALL_DIR/usr/local/include (if exists):"
+ls -la "$INSTALL_DIR/usr/local/include" | tee -a "$LOG_FILE" || echo "  (include not found)"
 
 log ""
 log "Total files: $(find "$INSTALL_DIR" -type f | wc -l)"
@@ -577,7 +645,7 @@ log "✓ mariadb-client-core package created"
 log "Creating mariadb${PKG_VERSION}-client package..."
 
 CLIENTDIR="$PKGDIR/mariadb${PKG_VERSION}-client"
-mkdir -p "$CLIENTDIR"
+mkdir -p "$CLIENTDIR/usr/local"
 
 # 复制除 bin、lib、include、sbin 外的所有文件
 if [ -d "$INSTALL_DIR/usr/local" ]; then
@@ -595,14 +663,14 @@ mkdir -p "$CLIENTDIR/usr/local/etc/mysql/conf.d"
 cat > "$CLIENTDIR/usr/local/etc/mysql/my.cnf.sample" << 'EOF'
 [client]
 port = 3306
-socket = /tmp/mysql.sock
+socket = /var/run/mysql/mysql.sock
 default-character-set = utf8mb4
 EOF
 
 cat > "$CLIENTDIR/usr/local/etc/mysql/conf.d/client.cnf.sample" << 'EOF'
 [client]
 port = 3306
-socket = /tmp/mysql.sock
+socket = /var/run/mysql/mysql.sock
 default-character-set = utf8mb4
 EOF
 
@@ -641,12 +709,12 @@ log "✓ mariadb${PKG_VERSION}-client package created"
 log "Creating mariadb${PKG_VERSION}-server package..."
 
 SERVERDIR="$PKGDIR/mariadb${PKG_VERSION}-server"
-mkdir -p "$SERVERDIR"
+mkdir -p "$SERVERDIR/usr/local"
 
 # 复制服务端二进制文件
-if [ -d "$INSTALL_DIR/usr/local/sbin" ]; then
-    mkdir -p "$SERVERDIR/usr/local/sbin"
-    cp "$INSTALL_DIR/usr/local/sbin/"* "$SERVERDIR/usr/local/sbin/" || true
+if [ -d "$INSTALL_DIR/usr/local/bin" ]; then
+    mkdir -p "$SERVERDIR/usr/local/bin"
+    cp "$INSTALL_DIR/usr/local/bin/"* "$SERVERDIR/usr/local/bin/" || true
 fi
 
 # 复制服务端插件
@@ -726,7 +794,7 @@ load_rc_config $name
 : ${mariadb_datadir:=/var/db/mysql}
 : ${mariadb_pidfile:=/var/run/mysqld/mysqld.pid}
 
-command=/usr/local/sbin/mysqld
+command=/usr/local/bin/mysqld
 command_args="--basedir=/usr/local --datadir=${mariadb_datadir} --pid-file=${mariadb_pidfile}"
 
 mariadb_precmd()
@@ -766,7 +834,7 @@ else
     log "Original package: $(basename "$DBD_PKG")"
     
     DBDDIR="$PKGDIR/p5-DBD-MariaDB-custom"
-    mkdir -p "$DBDDIR"
+    mkdir -p "$DBDDIR/usr/local"
     
     cd "$DBDDIR"
     log "Extracting original package..."
