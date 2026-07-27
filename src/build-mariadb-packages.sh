@@ -69,7 +69,7 @@ else
     mkdir -p "$JUDY_DIR"
     cd "$JUDY_DIR"
     
-    # 下载 netdata 版本
+    # 下载
     if [ ! -f "v${JUDY_VERSION}-netdata2.tar.gz" ]; then
         log "Downloading Judy ${JUDY_VERSION} from GitHub (netdata version)..."
         fetch "https://github.com/netdata/libjudy/archive/refs/tags/v${JUDY_VERSION}-netdata2.tar.gz" 2>&1 | tee -a "$LOG_FILE"
@@ -82,7 +82,6 @@ else
     fi
     
     cd "libjudy-${JUDY_VERSION}-netdata2/src"
-    
     # 修改 sh_build 脚本
     log "Fixing sh_build script..."
     sed -i '' 's/^CC=.*/CC="gcc"/' sh_build
@@ -93,6 +92,16 @@ else
     # 直接运行 sh_build 编译
     log "Compiling Judy with sh_build..."
     ./sh_build 2>&1 | tee -a "$LOG_FILE"
+    if [ ! -f "libJudy.so" ] && [ -f "libJudy.a" ]; then
+        log "libJudy.so not generated, creating manually from .o files..."
+        O_FILES=$(find Judy* -name "*.o" | tr '\n' ' ')
+        if [ -n "$O_FILES" ]; then
+            gcc -shared -o libJudy.so $O_FILES -Wl,-soname,libJudy.so
+        else
+            gcc -shared -o libJudy.so -Wl,-whole-archive libJudy.a -Wl,-no-whole-archive
+        fi
+        echo "  ✅ libJudy.so created manually"
+    fi
     
     # 安装
     log "Installing Judy..."
@@ -123,6 +132,12 @@ EOF
         log "✅ Judy installed successfully"
     else
         log "ERROR: Judy installation failed"
+        if [ ! -f /usr/local/lib/libJudy.so ]; then
+            log "  libJudy.so not found"
+        fi
+        if [ ! -f /usr/local/include/Judy.h ]; then
+            log "  Judy.h not found"
+        fi
         exit 1
     fi
     
@@ -130,63 +145,45 @@ EOF
 fi
 
 # ============================================================
-# 1.6 检查 OpenSSL 版本
+# 1.6 检查并设置 OpenSSL 环境
 # ============================================================
-print_header "Step 1.6: Checking OpenSSL version"
+print_header "Step 1.6: Setting up OpenSSL environment"
 
-log "OpenSSL version check:"
-log ""
+log "Detecting OpenSSL..."
 
-# 检查 openssl 命令
-if command -v openssl >/dev/null 2>&1; then
-    OPENSSL_VER=$(openssl version 2>/dev/null | head -1)
-    log "  openssl: $OPENSSL_VER"
-else
-    log "  openssl: not found"
-fi
-
-# 检查 openssl40
-if command -v openssl40 >/dev/null 2>&1; then
-    OPENSSL40_VER=$(openssl40 version 2>/dev/null | head -1)
-    log "  openssl40: $OPENSSL40_VER"
-else
-    log "  openssl40: not found"
-fi
-
-# 检查 pkg 中的 openssl40
-if pkg info openssl40 >/dev/null 2>&1; then
-    OPENSSL40_PKG=$(pkg info openssl40 | grep Version | awk '{print $2}')
-    log "  openssl40 pkg: $OPENSSL40_PKG"
-else
-    log "  openssl40 pkg: not installed"
-fi
-
-# 判断当前使用的版本
+# 检测并设置 OpenSSL 环境变量
 if command -v openssl40 >/dev/null 2>&1; then
     log "✅ Using OpenSSL 4.x (openssl40)"
+    export OPENSSL_ROOT=/usr/local
+    export OPENSSL_LIB=/usr/local/lib
+    export OPENSSL_INCLUDE=/usr/local/include
 elif pkg info openssl40 >/dev/null 2>&1; then
-    log "⚠️ openssl40 installed but not in PATH"
-    log "   Adding /usr/local/bin to PATH..."
+    log "✅ openssl40 package installed, setting environment"
+    export OPENSSL_ROOT=/usr/local
+    export OPENSSL_LIB=/usr/local/lib
+    export OPENSSL_INCLUDE=/usr/local/include
     export PATH=/usr/local/bin:$PATH
-elif command -v openssl >/dev/null 2>&1; then
-    OPENSSL_VER=$(openssl version | awk '{print $2}')
-    OPENSSL_MAJOR=$(echo "$OPENSSL_VER" | cut -d. -f1)
-    if [ "$OPENSSL_MAJOR" -ge 4 ]; then
-        log "✅ Using OpenSSL 4.x (system default)"
-    else
-        log "⚠️ Using OpenSSL $OPENSSL_VER (not 4.x)"
-        log "   MariaDB 12.3.2 is compatible with OpenSSL 3.x and 4.x"
-        log "   Continuing with OpenSSL $OPENSSL_VER"
-    fi
 else
-    log "❌ OpenSSL not found!"
-    log "   Please install openssl40:"
-    log "   pkg install -y openssl40"
-    exit 1
+    log "⚠️ Using system OpenSSL (may be 3.x)"
+    export OPENSSL_ROOT=/usr
+    export OPENSSL_LIB=/usr/lib
+    export OPENSSL_INCLUDE=/usr/include
 fi
 
+# 验证设置
 log ""
-log "✅ OpenSSL check completed"
+log "OpenSSL environment:"
+log "  OPENSSL_ROOT: $OPENSSL_ROOT"
+log "  OPENSSL_LIB: $OPENSSL_LIB"
+log "  OPENSSL_INCLUDE: $OPENSSL_INCLUDE"
+
+# 导出到 CMake
+export PKG_CONFIG_PATH="${OPENSSL_LIB}/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+export CFLAGS="-I${OPENSSL_INCLUDE} $CFLAGS"
+export LDFLAGS="-L${OPENSSL_LIB} $LDFLAGS"
+
+log ""
+log "✅ OpenSSL environment configured"
 
 # ============================================================
 # 2. 下载 MariaDB 源码
@@ -284,6 +281,9 @@ cmake .. \
     -DJudy_INCLUDE_DIR=/usr/local/include \
     -DJudy_LIBRARY=/usr/local/lib/libJudy.so \
     -DWITH_READLINE=ON \
+    -DOPENSSL_ROOT_DIR=/usr/local \
+    -DOPENSSL_INCLUDE_DIR=/usr/local/include \
+    -DOPENSSL_LIBRARIES="/usr/local/lib/libssl.so;/usr/local/lib/libcrypto.so" \
     -DWITH_SSL=system \
     -DWITH_ZLIB=system \
     -DWITH_LIBEDIT=system \
