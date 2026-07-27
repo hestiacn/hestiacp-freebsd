@@ -551,7 +551,7 @@ PLIST_FILE="$LIBDIR/pkg-plist"
 
 if [ -d "$LIBDIR/usr/local" ]; then
     cd "$LIBDIR"
-    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    find usr/local -type f -o -type l | sed 's/^usr\/local\///' | sort >> "$PLIST_FILE"
     cd "$WORKDIR"
 fi
 
@@ -633,7 +633,7 @@ PLIST_FILE="$COREDIR/pkg-plist"
 # 列出实际安装的文件并生成 plist
 if [ -d "$COREDIR/usr/local/bin" ]; then
     cd "$COREDIR"
-    find usr/local/bin -type f -o -type l | sort >> "$PLIST_FILE"
+    find usr/local/bin -type f -o -type l | sed 's/^usr\/local\///' | sort >> "$PLIST_FILE"
     cd "$WORKDIR"
 fi
 
@@ -1039,6 +1039,7 @@ else
         sed -i '' 's/"mysql[0-9]*-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +MANIFEST
         sed -i '' 's/"version":"1.23"/"version":"1.23.custom"/g' +MANIFEST
+        sed -i '' 's/"version":"8.4.10_1"/"version":"12.3.2"/g' +MANIFEST
         sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
         sed -i '' 's/"libmysqlclient.so.24"/"libmariadb.so"/g' +MANIFEST
         
