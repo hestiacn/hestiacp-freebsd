@@ -542,36 +542,22 @@ echo "libmariadb: Cleanup completed"
 EOF
 chmod +x "$LIBDIR/+POST_DEINSTALL"
 
-# 创建 pkg-plist
-cat > "$LIBDIR/pkg-plist" << 'EOF'
-@dir lib
-lib/libmariadb.so
-lib/libmariadb.so.3
-lib/libmariadb.so.3.1.18
-lib/libmariadbclient.a
-lib/libmariadbclient.so
-lib/libmysqlclient.so
-@dir include/mariadb
-include/mariadb/mysql.h
-include/mariadb/mysqld_error.h
-include/mariadb/mysql_version.h
-include/mariadb/mariadb_com.h
-include/mariadb/mariadb_version.h
-@dir include/mysql
-include/mysql/mysql.h
-include/mysql/mysql_com.h
-include/mysql/mysql_version.h
-include/mysql/mariadb_version.h
-include/mysql/mysqld_error.h
-include/mysql/errmsg.h
-@dir lib/pkgconfig
-lib/pkgconfig/mysqlclient.pc
-EOF
+# ============================================================
+# 动态生成 pkg-plist（修复：路径需要包含 usr/local/）
+# ============================================================
+log "Generating pkg-plist for libmariadb..."
+PLIST_FILE="$LIBDIR/pkg-plist"
+> "$PLIST_FILE"
+
+if [ -d "$LIBDIR/usr/local" ]; then
+    cd "$LIBDIR"
+    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    cd "$WORKDIR"
+fi
 
 log "DEBUG: pkg-plist created:"
-cat "$LIBDIR/pkg-plist" | tee -a "$LOG_FILE"
-
-log "libmariadb package created"
+cat "$PLIST_FILE" | tee -a "$LOG_FILE"
+log "DEBUG: Total entries: $(wc -l < "$PLIST_FILE")"
 
 # 打包
 cd "$PKGDIR"
@@ -579,13 +565,15 @@ log "DEBUG: Running pkg create in $(pwd)"
 log "DEBUG: pkg create -o . -m libmariadb"
 pkg create -m "$LIBDIR" -p "$LIBDIR/pkg-plist" -r "$LIBDIR" -o . 2>&1 | tee -a "$LOG_FILE"
 
-# === 调试：检查打包结果 ===
-log "DEBUG: Package created. Checking results..."
-ls -la "$PKGDIR"/*.pkg 2>&1 | tee -a "$LOG_FILE"
-
-rm -rf libmariadb
-log "✓ libmariadb package created"
-
+if [ $? -eq 0 ]; then
+    log "DEBUG: Package created. Checking results..."
+    ls -la "$PKGDIR"/*.pkg 2>&1 | tee -a "$LOG_FILE"
+    rm -rf libmariadb
+    log "✓ libmariadb package created"
+else
+    log "ERROR: Failed to create libmariadb package"
+    exit 1
+fi
 
 # ============================================================
 # 7.2 创建 mariadb-client-core 包（核心客户端工具）
@@ -597,6 +585,7 @@ mkdir -p "$COREDIR/usr/local/bin"
 
 log "DEBUG: Available files in INSTALL_DIR/usr/local/bin:"
 ls -la "$INSTALL_DIR/usr/local/bin" | tee -a "$LOG_FILE"
+
 if [ -d "$INSTALL_DIR/usr/local/bin" ]; then
     for tool in mariadb mariadb-admin mariadb-dump mariadb-check mariadb-import mariadb-show; do
         if [ -f "$INSTALL_DIR/usr/local/bin/$tool" ]; then
@@ -643,11 +632,9 @@ PLIST_FILE="$COREDIR/pkg-plist"
 
 # 列出实际安装的文件并生成 plist
 if [ -d "$COREDIR/usr/local/bin" ]; then
-    for f in "$COREDIR/usr/local/bin/"*; do
-        if [ -f "$f" ] || [ -L "$f" ]; then
-            basename "$f" | sed 's/^/bin\//' >> "$PLIST_FILE"
-        fi
-    done
+    cd "$COREDIR"
+    find usr/local/bin -type f -o -type l | sort >> "$PLIST_FILE"
+    cd "$WORKDIR"
 fi
 
 log "DEBUG: pkg-plist contents:"
@@ -685,7 +672,6 @@ if [ -f /usr/local/bin/mariadb ] && [ ! -L /usr/local/bin/mysql ]; then
     ln -sf mariadb /usr/local/bin/mysql
     echo "  → mysql -> mariadb"
 fi
-
 if [ -f /usr/local/bin/mariadb-admin ] && [ ! -L /usr/local/bin/mysqladmin ]; then
     ln -sf mariadb-admin /usr/local/bin/mysqladmin
     echo "  → mysqladmin -> mariadb-admin"
@@ -800,18 +786,21 @@ socket = /var/run/mysql/mysql.sock
 default-character-set = utf8mb4
 EOF
 
+# ============================================================
+# 动态生成 pkg-plist（修复：在 CLIENTDIR 中执行 find）
+# ============================================================
 log "Generating pkg-plist for mariadb${PKG_VERSION}-client..."
 PLIST_FILE="$CLIENTDIR/pkg-plist"
 > "$PLIST_FILE"
 
 if [ -d "$CLIENTDIR/usr/local" ]; then
     cd "$CLIENTDIR"
-    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    find usr/local -type f -o -type l | sed 's/^usr\/local\///' | sort >> "$PLIST_FILE"
     cd "$WORKDIR"
 fi
 
-log "DEBUG: pkg-plist contents (first 20 lines):"
-head -20 "$PLIST_FILE" | tee -a "$LOG_FILE"
+log "DEBUG: pkg-plist contents (first 50 lines):"
+head -50 "$PLIST_FILE" | tee -a "$LOG_FILE"
 log "DEBUG: Total entries: $(wc -l < "$PLIST_FILE")"
 
 # 创建 MANIFEST
@@ -917,7 +906,7 @@ if [ -d "$INSTALL_DIR/usr/local/man" ]; then
 fi
 
 # ============================================================
-# 动态生成 pkg-plist（关键修复）
+# 动态生成 pkg-plist（修复：在 SERVERDIR 中执行 find）
 # ============================================================
 log "Generating pkg-plist for mariadb${PKG_VERSION}-server..."
 PLIST_FILE="$SERVERDIR/pkg-plist"
@@ -925,13 +914,13 @@ PLIST_FILE="$SERVERDIR/pkg-plist"
 
 if [ -d "$SERVERDIR/usr/local" ]; then
     cd "$SERVERDIR"
-    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    find usr/local -type f -o -type l | sed 's/^usr\/local\///' | sort >> "$PLIST_FILE"
     cd "$WORKDIR"
 fi
 
 log "DEBUG: pkg-plist entries: $(wc -l < "$PLIST_FILE")"
-log "DEBUG: pkg-plist contents (first 20 lines):"
-head -20 "$PLIST_FILE" | tee -a "$LOG_FILE"
+log "DEBUG: pkg-plist contents (first 50 lines):"
+head -50 "$PLIST_FILE" | tee -a "$LOG_FILE"
 
 # 创建 MANIFEST
 cat > "$SERVERDIR/+MANIFEST" << EOF
@@ -1049,7 +1038,7 @@ else
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"mysql[0-9]*-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +MANIFEST
-        sed -i '' 's/"version":"[0-9.]*"/"version":"1.23.custom"/g' +MANIFEST
+        sed -i '' 's/"version":"1.23"/"version":"1.23.custom"/g' +MANIFEST
         sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
         sed -i '' 's/"libmysqlclient.so.24"/"libmariadb.so"/g' +MANIFEST
         
@@ -1065,7 +1054,7 @@ else
         log "Modifying +COMPACT_MANIFEST..."
         sed -i '' 's/"name":"p5-DBD-MariaDB"/"name":"p5-DBD-MariaDB-custom"/g' +COMPACT_MANIFEST
         sed -i '' 's/"origin":"databases\/p5-DBD-MariaDB"/"origin":"databases\/p5-DBD-MariaDB-custom"/g' +COMPACT_MANIFEST
-        sed -i '' 's/"version":"[0-9.]*"/"version":"1.23.custom"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"version":"1.23"/"version":"1.23.custom"/g' +COMPACT_MANIFEST
         sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +COMPACT_MANIFEST
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +COMPACT_MANIFEST
         sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +COMPACT_MANIFEST
