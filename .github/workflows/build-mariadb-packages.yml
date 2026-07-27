@@ -75,8 +75,8 @@ jobs:
             export OPENSSL_LIB=/usr/local/lib
             export OPENSSL_INCLUDE=/usr/local/include
             export PKG_CONFIG_PATH="${OPENSSL_LIB}/pkgconfig:/usr/local/lib/pkgconfig"
-            export CFLAGS="-I${OPENSSL_INCLUDE} $CFLAGS"
-            export LDFLAGS="-L${OPENSSL_LIB} $LDFLAGS"
+            export CFLAGS="-I${OPENSSL_INCLUDE} ${CFLAGS:-}"
+            export LDFLAGS="-L${OPENSSL_LIB} ${LDFLAGS:-}"
 
             # 设置 artifacts 目录（FreeBSD VM 内部）
             export ARTIFACT_DIR="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd/artifacts"
