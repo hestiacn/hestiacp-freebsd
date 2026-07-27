@@ -576,8 +576,8 @@ log "libmariadb package created"
 # 打包
 cd "$PKGDIR"
 log "DEBUG: Running pkg create in $(pwd)"
-log "DEBUG: pkg create -o . -m libmariadb"
-pkg create -o . -m libmariadb 2>&1 | tee -a "$LOG_FILE"
+log "DEBUG: pkg create -m \"$LIBDIR\" -p \"$LIBDIR/pkg-plist\" -r \"$LIBDIR\" -o ."
+pkg create -m "$LIBDIR" -p "$LIBDIR/pkg-plist" -r "$LIBDIR" -o . 2>&1 | tee -a "$LOG_FILE"
 
 # === 调试：检查打包结果 ===
 log "DEBUG: Package created. Checking results..."
@@ -686,7 +686,7 @@ chmod +x "$COREDIR/+POST_DEINSTALL"
 
 # 打包
 cd "$PKGDIR"
-pkg create -o . -m mariadb-client-core
+pkg create -m "$COREDIR" -p "$COREDIR/pkg-plist" -r "$COREDIR" -o .
 rm -rf mariadb-client-core
 log "✓ mariadb-client-core package created"
 
@@ -775,7 +775,7 @@ cat > "$CLIENTDIR/+MANIFEST" << EOF
 EOF
 
 cd "$PKGDIR"
-pkg create -o . -m "mariadb${PKG_VERSION}-client"
+pkg create -m "$CLIENTDIR" -p "$CLIENTDIR/pkg-plist" -r "$CLIENTDIR" -o .
 rm -rf "mariadb${PKG_VERSION}-client"
 log "✓ mariadb${PKG_VERSION}-client package created"
 
@@ -904,7 +904,7 @@ EOF
 chmod +x "$SERVERDIR/usr/local/etc/rc.d/mariadb"
 
 cd "$PKGDIR"
-pkg create -o . -m "mariadb${PKG_VERSION}-server"
+pkg create -m "$SERVERDIR" -p "$SERVERDIR/pkg-plist" -r "$SERVERDIR" -o .
 rm -rf "mariadb${PKG_VERSION}-server"
 log "✓ mariadb${PKG_VERSION}-server package created"
 
@@ -949,9 +949,9 @@ else
         log "Modifying MANIFEST dependencies..."
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"mysql[0-9]*-client"/"libmariadb"/g' +MANIFEST
-        sed -i '' 's/"origin": "databases\/mysql[0-9]*-client"/"origin": "databases\/libmariadb"/g' +MANIFEST
-        sed -i '' 's/"version": "1.23"/"version": "1.23.custom"/g' +MANIFEST
-        sed -i '' 's/"comment": "MariaDB driver for the Perl5 Database Interface (DBI)"/"comment": "MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
+        sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +MANIFEST
+        sed -i '' 's/"version":"1.23"/"version":"1.23.custom"/g' +MANIFEST
+        sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
         sed -i '' 's/"libmysqlclient.so.24"/"libmariadb.so"/g' +MANIFEST
         
         log "DEBUG: Modified +MANIFEST:"
@@ -991,8 +991,15 @@ EOF
     cd "$PKGDIR"
     
     log "Re-packaging using pkg create..."
-    log "DEBUG: pkg create -o . -m \"$DBDDIR\" -r \"$DBDDIR\""
-    pkg create -o . -m "$DBDDIR" -r "$DBDDIR" 2>&1 | tee -a "$LOG_FILE"
+    log "DEBUG: pkg create -m \"$DBDDIR\" -r \"$DBDDIR\" -o ."
+    pkg create -m "$DBDDIR" -r "$DBDDIR" -o . 2>&1 | tee -a "$LOG_FILE"
+    if [ -f "p5-DBD-MariaDB-1.23.custom.pkg" ]; then
+        mv "p5-DBD-MariaDB-1.23.custom.pkg" "p5-DBD-MariaDB-custom.pkg"
+        log "✅ Renamed p5-DBD-MariaDB-1.23.custom.pkg -> p5-DBD-MariaDB-custom.pkg"
+    elif [ -f "p5-DBD-MariaDB-1.23.pkg" ]; then
+        mv "p5-DBD-MariaDB-1.23.pkg" "p5-DBD-MariaDB-custom.pkg"
+        log "✅ Renamed p5-DBD-MariaDB-1.23.pkg -> p5-DBD-MariaDB-custom.pkg"
+    fi
     
     # === 调试：检查打包结果 ===
     log "DEBUG: Checking for created package..."
