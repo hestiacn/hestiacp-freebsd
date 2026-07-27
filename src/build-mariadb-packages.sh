@@ -29,7 +29,7 @@ NC='\033[0m'
 
 mkdir -p "$WORKDIR" "$PKGDIR"
 cd "$WORKDIR"
-
+export TZ=Asia/Shanghai
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
 }
