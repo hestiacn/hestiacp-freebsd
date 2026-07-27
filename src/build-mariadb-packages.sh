@@ -576,7 +576,7 @@ log "libmariadb package created"
 # 打包
 cd "$PKGDIR"
 log "DEBUG: Running pkg create in $(pwd)"
-log "DEBUG: pkg create -m \"$LIBDIR\" -p \"$LIBDIR/pkg-plist\" -r \"$LIBDIR\" -o ."
+log "DEBUG: pkg create -o . -m libmariadb"
 pkg create -m "$LIBDIR" -p "$LIBDIR/pkg-plist" -r "$LIBDIR" -o . 2>&1 | tee -a "$LOG_FILE"
 
 # === 调试：检查打包结果 ===
@@ -595,21 +595,63 @@ log "Creating mariadb-client-core package..."
 COREDIR="$PKGDIR/mariadb-client-core"
 mkdir -p "$COREDIR/usr/local/bin"
 
-# 复制核心工具
+log "DEBUG: Available files in INSTALL_DIR/usr/local/bin:"
+ls -la "$INSTALL_DIR/usr/local/bin" | tee -a "$LOG_FILE"
 if [ -d "$INSTALL_DIR/usr/local/bin" ]; then
-    cp "$INSTALL_DIR/usr/local/bin/mariadb"* "$COREDIR/usr/local/bin/" || true
-    cp "$INSTALL_DIR/usr/local/bin/mysql"* "$COREDIR/usr/local/bin/" || true
+    for tool in mariadb mariadb-admin mariadb-dump mariadb-check mariadb-import mariadb-show; do
+        if [ -f "$INSTALL_DIR/usr/local/bin/$tool" ]; then
+            cp "$INSTALL_DIR/usr/local/bin/$tool" "$COREDIR/usr/local/bin/"
+            log "  Copied: $tool"
+        else
+            log "  ⚠ Not found: $tool"
+        fi
+    done
 fi
 
 # 创建 MySQL 兼容符号链接
 cd "$COREDIR/usr/local/bin"
-[ -f mariadb ] && ln -sf mariadb mysql || true
-[ -f mariadbadmin ] && ln -sf mariadbadmin mysqladmin || true
-[ -f mariadbdump ] && ln -sf mariadbdump mysqldump || true
-[ -f mariadbcheck ] && ln -sf mariadbcheck mysqlcheck || true
-[ -f mariadbimport ] && ln -sf mariadbimport mysqlimport || true
-[ -f mariadbshow ] && ln -sf mariadbshow mysqlshow || true
+if [ -f mariadb ]; then
+    ln -sf mariadb mysql
+    log "  → mysql -> mariadb"
+fi
+if [ -f mariadb-admin ]; then
+    ln -sf mariadb-admin mysqladmin
+    log "  → mysqladmin -> mariadb-admin"
+fi
+if [ -f mariadb-dump ]; then
+    ln -sf mariadb-dump mysqldump
+    log "  → mysqldump -> mariadb-dump"
+fi
+if [ -f mariadb-check ]; then
+    ln -sf mariadb-check mysqlcheck
+    log "  → mysqlcheck -> mariadb-check"
+fi
+if [ -f mariadb-import ]; then
+    ln -sf mariadb-import mysqlimport
+    log "  → mysqlimport -> mariadb-import"
+fi
+if [ -f mariadb-show ]; then
+    ln -sf mariadb-show mysqlshow
+    log "  → mysqlshow -> mariadb-show"
+fi
 cd "$WORKDIR"
+
+# 动态生成 pkg-plist（根据实际安装的文件）
+log "Generating pkg-plist for mariadb-client-core..."
+PLIST_FILE="$COREDIR/pkg-plist"
+> "$PLIST_FILE"
+
+# 列出实际安装的文件并生成 plist
+if [ -d "$COREDIR/usr/local/bin" ]; then
+    for f in "$COREDIR/usr/local/bin/"*; do
+        if [ -f "$f" ] || [ -L "$f" ]; then
+            basename "$f" | sed 's/^/bin\//' >> "$PLIST_FILE"
+        fi
+    done
+fi
+
+log "DEBUG: pkg-plist contents:"
+cat "$PLIST_FILE" | tee -a "$LOG_FILE"
 
 # 创建 MANIFEST
 cat > "$COREDIR/+MANIFEST" << EOF
@@ -632,45 +674,46 @@ cat > "$COREDIR/+MANIFEST" << EOF
 }
 EOF
 
-# 创建 pkg-plist
-cat > "$COREDIR/pkg-plist" << 'EOF'
-bin/mariadb
-bin/mariadbadmin
-bin/mariadbdump
-bin/mariadbcheck
-bin/mariadbimport
-bin/mariadbshow
-bin/mysql
-bin/mysqladmin
-bin/mysqldump
-bin/mysqlcheck
-bin/mysqlimport
-bin/mysqlshow
-EOF
-
 # 创建 INSTALL 脚本
 cat > "$COREDIR/+INSTALL" << 'EOF'
-#!/bin/bash
+#!/bin/sh
 # POST-INSTALL script for mariadb-client-core
 
 echo "mariadb-client-core: Creating MySQL compatibility symlinks..."
 
 if [ -f /usr/local/bin/mariadb ] && [ ! -L /usr/local/bin/mysql ]; then
     ln -sf mariadb /usr/local/bin/mysql
-    ln -sf mariadbadmin /usr/local/bin/mysqladmin
-    ln -sf mariadbdump /usr/local/bin/mysqldump
-    ln -sf mariadbcheck /usr/local/bin/mysqlcheck
-    ln -sf mariadbimport /usr/local/bin/mysqlimport
-    ln -sf mariadbshow /usr/local/bin/mysqlshow
-    echo "  → MySQL compatibility symlinks created"
+    echo "  → mysql -> mariadb"
 fi
+
+if [ -f /usr/local/bin/mariadb-admin ] && [ ! -L /usr/local/bin/mysqladmin ]; then
+    ln -sf mariadb-admin /usr/local/bin/mysqladmin
+    echo "  → mysqladmin -> mariadb-admin"
+fi
+if [ -f /usr/local/bin/mariadb-dump ] && [ ! -L /usr/local/bin/mysqldump ]; then
+    ln -sf mariadb-dump /usr/local/bin/mysqldump
+    echo "  → mysqldump -> mariadb-dump"
+fi
+if [ -f /usr/local/bin/mariadb-check ] && [ ! -L /usr/local/bin/mysqlcheck ]; then
+    ln -sf mariadb-check /usr/local/bin/mysqlcheck
+    echo "  → mysqlcheck -> mariadb-check"
+fi
+if [ -f /usr/local/bin/mariadb-import ] && [ ! -L /usr/local/bin/mysqlimport ]; then
+    ln -sf mariadb-import /usr/local/bin/mysqlimport
+    echo "  → mysqlimport -> mariadb-import"
+fi
+if [ -f /usr/local/bin/mariadb-show ] && [ ! -L /usr/local/bin/mysqlshow ]; then
+    ln -sf mariadb-show /usr/local/bin/mysqlshow
+    echo "  → mysqlshow -> mariadb-show"
+fi
+
 echo "mariadb-client-core: Installation complete"
 EOF
 chmod +x "$COREDIR/+INSTALL"
 
 # 创建 POST_DEINSTALL 脚本
 cat > "$COREDIR/+POST_DEINSTALL" << 'EOF'
-#!/bin/bash
+#!/bin/sh
 # POST-DEINSTALL script for mariadb-client-core
 
 echo "mariadb-client-core: Removing compatibility symlinks..."
@@ -686,9 +729,16 @@ chmod +x "$COREDIR/+POST_DEINSTALL"
 
 # 打包
 cd "$PKGDIR"
-pkg create -m "$COREDIR" -p "$COREDIR/pkg-plist" -r "$COREDIR" -o .
-rm -rf mariadb-client-core
-log "✓ mariadb-client-core package created"
+log "DEBUG: Running pkg create for mariadb-client-core..."
+pkg create -m "$COREDIR" -p "$COREDIR/pkg-plist" -r "$COREDIR" -o . 2>&1 | tee -a "$LOG_FILE"
+
+if [ $? -eq 0 ]; then
+    rm -rf mariadb-client-core
+    log "✓ mariadb-client-core package created"
+else
+    log "ERROR: Failed to create mariadb-client-core package"
+    exit 1
+fi
 
 # ============================================================
 # 7.3 创建 mariadb${PKG_VERSION}-client 包（完整客户端）
@@ -750,6 +800,21 @@ socket = /var/run/mysql/mysql.sock
 default-character-set = utf8mb4
 EOF
 
+log "Generating pkg-plist for mariadb${PKG_VERSION}-client..."
+PLIST_FILE="$CLIENTDIR/pkg-plist"
+> "$PLIST_FILE"
+
+if [ -d "$CLIENTDIR/usr/local" ]; then
+    cd "$CLIENTDIR"
+    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    cd "$WORKDIR"
+fi
+
+log "DEBUG: pkg-plist contents (first 20 lines):"
+head -20 "$PLIST_FILE" | tee -a "$LOG_FILE"
+log "DEBUG: Total entries: $(wc -l < "$PLIST_FILE")"
+
+# 创建 MANIFEST
 cat > "$CLIENTDIR/+MANIFEST" << EOF
 {
   "name": "mariadb${PKG_VERSION}-client",
@@ -774,10 +839,18 @@ cat > "$CLIENTDIR/+MANIFEST" << EOF
 }
 EOF
 
+# 打包
 cd "$PKGDIR"
-pkg create -m "$CLIENTDIR" -p "$CLIENTDIR/pkg-plist" -r "$CLIENTDIR" -o .
-rm -rf "mariadb${PKG_VERSION}-client"
-log "✓ mariadb${PKG_VERSION}-client package created"
+log "DEBUG: Running pkg create for mariadb${PKG_VERSION}-client..."
+pkg create -m "$CLIENTDIR" -p "$CLIENTDIR/pkg-plist" -r "$CLIENTDIR" -o . 2>&1 | tee -a "$LOG_FILE"
+
+if [ $? -eq 0 ]; then
+    rm -rf "mariadb${PKG_VERSION}-client"
+    log "✓ mariadb${PKG_VERSION}-client package created"
+else
+    log "ERROR: Failed to create mariadb${PKG_VERSION}-client package"
+    exit 1
+fi
 
 # ============================================================
 # 7.4 创建 mariadb${PKG_VERSION}-server 包（服务端）
@@ -843,6 +916,24 @@ if [ -d "$INSTALL_DIR/usr/local/man" ]; then
     cp -r "$INSTALL_DIR/usr/local/man" "$SERVERDIR/usr/local/" || true
 fi
 
+# ============================================================
+# 动态生成 pkg-plist（关键修复）
+# ============================================================
+log "Generating pkg-plist for mariadb${PKG_VERSION}-server..."
+PLIST_FILE="$SERVERDIR/pkg-plist"
+> "$PLIST_FILE"
+
+if [ -d "$SERVERDIR/usr/local" ]; then
+    cd "$SERVERDIR"
+    find usr/local -type f -o -type l | sort >> "$PLIST_FILE"
+    cd "$WORKDIR"
+fi
+
+log "DEBUG: pkg-plist entries: $(wc -l < "$PLIST_FILE")"
+log "DEBUG: pkg-plist contents (first 20 lines):"
+head -20 "$PLIST_FILE" | tee -a "$LOG_FILE"
+
+# 创建 MANIFEST
 cat > "$SERVERDIR/+MANIFEST" << EOF
 {
   "name": "mariadb${PKG_VERSION}-server",
@@ -903,10 +994,18 @@ run_rc_command "$1"
 EOF
 chmod +x "$SERVERDIR/usr/local/etc/rc.d/mariadb"
 
+# 打包
 cd "$PKGDIR"
-pkg create -m "$SERVERDIR" -p "$SERVERDIR/pkg-plist" -r "$SERVERDIR" -o .
-rm -rf "mariadb${PKG_VERSION}-server"
-log "✓ mariadb${PKG_VERSION}-server package created"
+log "DEBUG: Running pkg create for mariadb${PKG_VERSION}-server..."
+pkg create -m "$SERVERDIR" -p "$SERVERDIR/pkg-plist" -r "$SERVERDIR" -o . 2>&1 | tee -a "$LOG_FILE"
+
+if [ $? -eq 0 ]; then
+    rm -rf "mariadb${PKG_VERSION}-server"
+    log "✓ mariadb${PKG_VERSION}-server package created"
+else
+    log "ERROR: Failed to create mariadb${PKG_VERSION}-server package"
+    exit 1
+fi
 
 # ============================================================
 # 8. 创建修改后的 p5-DBD-MariaDB 包
@@ -929,19 +1028,19 @@ if [ -z "$DBD_PKG" ]; then
 else
     log "✅ Found package: $(basename "$DBD_PKG")"
     log "DEBUG: Package size: $(ls -lh "$DBD_PKG" | awk '{print $5}')"
-    
+
     DBDDIR="$PKGDIR/p5-DBD-MariaDB-custom"
     mkdir -p "$DBDDIR"
-    
+
     log "Extracting original package..."
     tar -xf "$DBD_PKG" -C "$DBDDIR" 2>&1 | tee -a "$LOG_FILE"
-    
+
     # === 调试：检查解压结果 ===
     log "DEBUG: Extracted files in $DBDDIR:"
     ls -la "$DBDDIR" | tee -a "$LOG_FILE"
-    
+
     cd "$DBDDIR"
-    
+
     if [ -f "+MANIFEST" ]; then
         log "DEBUG: Original +MANIFEST:"
         cat "+MANIFEST" | tee -a "$LOG_FILE"
@@ -950,7 +1049,7 @@ else
         sed -i '' 's/"mysql84-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"mysql[0-9]*-client"/"libmariadb"/g' +MANIFEST
         sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +MANIFEST
-        sed -i '' 's/"version":"1.23"/"version":"1.23.custom"/g' +MANIFEST
+        sed -i '' 's/"version":"[0-9.]*"/"version":"1.23.custom"/g' +MANIFEST
         sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +MANIFEST
         sed -i '' 's/"libmysqlclient.so.24"/"libmariadb.so"/g' +MANIFEST
         
@@ -959,12 +1058,25 @@ else
         
         log "Modified dependencies:"
         grep -A 5 '"deps"' +MANIFEST | tee -a "$LOG_FILE"
-    else
-        log "ERROR: +MANIFEST not found in extracted package!"
-        log "DEBUG: Contents of $DBDDIR:"
-        ls -la "$DBDDIR" | tee -a "$LOG_FILE"
     fi
-    
+
+    # 修改 +COMPACT_MANIFEST
+    if [ -f "+COMPACT_MANIFEST" ]; then
+        log "Modifying +COMPACT_MANIFEST..."
+        sed -i '' 's/"name":"p5-DBD-MariaDB"/"name":"p5-DBD-MariaDB-custom"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"origin":"databases\/p5-DBD-MariaDB"/"origin":"databases\/p5-DBD-MariaDB-custom"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"version":"[0-9.]*"/"version":"1.23.custom"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"comment":"MariaDB driver for the Perl5 Database Interface (DBI)"/"comment":"MariaDB driver (custom - depends on libmariadb)"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"mysql84-client"/"libmariadb"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"origin":"databases\/mysql84-client"/"origin":"databases\/libmariadb"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"version":"8.4.10"/"version":"12.3.2"/g' +COMPACT_MANIFEST
+        sed -i '' 's/"libmysqlclient.so.24",//g' +COMPACT_MANIFEST
+        sed -i '' 's/, "libmysqlclient.so.24"//g' +COMPACT_MANIFEST
+        log "DEBUG: Modified +COMPACT_MANIFEST:"
+        cat "+COMPACT_MANIFEST" | tee -a "$LOG_FILE"
+    fi
+
+    # 创建 POST_INSTALL 脚本
     cat > "+POST_INSTALL" << 'EOF'
 #!/bin/sh
 # POST-INSTALL script for p5-DBD-MariaDB-custom
@@ -977,7 +1089,7 @@ fi
 echo "p5-DBD-MariaDB-custom: Installation complete"
 EOF
     chmod +x "+POST_INSTALL"
-    
+
     cat > "+POST_DEINSTALL" << 'EOF'
 #!/bin/sh
 # POST-DEINSTALL script for p5-DBD-MariaDB-custom
@@ -987,12 +1099,16 @@ rm -f /usr/local/lib/libmysqlclient.so.24
 echo "p5-DBD-MariaDB-custom: Cleanup completed"
 EOF
     chmod +x "+POST_DEINSTALL"
-    
+
     cd "$PKGDIR"
-    
+
     log "Re-packaging using pkg create..."
-    log "DEBUG: pkg create -m \"$DBDDIR\" -r \"$DBDDIR\" -o ."
+    log "DEBUG: pkg create -o . -m \"$DBDDIR\" -r \"$DBDDIR\""
+
+    # 使用 -m 指定 manifest 目录
     pkg create -m "$DBDDIR" -r "$DBDDIR" -o . 2>&1 | tee -a "$LOG_FILE"
+
+    # 检查生成的包
     if [ -f "p5-DBD-MariaDB-1.23.custom.pkg" ]; then
         mv "p5-DBD-MariaDB-1.23.custom.pkg" "p5-DBD-MariaDB-custom.pkg"
         log "✅ Renamed p5-DBD-MariaDB-1.23.custom.pkg -> p5-DBD-MariaDB-custom.pkg"
@@ -1000,13 +1116,20 @@ EOF
         mv "p5-DBD-MariaDB-1.23.pkg" "p5-DBD-MariaDB-custom.pkg"
         log "✅ Renamed p5-DBD-MariaDB-1.23.pkg -> p5-DBD-MariaDB-custom.pkg"
     fi
-    
-    # === 调试：检查打包结果 ===
-    log "DEBUG: Checking for created package..."
-    ls -la p5-DBD-MariaDB-custom*.pkg 2>&1 | tee -a "$LOG_FILE"
-    
+
+    # 检查重命名后的包
+    if [ -f "p5-DBD-MariaDB-custom.pkg" ]; then
+        log "✅ Package created successfully: p5-DBD-MariaDB-custom.pkg"
+        ls -la "p5-DBD-MariaDB-custom.pkg" | tee -a "$LOG_FILE"
+    else
+        log "ERROR: Failed to create p5-DBD-MariaDB-custom.pkg"
+        log "DEBUG: Available packages in $PKGDIR:"
+        ls -la *.pkg 2>&1 | tee -a "$LOG_FILE"
+        exit 1
+    fi
+
     rm -rf "$DBDDIR"
-    
+
     log "✅ p5-DBD-MariaDB-custom package created"
 fi
 
