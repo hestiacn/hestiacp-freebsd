@@ -84,7 +84,7 @@ else
     cd "judy-${JUDY_VERSION}/src"
     # 修改 sh_build 脚本
     log "Compiling Judy with sh_build..."
-    ./sh_build 2>&1 | tee -a "$LOG_FILE"
+    sh build.sh 2>&1 | tee -a "$LOG_FILE"
 
     
     # 安装
