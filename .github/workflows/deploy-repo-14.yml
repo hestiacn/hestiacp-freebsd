@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        freebsd_version: [14]
+        freebsd_version: [15] #单独编译  一次运行多个任务机器报错
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
