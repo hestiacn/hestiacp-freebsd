@@ -4158,43 +4158,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
     cp -R "$PKG_DIR/." "$ARTIFACTS_DIR/"
-    EXIT_CODE=$?
     
-    if [ $EXIT_CODE -eq 0 ]; then
-        echo "✅ Artifacts copied successfully!"
-        echo ""
-        echo "=== Files in host workspace ($ARTIFACTS_DIR) ==="
-        ls -la "$ARTIFACTS_DIR/"
-        echo ""
-        echo "✅ Repository has been signed with private key"
-        echo "✅ Public key is available at: $PKG_DIR/hestia.pub"
-        echo ""
-        echo "Clients can install with repository configuration:"
-        printf '%s\n' '  cat > /usr/local/etc/pkg/repos/hestia.conf << EOF'
-        printf '%s\n' 'hestia: {'
-        printf '%s\n' '  url: "https://your-repo-url.com/pkg",'
-        printf '%s\n' '  signature_type: "pubkey",'
-        printf '%s\n' '  pubkey: "https://your-repo-url.com/pkg/hestia.pub",'
-        printf '%s\n' '  enabled: yes'
-        printf '%s\n' '}'
-        printf '%s\n' 'EOF'
-        echo ""
-        echo "  pkg update -f"
-        echo "  pkg install hestia"
-        echo ""
-        echo "Or install packages directly:"
-        echo "  pkg install $PKG_DIR/hestia-${BUILD_VER}.pkg"
-        echo "  pkg install $PKG_DIR/hestia-nginx-${NGINX_V}.pkg"
-        echo "  pkg install $PKG_DIR/hestia-php-${PHP_V}.pkg"
-        echo "  pkg install $PKG_DIR/hestia-web-terminal-${WEB_TERMINAL_V}.pkg"
-        exit 0
-    else
-        echo "❌ Failed to copy artifacts to host workspace!"
-        echo "Source: $PKG_DIR"
-        echo "Destination: $HOST_WORKSPACE"
-        exit 1
-    fi
-    
-    echo "========================================================================"
+    ls -la "$ARTIFACTS_DIR/"
 fi
 echo "========================================================================"
