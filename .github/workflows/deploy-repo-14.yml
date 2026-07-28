@@ -34,13 +34,19 @@ jobs:
           PKG_SIGNING_KEY_PUB: ${{ secrets.PKG_SIGNING_KEY_PUB }}
         with:
           release: "${{ matrix.freebsd_version }}.0"
-          usesh: false
+          usesh: true
           sync: rsync
           copyback: true
           run: |
             export PKG_SIGNING_KEY="${{ secrets.PKG_SIGNING_KEY }}"
             export PKG_SIGNING_KEY_PUB="${{ secrets.PKG_SIGNING_KEY_PUB }}"
-            
+
+            export TZ=Asia/Shanghai
+            echo "========================================"
+            echo "Build MariaDB 12.3.2 Packages"
+            echo "Started at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+            echo "========================================"
+
             # 定义工作空间路径
             WORKSPACE="/home/runner/work/hestiacp-freebsd/hestiacp-freebsd"
             cd "$WORKSPACE"
@@ -95,7 +101,13 @@ jobs:
               exit 1
             fi
             echo "[ ✓ ] Repository signed successfully!"
-
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-freebsd-${{ matrix.freebsd_version }}
+          path: /home/runner/work/hestiacp-freebsd/hestiacp-freebsd/build.log
+          retention-days: 7
       # 验证 artifacts
       - name: Verify and prepare artifacts on host
         run: |

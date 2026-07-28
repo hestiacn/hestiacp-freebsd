@@ -57,7 +57,7 @@ log "Build dependencies installed successfully"
 # ============================================================
 print_header "Step 1.5: Building Judy library from source"
 
-JUDY_VERSION="1.0.5"
+JUDY_VERSION="1.0.6"
 JUDY_DIR="/tmp/hestiacp-src/judy-build"
 
 # 检查 Judy 是否已安装
@@ -70,58 +70,28 @@ else
     cd "$JUDY_DIR"
     
     # 下载
-    if [ ! -f "v${JUDY_VERSION}-netdata2.tar.gz" ]; then
+    if [ ! -f "v${JUDY_VERSION}.tar.gz" ]; then
         log "Downloading Judy ${JUDY_VERSION} from GitHub (netdata version)..."
-        fetch "https://github.com/netdata/libjudy/archive/refs/tags/v${JUDY_VERSION}-netdata2.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+        fetch "https://github.com/hestiacn/judy/archive/refs/tags/v${JUDY_VERSION}.tar.gz" 2>&1 | tee -a "$LOG_FILE"
     fi
     
     # 解压
-    if [ ! -d "libjudy-${JUDY_VERSION}-netdata2" ]; then
+    if [ ! -d "judy-${JUDY_VERSION}" ]; then
         log "Extracting Judy..."
-        tar -xzf "v${JUDY_VERSION}-netdata2.tar.gz" 2>&1 | tee -a "$LOG_FILE"
+        tar -xzf "v${JUDY_VERSION}.tar.gz" 2>&1 | tee -a "$LOG_FILE"
     fi
     
-    cd "libjudy-${JUDY_VERSION}-netdata2/src"
+    cd "judy-${JUDY_VERSION}/src"
     # 修改 sh_build 脚本
-    log "Fixing sh_build script..."
-    sed -i '' 's/^CC=.*/CC="gcc"/' sh_build
-    sed -i '' 's/^CPIC=.*/CPIC="-fPIC"/' sh_build
-    sed -i '' 's/^COPT=.*/COPT="-O2"/' sh_build
-    sed -i '' 's/^#ld -shared -o libJudy.so Judy\*\/\*.o/ld -shared -o libJudy.so Judy*\/\*.o/' sh_build
-
-    # 直接运行 sh_build 编译
     log "Compiling Judy with sh_build..."
     ./sh_build 2>&1 | tee -a "$LOG_FILE"
-    if [ ! -f "libJudy.so" ] && [ -f "libJudy.a" ]; then
-        log "libJudy.so not generated, creating manually from .o files..."
-        O_FILES=$(find Judy* -name "*.o" | tr '\n' ' ')
-        if [ -n "$O_FILES" ]; then
-            gcc -shared -o libJudy.so $O_FILES -Wl,-soname,libJudy.so
-        else
-            gcc -shared -o libJudy.so -Wl,-whole-archive libJudy.a -Wl,-no-whole-archive
-        fi
-        echo "  ✅ libJudy.so created manually"
-    fi
+
     
     # 安装
     log "Installing Judy..."
     cp libJudy.a /usr/local/lib/
     cp libJudy.so /usr/local/lib/
     cp Judy.h /usr/local/include/
-    log "Creating Judy pkg-config file..."
-    mkdir -p /usr/local/lib/pkgconfig
-    cat > /usr/local/lib/pkgconfig/judy.pc << 'EOF'
-prefix=/usr/local
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-includedir=${prefix}/include
-
-Name: Judy
-Description: Judy dynamic array library
-Version: 1.0.5
-Libs: -L${libdir} -lJudy
-Cflags: -I${includedir}
-EOF
     ln -sf /usr/local/lib/libJudy.so /usr/local/lib/libjudy.so || true
     ln -sf /usr/local/lib/libJudy.a /usr/local/lib/libjudy.a || true
     
@@ -247,8 +217,8 @@ GSSAPI_FILE="$WORKDIR/mariadb-${MARIADB_VERSION}/plugin/auth_gssapi/gssapi_serve
 
 if [ -f "$GSSAPI_FILE" ]; then
     log "Fixing GSSAPI: removing #ifdef HAVE_KRB5_XFREE for FreeBSD..."
-    sed -i '' 's/krb5_xfree/free/g' "$GSSAPI_FILE"
     sed -i '' '/#ifdef HAVE_KRB5_XFREE/d' "$GSSAPI_FILE"
+    sed -i '' 's/krb5_xfree/free/g' "$GSSAPI_FILE"
     sed -i '' '/#endif/d' "$GSSAPI_FILE"
     
     log "✅ GSSAPI fix applied"
@@ -271,12 +241,12 @@ log "Running CMake configuration..."
 log "Build type: Release"
 log "Install prefix: /usr/local"
 log "Jobs: ${MAKE_JOBS}"
-
+#     -DFEATURE_SET=large \
 cmake .. \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    -DFEATURE_SET=large \
+    -DFEATURE_SET=community \
     -DJudy_INCLUDE_DIR=/usr/local/include \
     -DJudy_LIBRARY=/usr/local/lib/libJudy.so \
     -DWITH_READLINE=ON \

@@ -16,13 +16,11 @@ LOG_FILE="build.log"
 
 # 创建日志文件
 touch "$LOG_FILE"
+export TZ=Asia/Shanghai
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
 
-# 设置日志开始时间
-echo "========================================"
-echo "HestiaCP FreeBSD Build Log"
-echo "Started at: $(date)"
-echo "========================================"
-echo ""
 # Define download function
 download_file() {
 	local url=$1
@@ -4158,7 +4156,7 @@ if [ "$BUILD_PKG" = "true" ] && [ -d "$PKG_DIR" ]; then
     echo "[ * ] Copying to:   $ARTIFACTS_DIR"
     
     cp -R "$PKG_DIR/." "$ARTIFACTS_DIR/"
-    
+
     ls -la "$ARTIFACTS_DIR/"
 fi
 echo "========================================================================"
